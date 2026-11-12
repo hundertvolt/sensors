@@ -1,0 +1,4 @@
+17:07:29 /tmp/pytest-of-root/pytest-12702/test_an_aborted_run_archives_i0/repo uv run scripts/_archive_evidence.py --runner test_sh /tmp/pytest-of-root/pytest-12702/test_an_aborted_run_archives_i0/results
+17:08:03 /tmp/pytest-of-root/pytest-12704/test_an_aborted_run_archives_i0/repo uv run scripts/_archive_evidence.py --runner test_sh /tmp/pytest-of-root/pytest-12704/test_an_aborted_run_archives_i0/results
+17:24:05 /tmp/pytest-of-root/pytest-12781/test_an_aborted_run_archives_i0/repo uv run scripts/_archive_evidence.py --runner test_sh /tmp/pytest-of-root/pytest-12781/test_an_aborted_run_archives_i0/results
+17:24:38 /tmp/pytest-of-root/pytest-12782/test_an_aborted_run_archives_i0/repo uv run scripts/_archive_evidence.py --runner test_sh /tmp/pytest-of-root/pytest-12782/test_an_aborted_run_archives_i0/results

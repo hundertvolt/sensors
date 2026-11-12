@@ -1,0 +1,4 @@
+U32 lane C: merge lane T's named-task callers
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

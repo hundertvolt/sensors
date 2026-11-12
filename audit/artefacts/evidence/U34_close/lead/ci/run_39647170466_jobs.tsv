@@ -1,0 +1,46 @@
+devices	success	11
+web-changes	success	31
+zizmor	success	13
+actionlint	success	15
+shellcheck	success	14
+lint-and-typecheck	success	38
+web-lint-and-typecheck	success	28
+unit-tests	success	603
+Unit tests (shipped gc.threshold)	success	632
+web-unit-tests	success	200
+web-cross-browser-smoke	success	323
+web-put-matrix (2)	success	309
+web-put-matrix (1)	success	288
+web-coverage	success	209
+web-put-matrix (3)	success	283
+unit-tests-coverage	success	936
+firmware-build-verify (grkizi)	success	111
+firmware-build-verify (arzi)	success	119
+firmware-build-verify (wozi)	success	101
+firmware-build-verify (schlafzi)	success	97
+firmware-build-verify (klkizi)	success	108
+firmware-build-verify (dev)	success	103
+digital-twin-e2e (dev, 32768, suite)	success	549
+digital-twin-e2e (grkizi, -1, harness)	success	438
+digital-twin-e2e (dev, -1, harness)	success	557
+digital-twin-e2e (grkizi, 32768, harness)	success	444
+digital-twin-e2e (klkizi, -1, suite)	success	498
+digital-twin-e2e (arzi, 32768, harness)	success	455
+digital-twin-e2e (grkizi, -1, suite)	success	494
+digital-twin-e2e (schlafzi, -1, suite)	success	462
+digital-twin-e2e (arzi, -1, suite)	success	484
+digital-twin-e2e (schlafzi, 32768, suite)	success	489
+digital-twin-e2e (arzi, -1, harness)	success	454
+digital-twin-e2e (dev, 32768, harness)	success	563
+digital-twin-e2e (dev, -1, suite)	success	565
+digital-twin-e2e (wozi, 32768, harness)	success	460
+digital-twin-e2e (grkizi, 32768, suite)	success	497
+digital-twin-e2e (klkizi, -1, harness)	success	441
+digital-twin-e2e (schlafzi, 32768, harness)	success	432
+digital-twin-e2e (wozi, -1, harness)	success	464
+digital-twin-e2e (arzi, 32768, suite)	success	498
+digital-twin-e2e (klkizi, 32768, suite)	success	503
+digital-twin-e2e (klkizi, 32768, harness)	success	444
+digital-twin-e2e (wozi, -1, suite)	success	484
+digital-twin-e2e (wozi, 32768, suite)	success	478
+digital-twin-e2e (schlafzi, -1, harness)	success	447

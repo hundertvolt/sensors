@@ -1,0 +1,93 @@
+== test_uv_sync_retried_sh
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+             errors=None, newline=None):
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+E                         echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+E                       echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+             errors=None, newline=None):
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_a_sync_failing_twice_passes_on_the_third_attempt_after_10_and_20_s
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_three_failures_end_with_the_last_attempts_own_exit_code
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_a_first_attempt_that_passes_pauses_nowhere_and_arguments_reach_uv
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_the_attempts_and_pause_step_equal_the_installers
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_no_ci_file_carries_a_retry_loop_of_its_own[.github/workflows/ci.yml]
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_no_ci_file_carries_a_retry_loop_of_its_own[.github/actions/setup-micropython-toolchain/action.yml]
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_no_ci_file_carries_a_retry_loop_of_its_own[.github/actions/uv-sync/action.yml]
+7 failed in 0.32s
+== test_mpremote_connect_sh
+_ test_a_failed_resolution_exits_1_with_the_resolvers_message_and_no_mpremote __
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10550/test_a_failed_resolution_exits0')
+    def test_a_failed_resolution_exits_1_with_the_resolvers_message_and_no_mpremote(repo_root: Path, tmp_path: Path) -> None:
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_mpremote_device_wins_and_no_resolver_runs
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_without_mpremote_device_the_resolvers_board_is_connected
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_a_failed_resolution_exits_1_with_the_resolvers_message_and_no_mpremote
+3 failed, 2 passed in 0.27s
+== test_require_clean_hardware_run_sh
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_one_retried_sync_runs_first_and_no_later_uv_call_syncs
+1 failed, 18 passed in 2.04s
+== test_hardware_runners
+__ ERROR at setup of test_the_soak_runner_without_a_duration_is_a_usage_error __
+_ ERROR at setup of test_the_soak_runners_duration_without_a_name_is_a_usage_error _
+_ ERROR at setup of test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[build] _
+_ ERROR at setup of test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[bench-device] _
+ERROR tests_scripts/test_hardware_runners.py::test_the_flash_runner_runs_every_lower_level_first_in_order
+ERROR tests_scripts/test_hardware_runners.py::test_the_device_loop_is_derived_and_skips_leaked_test_fixtures
+ERROR tests_scripts/test_hardware_runners.py::test_a_failing_lower_level_stops_before_any_board_is_touched[test_sh]
+ERROR tests_scripts/test_hardware_runners.py::test_a_failing_lower_level_stops_before_any_board_is_touched[npm]
+ERROR tests_scripts/test_hardware_runners.py::test_a_failing_lower_level_stops_before_any_board_is_touched[run_digital_twin_ci_sh]
+ERROR tests_scripts/test_hardware_runners.py::test_skipping_the_lower_levels_is_never_clean
+ERROR tests_scripts/test_hardware_runners.py::test_skipping_the_lower_levels_keeps_a_failure_a_failure
+ERROR tests_scripts/test_hardware_runners.py::test_the_bench_runner_runs_flash_then_bench_as_two_steps
+ERROR tests_scripts/test_hardware_runners.py::test_each_hardware_step_keeps_its_own_three_runs
+ERROR tests_scripts/test_hardware_runners.py::test_the_bench_runner_gives_test_paths_to_the_bench_step_only
+ERROR tests_scripts/test_hardware_runners.py::test_the_bench_runners_usage_states_where_its_arguments_go
+ERROR tests_scripts/test_hardware_runners.py::test_a_failing_flash_step_stops_the_bench_runner_before_the_bench_level
+ERROR tests_scripts/test_hardware_runners.py::test_the_bench_runner_without_lower_levels_is_not_clean
+ERROR tests_scripts/test_hardware_runners.py::test_the_soak_runner_runs_no_lower_level_and_names_its_duration
+ERROR tests_scripts/test_hardware_runners.py::test_the_soak_runner_selects_its_marker_and_passes_its_duration
+ERROR tests_scripts/test_hardware_runners.py::test_the_soak_runner_without_a_duration_is_a_usage_error
+== test_uv_sync_retried_sh
+E       AssertionError: .github/workflows/ci.yml: call scripts/uv_sync_retried.sh (through the uv-sync action) instead
+E       assert 'for attempt in' not in 'name: CI\n\...ce }}]" -v\n'
+E         
+E         'for attempt in' is contained here:
+E                     for attempt in 1 2 3; do
+E         ?           ++++++++++++++
+E                         uv sync && exit 0
+E                         echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+E                         # @tunable tool.uv_sync_backoff_step_s = 10...
+E         
+E         ...Full output truncated (340 lines hidden), use '-vv' to show
+E       AssertionError: .github/actions/setup-micropython-toolchain/action.yml: call scripts/uv_sync_retried.sh (through the uv-sync action) instead
+E       assert 'for attempt in' not in "name: Setup...es.py') }}\n"
+E         
+E         'for attempt in' is contained here:
+E           3
+E                   for attempt in 1 2 3; do
+E                       uv sync && exit 0
+E                       echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+E                       # @tunable tool.uv_sync_backoff_step_s = 10...
+== test_hardware_runners
+E       AssertionError: the run's first uv call is the retried sync: [['run', '--no-sync', 'scripts/_archive_evidence.py', '--runner', 'run_flash_hardware_suite', '--new-dir'], ['run', '--no-sync', 'pytest', '-p', '_pytest_run_record', '--run-record=/tmp/pytest-of-root/pytest-10555/test_the_flash_runner_runs_eve0/repo/build/archive/run_flash_hardware_suite/20261019T182005Z/run_record.json', 'tests_hardware/flash', '-m', 'not soak_duration and not multi_day_rollover', '-v'], ['run', '--no-sync', 'scripts/_hardware_verdict.py', '--run-record', '/tmp/pytest-of-root/pytest-10555/test_the_flash_runner_runs_eve0/repo/build/archive/run_flash_hardware_suite/20261019T182005Z/run_record.json', '--pytest-exit', '0', '--runner', 'run_flash_hardware_suite', '--levels', 'L0 L1 L2 L3']]
+E       assert ([['run', '--no-sync', 'scripts/_archive_evidence.py', '--runner', 'run_flash_hardware_suite', '--new-dir'], ['run', '-..._runner_runs_eve0/repo/build/archive/run_flash_hardware_suite/20261019T182005Z/run_record.json', '--pytest-exit', ...]] and ['run', '--no..., '--new-dir'] == ['sync', '--locked']
+E         
+E         At index 0 diff: 'run' != 'sync'
+E         Left contains 4 more items, first extra item: 'scripts/_archive_evidence.py'
+E         Use -v to get more diff)
+E       AssertionError: the run's first uv call is the retried sync: [['run', '--no-sync', 'python', '-c', 'import sys\nsys.path.insert(0, "tests_hardware")\nimport harness\ntry:\n    print(harness.bench_device())\nexcept harness.HardwareNotAvailableError as e:\n    sys.exit(f"error: {e}")'], ['run', '--no-sync', 'scripts/build_firmware.py', 'fixture-bench-device', '--tick-offset-test', '--output', 'build/firmware-fixture-bench-device-tickoffset.uf2'], ['run', '--no-sync', 'scripts/_archive_evidence.py', '--runner', 'run_bench_rollover_test', '--new-dir'], ['run', '--no-sync', 'pytest', '-p', '_pytest_run_record', '--run-record=/tmp/pytest-of-root/pytest-10555/test_the_rollover_runner_build0/repo/build/archive/run_bench_rollover_test/20261019T182011Z/run_record.json', 'tests_hardware/bench', '--allow-multi-day-rollover', '--allow-flash-cycle', '--rollover-image', 'build/firmware-fixture-bench-device-tickoffset.uf2', '-m', 'multi_day_rollover', '-v'], ['run', '--no-sync', 'scripts/_hardware_verdict.py', '--run-record', '/tmp/pytest-of-root/pytest-10555/test_the_rollover_runner_build0/repo/build/archive/run_bench_rollover_test/20261019T182011Z/run_record.json', '--pytest-exit', '0', '--runner', 'run_bench_rollover_test', '--levels', 'rollover (not a level)']]
+E       assert ([['run', '--no-sync', 'python', '-c', 'import sys\nsys.path.insert(0, "tests_hardware")\nimport harness\ntry:\n    pri...over_runner_build0/repo/build/archive/run_bench_rollover_test/20261019T182011Z/run_record.json', '--pytest-exit', ...]] and ['run', '--no...error: {e}")'] == ['sync', '--locked']
+E         
+E         At index 0 diff: 'run' != 'sync'
+E         Left contains 3 more items, first extra item: 'python'
+E         Use -v to get more diff)
+E       AssertionError: assert [['run', '--n...y', '--list']] == [['sync', '--...y', '--list']]
+E         
+E         At index 0 diff: ['run', '--no-sync', 'python', 'tests_hardware/manual/__main__.py', '--list'] != ['sync', '--locked']
+E         Right contains one more item: ['run', '--no-sync', 'python', 'tests_hardware/manual/__main__.py', '--list']
+E         Use -v to get more diff
+FAILED tests_scripts/test_hardware_runners.py::test_the_flash_runner_runs_every_lower_level_first_in_order
+FAILED tests_scripts/test_hardware_runners.py::test_the_rollover_runner_builds_its_image_then_runs_only_the_rollover_round_on_it
+FAILED tests_scripts/test_hardware_runners.py::test_the_manual_runner_syncs_first_then_starts_the_runner_unsynced

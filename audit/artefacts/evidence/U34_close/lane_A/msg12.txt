@@ -1,0 +1,16 @@
+U34 lane A: the Apache-2.0 entry states the SPDX scope, holder, year and NOTICE
+
+The DNSQuery entry gains one sentence: the file's SPDX header reads
+"Apache-2.0 AND MIT", Apache-2.0 for DNSQuery and MIT for the rest; the holder
+is p-doyle, the account the upstream project is published under; the year
+2019 is that of upstream's first commit of main.py (110ce2f, 2019-08-05; its
+LICENSE was added later, 27cc627, 2021-04-17); and upstream ships no NOTICE
+file at any of its four commits, so src/LICENSE-captive_dns appends none.
+Sourced from a full-history clone of p-doyle/micropython-dnsserver-captive-
+portal. The header line this sentence quotes is rewritten to that scope in a
+later commit on this branch (src/asy_captive_dns.py); until then the
+header still reads Apache-2.0 alone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+

@@ -1,0 +1,26 @@
+E       AssertionError: end each host CLI with `if __name__ == "__main__": raise SystemExit(main())`: ['toolchain/setup_toolchain.py:1810', 'scripts/_archive_evidence.py:113', 'scripts/_digital_twin_ci_suite.py:1731', 'scripts/_render_coverage.py:80', 'scripts/_stage_website.py:500', 'scripts/build_
+E       assert not ['toolchain/setup_toolchain.py:1810', 'scripts/_archive_evidence.py:113', 'scripts/_digital_twin_ci_suite.py:1731', 'scripts/_render_coverage.py:80', 'scripts/_stage_website.py:500', 'scripts/build_firmware.py:264', ...]
+E       AssertionError: toolchain/setup_toolchain.py: SetupError(RuntimeError) - derive it from Exception
+E       assert ['RuntimeError'] == ['Exception']
+E         
+E         At index 0 diff: 'RuntimeError' != 'Exception'
+E         Use -v to get more diff
+E       AssertionError: toolchain/micropython_overrides.py: OverrideError(RuntimeError) - derive it from Exception
+E       assert ['RuntimeError'] == ['Exception']
+E         
+E         At index 0 diff: 'RuntimeError' != 'Exception'
+E         Use -v to get more diff
+E       AssertionError: scripts/_strip_type_checking.py defines StripError 0 times
+E       assert 0 == 1
+E        +  where 0 = len([])
+E       AssertionError: (2, 'usage: _stage_website.py [-h] definitions stage_dir
+E         _stage_website.py: error: unrecognized arguments: --build-date /tmp/pytest-of-root/pytest-10009/test_a_malformed_input_is_one_5/stage
+E         ')
+E       assert 2 == 1
+E        +  where 2 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', 'scripts/_stage_website.py', '--build-date', 'yesterday'... error: unrecognized arguments: --build-date /tmp/pytest-of-root/pytest-10009/test_a_malformed_input_is_one_5/stage\n').returncode
+FAILED tests_scripts/test_host_cli_exit_idiom.py::test_every_host_cli_exits_through_raise_systemexit_main
+FAILED tests_scripts/test_host_cli_exit_idiom.py::test_each_user_error_class_derives_from_exception[toolchain/setup_toolchain.py-SetupError]
+FAILED tests_scripts/test_host_cli_exit_idiom.py::test_each_user_error_class_derives_from_exception[toolchain/micropython_overrides.py-OverrideError]
+FAILED tests_scripts/test_host_cli_exit_idiom.py::test_each_user_error_class_derives_from_exception[scripts/_strip_type_checking.py-StripError]
+FAILED tests_scripts/test_host_cli_exit_idiom.py::test_a_malformed_input_is_one_line_and_exit_1_without_a_traceback[_stage_website]
+5 failed, 15 passed in 2.07s

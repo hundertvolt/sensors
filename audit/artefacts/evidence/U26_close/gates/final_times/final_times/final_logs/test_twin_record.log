@@ -1,0 +1,17 @@
+..F...                                                                   [100%]
+=================================== FAILURES ===================================
+________________ test_every_entrys_hashes_are_the_current_files ________________
+
+recorder = <module 'record_twin_instrument_runs' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/scripts/record_twin_instrument_runs.py'>
+record = {'tests_hardware/bench/test_boot_order_and_triggers.py': {'api_sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9...2026-10-14T23:23:59Z', 'gc_threshold': -1, 'reason': 'needs the bench bridge (network, WLAN role-reversal)', ...}, ...}
+
+    def test_every_entrys_hashes_are_the_current_files(recorder: ModuleType, record: "dict[str, dict[str, object]]") -> None:
+        stale = [f"{key}: {name}" for key, entry in sorted(record.items()) if (recorder.REPO_ROOT / key).is_file() for name, digest in recorder.entry_hashes(recorder.REPO_ROOT / key).items() if entry.get(name) != digest]
+>       assert not stale, f"changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: {stale}"
+E       AssertionError: changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: ['tests_hardware/device_scripts/fram_pause_unpause_and_gating.py: sha256']
+E       assert not ['tests_hardware/device_scripts/fram_pause_unpause_and_gating.py: sha256']
+
+tests_scripts/test_twin_record.py:37: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_record.py::test_every_entrys_hashes_are_the_current_files
+1 failed, 5 passed in 0.62s

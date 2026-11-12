@@ -1,0 +1,27 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11349/test_a_string_at_the_limit_or_0')
+
+    def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts(tmp_path: Path) -> None:
+        # The boundary's other side: 255 bytes everywhere, and a ~/ entry the interpreter builds from $HOME, never interns.
+        at_limit = "x" * _LIMIT
+        config_dir = str(tmp_path / ("c" * (_LIMIT - len(os.fsencode(str(tmp_path))) - 1)))
+        outcome, calls = _spawn(tmp_path, config_dir=config_dir, layout=f"{at_limit}:~/{_OVER}")
+>       assert outcome == {"exited": 0} and len(os.fsencode(config_dir)) == _LIMIT, outcome
+E       AssertionError: {'refused': "the twin was not started: --config-dir's value (255 bytes), MICROPYPATH entry 1 (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before the runner starts"}
+E       assert ({'refused': '...unner starts'} == {'exited': 0}
+E         
+E         Left contains 1 more item:
+E         {'refused': "the twin was not started: --config-dir's value (255 bytes), "
+E                     'MICROPYPATH entry 1 (255 bytes) - the Unix port interns each as a '
+E                     'qstr of at most 255 bytes and dies before the runner starts'}
+E         Right contains 1 more item:
+E         {'exited': 0}
+E         Use -v to get more diff)
+
+tests_scripts/test_twin_process_js_spawn.py:104: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts
+1 failed, 7 deselected in 0.17s

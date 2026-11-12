@@ -1,0 +1,4 @@
+ISL29125 conformance probe on TwinBoard (tests_scripts/test_twin_board.py run, 2026-10-14):
+  gc -1: DONE=1, every ISL29125.physical_keys present, compare(keys, keys)==[], 10.38 s
+  gc 32768: same, 10.37 s
+  MemoryError / 'memory allocation failed' lines in the output: 0

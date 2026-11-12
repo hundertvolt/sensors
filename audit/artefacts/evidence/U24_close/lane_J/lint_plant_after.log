@@ -1,0 +1,23 @@
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/js/zz-scratch-disable.js
+  3:0  error    Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary  @eslint-community/eslint-comments/require-description
+  6:0  error    Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary  @eslint-community/eslint-comments/require-description
+  6:0  error    Unexpected unlimited 'eslint-disable' comment. Specify some rule names to disable                       @eslint-community/eslint-comments/no-unlimited-disable
+  6:1  warning  Unused eslint-disable directive (no problems were reported)
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/scripts/zz-scratch-disable.mjs
+  3:0  error    Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary  @eslint-community/eslint-comments/require-description
+  3:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  6:0  error    Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary  @eslint-community/eslint-comments/require-description
+  6:0  error    Unexpected unlimited 'eslint-disable' comment. Specify some rule names to disable                       @eslint-community/eslint-comments/no-unlimited-disable
+  6:1  warning  Unused eslint-disable directive (no problems were reported)
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/tests_js/zz-scratch-disable.js
+  3:0  error    Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary  @eslint-community/eslint-comments/require-description
+  6:0  error    Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary  @eslint-community/eslint-comments/require-description
+  6:0  error    Unexpected unlimited 'eslint-disable' comment. Specify some rule names to disable                       @eslint-community/eslint-comments/no-unlimited-disable
+  6:1  warning  Unused eslint-disable directive (no problems were reported)
+
+✖ 13 problems (9 errors, 4 warnings)
+  0 errors and 4 warnings potentially fixable with the `--fix` option.
+

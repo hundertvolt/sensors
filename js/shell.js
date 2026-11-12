@@ -56,6 +56,7 @@ export function startShell({ defs, elements, keyTarget, visibility, history, rel
     let stopSection = () => { /* no section rendered yet - replaced on the first select */ };
     /** @type {number | null} */
     let offsetS = null;
+    let observedAtMs = Number.NEGATIVE_INFINITY;
     /** @type {string | null} */
     let firstBuild = null;
     let reloadPending = false;
@@ -68,6 +69,7 @@ export function startShell({ defs, elements, keyTarget, visibility, history, rel
             const unixTime = /** @type {{system?: {UnixTime?: unknown}} | null} */ (statusBody)?.system?.UnixTime;
             if (typeof unixTime === "number") {
                 offsetS = unixTime - Date.now() / 1000;
+                observedAtMs = Date.now();
             }
         },
     };
@@ -93,9 +95,11 @@ export function startShell({ defs, elements, keyTarget, visibility, history, rel
 
     async function watchOnce() {
         const { signal } = watchAbort;
-        const status = await pollManager.request("/status", undefined, undefined, signal);
-        if (status.ok) {
-            deviceClock.observe(status.body);
+        if (Date.now() - observedAtMs >= DEVICE_WATCH_INTERVAL_MS) { // else the open section reads /status itself
+            const status = await pollManager.request("/status", undefined, undefined, signal);
+            if (status.ok) {
+                deviceClock.observe(status.body);
+            }
         }
         const system = await pollManager.request("/system", undefined, undefined, signal);
         const build = system.ok ? /** @type {{build?: unknown} | null} */ (system.body)?.build : undefined;

@@ -1,0 +1,177 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 14%]
+........................................................................ [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 28%]
+........................................................................ [ 33%]
+........................................................................ [ 37%]
+........................................................................ [ 42%]
+........................................................................ [ 47%]
+........................................................................ [ 52%]
+........................................................................ [ 56%]
+........................................................................ [ 61%]
+........................................................................ [ 66%]
+........................................................................ [ 71%]
+............................................FFFF......F................. [ 75%]
+........................................................................ [ 80%]
+........................................................................ [ 85%]
+................................................................F....... [ 89%]
+........................................................................ [ 94%]
+........................................................................ [ 99%]
+.........                                                                [100%]
+=================================== FAILURES ===================================
+___________ test_a_pass_keeps_its_state_under_its_own_logs_directory ___________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10169/test_a_pass_keeps_its_state_un0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fd97835f990>
+
+    def test_a_pass_keeps_its_state_under_its_own_logs_directory(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Never digital_twin/'s manual defaults: every launch's four state paths sit in the pass's state directory.
+        launched: list[Path] = []
+        monkeypatch.setattr(ci_suite, "spawn", lambda _launch, *, state_dir, log_path, args: launched.append(state_dir))
+>       ci_suite._spawn(_ctx(ci_suite, tmp_path / "pass"), [], tmp_path / "run.log")
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_state.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+logs_dir = PosixPath('/tmp/pytest-of-root/pytest-10169/test_a_pass_keeps_its_state_un0/pass')
+
+    def _ctx(ci_suite: ModuleType, logs_dir: Path) -> object:
+>       return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_state.py:15: TypeError
+____________ test_archiving_moves_the_state_and_recreates_it_empty _____________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10169/test_archiving_moves_the_state0')
+
+    def test_archiving_moves_the_state_and_recreates_it_empty(ci_suite: ModuleType, tmp_path: Path) -> None:
+>       ctx = _ctx(ci_suite, tmp_path)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_state.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+logs_dir = PosixPath('/tmp/pytest-of-root/pytest-10169/test_archiving_moves_the_state0')
+
+    def _ctx(ci_suite: ModuleType, logs_dir: Path) -> object:
+>       return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_state.py:15: TypeError
+______ test_archives_are_numbered_in_order_and_never_overwrite_each_other ______
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10169/test_archives_are_numbered_in_0')
+
+    def test_archives_are_numbered_in_order_and_never_overwrite_each_other(ci_suite: ModuleType, tmp_path: Path) -> None:
+>       ctx = _ctx(ci_suite, tmp_path)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_state.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+logs_dir = PosixPath('/tmp/pytest-of-root/pytest-10169/test_archives_are_numbered_in_0')
+
+    def _ctx(ci_suite: ModuleType, logs_dir: Path) -> object:
+>       return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_state.py:15: TypeError
+________________ test_an_empty_state_directory_is_not_archived _________________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10169/test_an_empty_state_directory_0')
+
+    def test_an_empty_state_directory_is_not_archived(ci_suite: ModuleType, tmp_path: Path) -> None:
+>       ctx = _ctx(ci_suite, tmp_path)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_state.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+logs_dir = PosixPath('/tmp/pytest-of-root/pytest-10169/test_an_empty_state_directory_0')
+
+    def _ctx(ci_suite: ModuleType, logs_dir: Path) -> object:
+>       return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_state.py:15: TypeError
+_______________ test_run_7_fails_at_once_without_the_capability ________________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10169/test_run_7_fails_at_once_witho0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fd9783bbc90>
+
+    def test_run_7_fails_at_once_without_the_capability(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A loud failure naming the cause instead of a 90 s wait for a DNS answer that cannot come.
+        monkeypatch.setattr(ci_suite, "_FAILURES", [])
+        monkeypatch.setattr(ci_suite, "_has_net_bind_capability", lambda _binary: False)
+        monkeypatch.setattr(ci_suite, "_spawn", lambda *_a: pytest.fail("Run 7 launched a twin that cannot bind port 53"))
+>       ci_suite._run_7_wifi_hotspot_dns(_ctx(ci_suite, tmp_path))
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_state.py:89: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+logs_dir = PosixPath('/tmp/pytest-of-root/pytest-10169/test_run_7_fails_at_once_witho0')
+
+    def _ctx(ci_suite: ModuleType, logs_dir: Path) -> object:
+>       return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_state.py:15: TypeError
+____________________ test_json_loads_reads_no_response_body ____________________
+
+    def test_json_loads_reads_no_response_body() -> None:
+        sites = _json_loads_sites(_TESTS)
+        assert sites.pop("_strict_json.py", []), "the oracle's own json.loads() was not found - the scan reads nothing"
+        counts = {name: len(lines) for name, lines in sites.items()}
+>       assert counts == {name: count for name, (count, _reason) in _JSON_LOADS_ALLOWED.items()}, sites
+E       AssertionError: {'test_asy_base_classes.py': [1460], 'test_asy_config_manager.py': [2384, 2418], 'test_asy_system_service.py': [3059, 3019, 3084], 'test_setter_microdot_integration.py': [247], ...}
+E       assert {'test_asy_ba...n.py': 1, ...} == {'test_asy_ba...t_json.py': 2}
+E         
+E         Omitting 4 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'test_setter_microdot_integration.py': 1}
+E         Use -v to get more diff
+
+tests_scripts/test_microtest.py:305: AssertionError
+============================= slowest 15 durations =============================
+5.11s call     tests_scripts/test_js_coverage_report_dir.py::test_the_report_directory_is_not_a_name_this_repo_imports
+4.38s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_bench_tier_deselects_exactly_its_persistence_writers_by_default
+3.44s call     tests_scripts/test_microtest.py::test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions
+2.56s call     tests_scripts/test_exception_handler_contract.py::test_every_pc_entry_point_installs_the_pc_report_before_the_firmware_starts
+2.50s call     tests_scripts/test_microtest.py::test_asyncio_run_is_called_only_in_the_harness
+2.21s call     tests_scripts/test_ceiling_probe.py::test_the_walk_returns_only_once_its_whole_ceiling_is_admittable_again
+1.70s call     tests_scripts/test_watchdog_feed_sites.py::test_a_feed_in_a_timer_callback_fails
+1.69s call     tests_scripts/test_coverage_runner.py::test_a_run_of_calls_under_the_tracer_never_rescans_the_heap
+1.53s call     tests_scripts/test_ceiling_probe.py::test_the_walk_outlasts_the_idle_read_timeout_by_padding_every_held_connection
+1.49s call     tests_scripts/test_lint_sh.py::test_a_clean_run_generates_first_then_ends_with_the_block_counting_every_check
+1.46s call     tests_scripts/test_watchdog_feed_sites.py::test_a_feed_in_another_loop_fails
+1.43s call     tests_scripts/test_watchdog_feed_sites.py::test_a_dropped_escalation_feed_fails
+1.40s call     tests_scripts/test_result_words.py::test_a_planted_spelling_is_named_with_its_line[asy_config_manager.py]
+1.40s call     tests_scripts/test_watchdog_feed_sites.py::test_a_reboot_feed_after_the_arm_fails
+1.38s call     tests_scripts/test_twin_entry_point_order.py::test_every_booting_twin_test_file_prewarms_then_shims_first
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_state.py::test_a_pass_keeps_its_state_under_its_own_logs_directory
+FAILED tests_scripts/test_digital_twin_ci_suite_state.py::test_archiving_moves_the_state_and_recreates_it_empty
+FAILED tests_scripts/test_digital_twin_ci_suite_state.py::test_archives_are_numbered_in_order_and_never_overwrite_each_other
+FAILED tests_scripts/test_digital_twin_ci_suite_state.py::test_an_empty_state_directory_is_not_archived
+FAILED tests_scripts/test_digital_twin_ci_suite_state.py::test_run_7_fails_at_once_without_the_capability
+FAILED tests_scripts/test_microtest.py::test_json_loads_reads_no_response_body
+6 failed, 1515 passed in 107.83s (0:01:47)

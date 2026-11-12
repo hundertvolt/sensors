@@ -1,0 +1,112 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[pending-exit 1 at once, nothing printed: the first was never consumed] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11320/test_a_twin_that_ignores_its_s0')
+capsys = <_pytest.capture.CaptureFixture object at 0x7fcccb47aed0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fcccb9bb190>
+mode = 'pending'
+outcome = 'exit 1 at once, nothing printed: the first was never consumed'
+
+    @pytest.mark.parametrize(
+        ("mode", "outcome"),
+        [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+    )
+    def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+        # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code. The second
+        # wait binds only for the child that never exits.
+        monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.0, raising=False)
+        monkeypatch.setattr(twin_process, "_SECOND_SIGINT_WAIT_S", 0.05 if mode == "ignored" else 5.0, raising=False)
+        log_path = tmp_path / "twin.log"
+        log_file = log_path.open("w", encoding="utf-8")
+        proc = _FirstWaitExpires([sys.executable, "-I", "-S", "-c", _SECOND_SIGINT_CHILD, mode], stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
+        proc.log_path, proc.handled_marker = log_path, None if mode == "ignored" else "handled"
+        run = twin_process.TwinRun(proc=proc, log_path=log_path, log_file=log_file, device="fixture-device", state_dir=tmp_path)
+        deadline = time.monotonic() + 10
+        while "ready" not in log_path.read_text(encoding="utf-8") and time.monotonic() < deadline:
+            time.sleep(0.01)
+        code = twin_process.shutdown(run, "fixture twin", timeout_s=0.5)
+        printed = capsys.readouterr().out
+>       assert f"DIAG: fixture twin: a second SIGINT: {outcome}" in printed, printed
+E       AssertionError: DIAG: fixture twin: SIGINT ignored for 0.0s (timeout=0.5s), about to SIGKILL pid=17737 - /proc fields: {'State': 'S (sleeping)', 'VmRSS': '8716 kB', 'Threads': '1', 'SigPnd': '0000000000000000', 'ShdPnd': '0000000000000000', 'SigBlk': '0000000000000000', 'SigIgn': '0000000001001000', 'SigCgt': '0000000000000002', 'wchan': 'hrtimer_nanosleep', 'SIGINT': 'blocked in 0 of 1 threads, caught'}
+E         DIAG: fixture twin: last 20 log lines before SIGKILL:
+E         ready
+E         handled
+E         
+E       assert 'DIAG: fixture twin: a second SIGINT: exit 1 at once, nothing printed: the first was never consumed' in "DIAG: fixture twin: SIGINT ignored for 0.0s (timeout=0.5s), about to SIGKILL pid=17737 - /proc fields: {'State': 'S (...SIGINT': 'blocked in 0 of 1 threads, caught'}\nDIAG: fixture twin: last 20 log lines before SIGKILL:\nready\nhandled\n"
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:696: AssertionError
+_ test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[absorbed-a clean exit: the first was raised and absorbed] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11320/test_a_twin_that_ignores_its_s1')
+capsys = <_pytest.capture.CaptureFixture object at 0x7fcccb9b9a90>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fcccb47b7d0>
+mode = 'absorbed', outcome = 'a clean exit: the first was raised and absorbed'
+
+    @pytest.mark.parametrize(
+        ("mode", "outcome"),
+        [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+    )
+    def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+        # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code. The second
+        # wait binds only for the child that never exits.
+        monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.0, raising=False)
+        monkeypatch.setattr(twin_process, "_SECOND_SIGINT_WAIT_S", 0.05 if mode == "ignored" else 5.0, raising=False)
+        log_path = tmp_path / "twin.log"
+        log_file = log_path.open("w", encoding="utf-8")
+        proc = _FirstWaitExpires([sys.executable, "-I", "-S", "-c", _SECOND_SIGINT_CHILD, mode], stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
+        proc.log_path, proc.handled_marker = log_path, None if mode == "ignored" else "handled"
+        run = twin_process.TwinRun(proc=proc, log_path=log_path, log_file=log_file, device="fixture-device", state_dir=tmp_path)
+        deadline = time.monotonic() + 10
+        while "ready" not in log_path.read_text(encoding="utf-8") and time.monotonic() < deadline:
+            time.sleep(0.01)
+        code = twin_process.shutdown(run, "fixture twin", timeout_s=0.5)
+        printed = capsys.readouterr().out
+>       assert f"DIAG: fixture twin: a second SIGINT: {outcome}" in printed, printed
+E       AssertionError: DIAG: fixture twin: SIGINT ignored for 0.0s (timeout=0.5s), about to SIGKILL pid=17738 - /proc fields: {'State': 'S (sleeping)', 'VmRSS': '8768 kB', 'Threads': '1', 'SigPnd': '0000000000000000', 'ShdPnd': '0000000000000000', 'SigBlk': '0000000000000000', 'SigIgn': '0000000001001000', 'SigCgt': '0000000000000002', 'wchan': 'hrtimer_nanosleep', 'SIGINT': 'blocked in 0 of 1 threads, caught'}
+E         DIAG: fixture twin: last 20 log lines before SIGKILL:
+E         ready
+E         handled
+E         
+E       assert 'DIAG: fixture twin: a second SIGINT: a clean exit: the first was raised and absorbed' in "DIAG: fixture twin: SIGINT ignored for 0.0s (timeout=0.5s), about to SIGKILL pid=17738 - /proc fields: {'State': 'S (...SIGINT': 'blocked in 0 of 1 threads, caught'}\nDIAG: fixture twin: last 20 log lines before SIGKILL:\nready\nhandled\n"
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:696: AssertionError
+_ test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[ignored-still running: neither SIGINT was acted on] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11320/test_a_twin_that_ignores_its_s2')
+capsys = <_pytest.capture.CaptureFixture object at 0x7fcccb616c10>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fcccb617b50>
+mode = 'ignored', outcome = 'still running: neither SIGINT was acted on'
+
+    @pytest.mark.parametrize(
+        ("mode", "outcome"),
+        [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+    )
+    def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+        # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code. The second
+        # wait binds only for the child that never exits.
+        monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.0, raising=False)
+        monkeypatch.setattr(twin_process, "_SECOND_SIGINT_WAIT_S", 0.05 if mode == "ignored" else 5.0, raising=False)
+        log_path = tmp_path / "twin.log"
+        log_file = log_path.open("w", encoding="utf-8")
+        proc = _FirstWaitExpires([sys.executable, "-I", "-S", "-c", _SECOND_SIGINT_CHILD, mode], stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
+        proc.log_path, proc.handled_marker = log_path, None if mode == "ignored" else "handled"
+        run = twin_process.TwinRun(proc=proc, log_path=log_path, log_file=log_file, device="fixture-device", state_dir=tmp_path)
+        deadline = time.monotonic() + 10
+        while "ready" not in log_path.read_text(encoding="utf-8") and time.monotonic() < deadline:
+            time.sleep(0.01)
+        code = twin_process.shutdown(run, "fixture twin", timeout_s=0.5)
+        printed = capsys.readouterr().out
+>       assert f"DIAG: fixture twin: a second SIGINT: {outcome}" in printed, printed
+E       AssertionError: DIAG: fixture twin: SIGINT ignored for 0.0s (timeout=0.5s), about to SIGKILL pid=17739 - /proc fields: {'State': 'S (sleeping)', 'VmRSS': '8628 kB', 'Threads': '1', 'SigPnd': '0000000000000000', 'ShdPnd': '0000000000000000', 'SigBlk': '0000000000000000', 'SigIgn': '0000000001001002', 'SigCgt': '0000000000000000', 'wchan': 'hrtimer_nanosleep', 'SIGINT': 'blocked in 0 of 1 threads, ignored'}
+E         DIAG: fixture twin: last 20 log lines before SIGKILL:
+E         ready
+E         
+E       assert 'DIAG: fixture twin: a second SIGINT: still running: neither SIGINT was acted on' in "DIAG: fixture twin: SIGINT ignored for 0.0s (timeout=0.5s), about to SIGKILL pid=17739 - /proc fields: {'State': 'S (...leep', 'SIGINT': 'blocked in 0 of 1 threads, ignored'}\nDIAG: fixture twin: last 20 log lines before SIGKILL:\nready\n"
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:696: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[pending-exit 1 at once, nothing printed: the first was never consumed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[absorbed-a clean exit: the first was raised and absorbed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[ignored-still running: neither SIGINT was acted on]
+3 failed, 91 deselected in 0.31s

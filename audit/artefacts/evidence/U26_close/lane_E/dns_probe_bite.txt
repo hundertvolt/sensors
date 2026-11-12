@@ -1,0 +1,4 @@
+>       assert (qtype, qclass) == (1, _QCLASS_IN)
+E       assert (28, 1) == (1, 1)
+FAILED tests_scripts/test_dns_probe.py::test_build_query_asks_for_an_a_record_by_default
+1 failed, 7 passed in 0.04s

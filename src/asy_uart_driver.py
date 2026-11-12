@@ -1,26 +1,27 @@
 """Async wrapper around machine.UART: receives through a DMA ring off the UART FIFO and writes through its
 TX ring, lock-scoped via asy_base_classes.Lockable so an exchange runs atomically under `async with`.
-Optional per-instance CRC framing (asy_crc_checks.py) plus a pluggable frame codec (asy_framing_codecs.py)."""
+Optional per-instance CRC framing (crc_checks.py) plus a pluggable frame codec (asy_framing_codecs.py)."""
 # Whoever wires it in: GPIO24/25 (UART1) and GPIO28/29 (UART0) are valid pin-mux pairs, but the Pico
 # W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip, so each pair has a taken half.
 #
-# A receive overrun, framing error or break fails the read in progress (C.3.2). Every method returns a sentinel,
-# but readline_until_complete() lets its pieces' MemoryError through: its cap bounds them (J.8).
+# A ring lap fails the read in progress; a line error does when the line then goes quiet (C.3.2). Every method
+# returns a sentinel, readline_until_complete() included: a heap too short for its pieces answers None (J.8).
 
 import asyncio
 import select
 import time
 from array import array
 
+import micropython
 from machine import UART as _UART
 from machine import Pin, mem32
 from micropython import const
 from rp2 import DMA
 from uctypes import addressof
 
-from asy_base_classes import COUNTER_CAP, Lockable, PieceBuffer
-from asy_crc_checks import CRCBase, CRCPass
+from asy_base_classes import COUNTER_CAP, Lockable
 from asy_framing_codecs import FramingBase, FramingPass
+from crc_checks import CRCBase, CRCPass
 
 try:
     from typing import TYPE_CHECKING
@@ -28,17 +29,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from typing import Literal
 
-    from asy_print_log import PrintLogHistory
+    from asy_print_log import PrintLog, PrintLogHistory
 
 _LF = const(0x0A)  # b"\n"[0] - readline_until_complete's own-line terminator
-
-# How long cancel_read_timeout() waits for its request to be acknowledged before reporting the
-# un-acknowledged case instead of waiting on. A healthy holder acknowledges within one poll round;
-# only a genuinely wedged one reaches this bound, and it is what makes the call provably terminating.
-# @tunable uart.cancel_ack_timeout_ms = 1000
-_CANCEL_ACK_TIMEOUT_MS = const(1000)
 
 # How many bytes _read_delimited() consumes between yields. It must read one byte per call (a wider
 # read would swallow the next frame's head), so yielding per byte would cost a task switch every
@@ -73,12 +69,87 @@ _DREQ_UART0_RX = const(21)  # RP2040 datasheet 2.5.3.1
 _DREQ_UART1_RX = const(23)
 _IMSC_RX = const(0x50)  # RXIM (bit 4) | RTIM (bit 6), Table 435
 _DMACR_RXDMAE = const(0x01)  # Table 439
-# OE, FE and BE each mean a received byte is not what was sent: each fails the frame (Table 427).
-# PE stays out of the mask: no link configures parity, so the bit carries nothing.
+# UARTRSR's BE, PE and FE belong to the character at the top of the FIFO; a UARTECR write clears all four (Table 427).
+# The dev bench reads that character as the byte the DMA read last (2026-10-29): FE or BE fails the frame only once the
+# line goes quiet, a mid-stream one left to the CRC or the frame length. PE stays out of the mask: no link sets parity.
 _RSR_ERRORS = const(0x0D)
 _DMA_BASE = const(0x50000000)  # each channel's TRANS_COUNT trigger alias sits at 0x40 * channel + 0x1C (2.5.7)
 _DMA_CH_STRIDE = const(0x40)
 _DMA_TRANS_COUNT_TRIG = const(0x1C)
+_CTRL_CHAIN_TO_LSB = const(11)  # CTRL_TRIG.CHAIN_TO, bits 14:11 (2.5.7)
+_CTRL_CHAIN_TO_MASK = const(0x7800)
+
+
+class PieceBuffer:
+    # Bytes too many for one allocation, held as pieces of at most piece_bytes: no allocation is larger
+    # than one piece (owner, 2026-10-05). Read through its length, its pieces and copy-out, never joined; only
+    # its construction may raise MemoryError, which each caller catches into its own failure result.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        self._size = size
+        self._piece_bytes = piece_bytes
+        # Every piece allocated here, after the caller's cap admitted size; a MemoryError goes to the caller, which catches it.
+        self._pieces = [bytearray(min(piece_bytes, size - start)) for start in range(0, size, piece_bytes)]
+
+    def __len__(self) -> int:
+        return self._size
+
+    def copy_into(self, dest: bytearray | memoryview) -> bool:
+        # The whole buffer into the front of dest; a short dest gets nothing, never a partial copy.
+        return len(dest) >= self._size and self.read_at(0, memoryview(dest)[0 : self._size])
+
+    def pieces(self) -> "Iterator[bytearray]":
+        return iter(self._pieces)
+
+    def read_at(self, offset: int, dest: bytearray | memoryview) -> bool:
+        # write_at()'s mirror: exactly len(dest) bytes from offset into dest; out of range copies nothing.
+        if offset < 0 or offset + len(dest) > self._size:
+            return False
+        index, at = divmod(offset, self._piece_bytes)
+        done = 0
+        while done < len(dest):
+            piece = self._pieces[index]
+            n = min(len(piece) - at, len(dest) - done)
+            dest[done : done + n] = memoryview(piece)[at : at + n]
+            done += n
+            index += 1
+            at = 0
+        return True
+
+    def trim(self, length: int) -> bool:
+        # A short train's length: trailing pieces dropped and the last one shortened in place, nothing allocated.
+        if length < 0 or length > self._size:
+            return False
+        keep = (length + self._piece_bytes - 1) // self._piece_bytes
+        while len(self._pieces) > keep:
+            self._pieces.pop()
+        if keep:
+            self._pieces[-1][length - (keep - 1) * self._piece_bytes :] = b""
+        self._size = length
+        return True
+
+    def write_at(self, offset: int, src: bytes | bytearray | memoryview) -> bool:
+        if offset < 0 or offset + len(src) > self._size:
+            return False
+        view = memoryview(src)
+        index, at = divmod(offset, self._piece_bytes)
+        done = 0
+        while done < len(view):
+            piece = self._pieces[index]
+            n = min(len(piece) - at, len(view) - done)
+            piece[at : at + n] = view[done : done + n]
+            done += n
+            index += 1
+            at = 0
+        return True
+
+
+
+@micropython.viper
+def _ring_copy(dest: ptr8, start: int, ring: ptr8, pos: int, n: int, mask: int) -> int:
+    # dest[start + i] = ring[(pos + i) & mask] for i below n; ptr8 checks no bounds, so every caller sizes dest first.
+    for i in range(n):
+        dest[start + i] = ring[(pos + i) & mask]
+    return n
 
 
 class UART(Lockable):
@@ -109,6 +180,7 @@ class UART(Lockable):
     ) -> None:
         self._uart: _UART | None = None
         self.poller: select.poll | None = None
+        self.logger: PrintLog | None = None  # its user's, not one of its own (UARTComm hands it): a caught MemoryError prints through it
         super().__init__()
         self.poll_wait_ms = poll_wait_ms
         # The rate a deadline-less wait polls at: it stops an idle listener costing a task switch
@@ -119,7 +191,6 @@ class UART(Lockable):
         # sequences rather than an Event, masked to COUNTER_CAP and compared by distance, so one
         # acknowledgement stays visible to every waiting canceller.
         self._cancel = False
-        self.cancel_unacknowledged = 0  # bumped when a holder never acknowledged within the bound
         self._cancel_req = 0
         self._cancel_ack = 0
         # Bytes a failed *_until_complete() read consumed and dropped: a wrap-by-design count (masked to
@@ -131,6 +202,7 @@ class UART(Lockable):
         # this driver emitted before; selecting a delimited one is a wire change (changelog A11).
         self.framing = FramingPass() if framing is None else framing
         self._skip_to_delimiter = False
+        self._frame_consumed = 0  # the ring bytes the last delimited frame took: what a failed copy of it drops
         # The receive ring and its two DMA channels exist from setup_rx_ring() on, for the program's life.
         self._ring: memoryview | None = None
         self._rx_word: array[int] | None = None
@@ -173,11 +245,10 @@ class UART(Lockable):
         # (Re)starts reception into the ring at its first byte. The reload channel is set up first, so the data
         # channel's first completion already finds it; an error flag left from before is not this stream's, so it
         # is cleared once the data channel has taken over the FIFO.
-        data, reload, ring = self._rx_dma, self._rx_reload, self._ring
-        if data is None or reload is None or ring is None:
-            return
-        data.active(False)
-        reload.active(False)
+        data: DMA = self._rx_dma  # type: ignore[assignment]  # set: both callers run with the ring and its channels, set together
+        reload: DMA = self._rx_reload  # type: ignore[assignment]  # set, as data
+        ring: memoryview = self._ring  # type: ignore[assignment]  # set, as data
+        self._rx_stop(data, reload)
         bits = 1
         while (1 << bits) < len(ring):
             bits += 1
@@ -202,10 +273,7 @@ class UART(Lockable):
             self._rx_overrun_pending = False
             data = self._rx_dma
             if data is not None:
-                try:
-                    self._rx_drop(data)
-                except (OSError, ValueError):  # a closed channel: nothing left to drop
-                    pass
+                self._rx_drop(data)
             return -1
         return min(max(want, 0), level)
 
@@ -254,9 +322,6 @@ class UART(Lockable):
             consumed += 1
             if not consumed % _DELIMITED_YIELD_BYTES:  # every consumed byte counts, skipped ones included:
                 await asyncio.sleep_ms(0)  # this loop never reaches ready()'s own yield while bytes are buffered
-                if self.poller is None:  # a deinit() during the yield
-                    self._count_discarded(consumed)
-                    return None
             if buf[size] != delimiter:
                 size += 1
                 continue
@@ -271,27 +336,26 @@ class UART(Lockable):
         if decoded is None:
             self._count_discarded(consumed)
             return None
-        checked = await self.crc.check_from(buf, size=decoded)
+        checked = self.crc.check_from(buf, size=decoded)
         if checked is None:
             self._count_discarded(consumed)
+        self._frame_consumed = consumed
         return checked
 
+    def _report(self, what: str, e: BaseException) -> None:  # through its user's logger from level 1; silent without one
+        if self.logger is not None:
+            self.logger.err(what, e)
+
     def _rx_copy(self, dest: bytearray | memoryview | None, start: int, n: int) -> int:
-        # Copies n buffered bytes into dest[start:] by index - no slice, no allocation - and consumes them (dest
+        # Copies n buffered bytes into dest[start:] in native code - no slice, no allocation - and consumes them (dest
         # None: consumed only). Checked again after the copy: a lap during it overwrote bytes already copied.
-        ring, data = self._ring, self._rx_dma
-        if ring is None or data is None:
-            return -1
+        ring: memoryview = self._ring  # type: ignore[assignment]  # set: every caller follows a positive _buffered(), which needs it
+        data: DMA = self._rx_dma  # type: ignore[assignment]  # set, as ring
         mask = len(ring) - 1
         pos = self._rx_pos
         if dest is not None:
-            for i in range(n):
-                dest[start + i] = ring[(pos + i) & mask]
-        try:
-            lapped = ((_RX_RELOAD - data.count - pos) & _RX_POS_MASK) > len(ring)
-        except (OSError, ValueError):  # a closed channel: nothing copied can be trusted
-            return -1
-        if lapped:
+            _ring_copy(dest, start, ring, pos, n, mask)  # type: ignore[arg-type]  # ptr8 parameters: the viper prologue takes any buffer
+        if ((_RX_RELOAD - data.count - pos) & _RX_POS_MASK) > len(ring):
             self._rx_discard(data)
             return -1
         self._rx_pos = (pos + n) & _RX_POS_MASK
@@ -334,21 +398,16 @@ class UART(Lockable):
         ring, data = self._ring, self._rx_dma
         if ring is None or data is None or self._uart is None:
             return 0
-        try:
-            level = (_RX_RELOAD - data.count - self._rx_pos) & _RX_POS_MASK
-            if level > len(ring) or mem32[self._reg_rsr] & _RSR_ERRORS:
-                self._rx_discard(data)
-                self._rx_overrun_pending = True
-                return -1
-        except (OSError, ValueError):  # a closed channel reads as a silent line: readers time out at the poll
-            return 0  # rates instead of failing at once, which would spin a listener and log every round
+        level = (_RX_RELOAD - data.count - self._rx_pos) & _RX_POS_MASK
+        if level > len(ring) or mem32[self._reg_rsr] & _RSR_ERRORS:
+            self._rx_discard(data)
+            self._rx_overrun_pending = True
+            return -1
         return level
 
     def _rx_line_len(self, level: int) -> int:
         # The buffered bytes up to and including the first LF, else all of them.
-        ring = self._ring
-        if ring is None:
-            return 0
+        ring: memoryview = self._ring  # type: ignore[assignment]  # set: called after a positive _buffered(), as _rx_copy() is
         mask = len(ring) - 1
         pos = self._rx_pos
         for i in range(level):
@@ -357,27 +416,28 @@ class UART(Lockable):
         return level
 
     def _rx_peek(self, i: int) -> int:
-        # The i-th buffered byte, unconsumed; -1 without a ring.
-        ring = self._ring
-        if ring is None:
-            return -1
+        # The i-th buffered byte, unconsumed.
+        ring: memoryview = self._ring  # type: ignore[assignment]  # set: called after a positive _buffered(), as _rx_copy() is
         return ring[(self._rx_pos + i) & (len(ring) - 1)]
 
-    async def _write_all(self, uart: _UART, buf: bytearray | memoryview, timeout_ms: int) -> bool:
+    @staticmethod
+    def _rx_stop(data: DMA, reload: DMA) -> None:
+        # An abort completes the data channel and fires its chain, so the reload restarts it and active(False)'s wait
+        # for an idle channel never ends (dev bench, 2026-10-29: the board hangs until the watchdog). Unchained first,
+        # both stop at once; AL1_CTRL (the ctrl attribute) does not trigger.
+        data.ctrl = (data.ctrl & ~_CTRL_CHAIN_TO_MASK) | (data.channel << _CTRL_CHAIN_TO_LSB)
+        reload.active(False)
+        data.active(False)
+
+    async def _write_all(self, uart: _UART, buf: bytearray | memoryview) -> bool:
         # Write only into an empty TX ring, at most txbuf bytes: POLLOUT means one free byte, and a longer
         # write waits per byte inside machine.UART.write() (F.5.8). rp2 can still short-write, so the rest is
         # retried; the view is re-sliced only then, so a frame that fits allocates no slice.
         sent = 0
         total = len(buf)
         view = memoryview(buf)
-        t0 = time.ticks_ms()
         while sent < total:
-            wait = -1
-            if timeout_ms > 0:  # the whole write's deadline: a TX that never drains fails it (<= 0 waits on)
-                wait = timeout_ms - time.ticks_diff(time.ticks_ms(), t0)
-                if wait <= 0:
-                    return False
-            if not await self.ready(select.POLLOUT, timeout_ms=wait):
+            if not await self.ready(select.POLLOUT):
                 return False
             if not uart.txdone():
                 await asyncio.sleep_ms(self.poll_wait_ms)
@@ -389,7 +449,7 @@ class UART(Lockable):
             sent += n
         return True
 
-    async def cancel_read_timeout(self, timeout_ms: int = _CANCEL_ACK_TIMEOUT_MS) -> bool:
+    async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside.
         # False means "nothing was in flight" (the lock is free), which is what lets a caller take
         # the lock and drain itself; True means a cancel is outstanding, so it must not.
@@ -400,32 +460,30 @@ class UART(Lockable):
         self._cancel_req = self._cancel_req + 1 if self._cancel_req < COUNTER_CAP else 0
         my_req = self._cancel_req
         self._cancel = True
-        t0 = time.ticks_ms()
+        # No deadline: the holder is this device's own task, acknowledging in every ready() round and on its way out of
+        # the lock; a holder wedged synchronously is the watchdog's (CLAUDE.md).
         while 0 < ((my_req - self._cancel_ack) & COUNTER_CAP) < _SEQ_HALF:
-            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
-                n = self.cancel_unacknowledged  # a wedged holder; the request stays latched
-                self.cancel_unacknowledged = n + 1 if n < COUNTER_CAP else 0
-                return True
             await asyncio.sleep_ms(self.poll_wait_ms)
         return True
 
     def deinit(self) -> bool:
-        # machine.UART.deinit() turns the hardware bus off and never raises; poller.unregister()
-        # can, and False is returned only in that case - this class has no logger of its own, so the
-        # caller logs a failed teardown with its own (SPECIFICATION.md Part C.7).
+        # machine.UART.deinit() turns the hardware bus off and never raises; stopping the DMA and poller.unregister()
+        # can, and only that returns False. The caller logs a failed teardown with its own line (SPECIFICATION.md Part
+        # C.7); a MemoryError's own text goes out through the user's logger.
         if self._uart is None:
             return True
         ok = True
         if self._rx_dma is not None and self._rx_reload is not None:
             try:  # stopped, never closed: init() re-arms them on the same ring
-                self._rx_dma.active(False)
-                self._rx_reload.active(False)
+                self._rx_stop(self._rx_dma, self._rx_reload)
             except (OSError, ValueError):
                 ok = False
         if self.poller is not None:
             try:
                 self.poller.unregister(self._uart)
-            except (MemoryError, OSError):
+            except (MemoryError, OSError) as e:
+                if isinstance(e, MemoryError):
+                    self._report("poller unregister failed:", e)
                 ok = False
         self._uart.deinit()
         self._uart = None
@@ -456,7 +514,8 @@ class UART(Lockable):
         # construction, never self._uart.init(...): only make_new() re-roots the ring buffers (F.5.7).
         if self._ring is not None and rx_ring != len(self._ring):
             raise ValueError("rx_ring is fixed once the ring is allocated")
-        self.deinit()
+        if not self.deinit() and self.logger is not None:  # init() is the teardown's caller here, so it logs the False (Part C.7)
+            self.logger.err("re-init teardown failed")
         # Kept as plain attributes because machine.UART exposes none of them back: a protocol layer
         # above sizes its frames against the receive buffer and the baud rate, and _write_all() bounds
         # each write by the TX ring's size.
@@ -511,7 +570,8 @@ class UART(Lockable):
             if self._rx_copy(out, 0, want) < 0:
                 return None
             return bytes(out)
-        except MemoryError:
+        except MemoryError as e:
+            self._report("read buffer allocation failed:", e)
             return None
 
     async def read_until_complete(
@@ -522,18 +582,22 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None or nbytes < 0:
             return None  # a negative size is refused, as writefrom() refuses one
-        if nbytes == 0:
-            return bytearray()
         nbytes += self.crc.length()
         try:
             msg = bytearray(self.framing.max_encoded(nbytes) if self.framing.is_delimited() else nbytes)
-        except (MemoryError, OverflowError):
+        except (MemoryError, OverflowError) as e:
+            self._report("frame buffer allocation failed:", e)
             return None
         if self.framing.is_delimited():
             size = await self._read_delimited(msg, nbytes, start_timeout_ms, timeout_ms)
             if size is None:
                 return None
-            return bytearray(msg[0:size])
+            try:
+                return msg[0:size]  # one copy: a bytearray's slice is already a bytearray
+            except MemoryError as e:  # the frame has left the ring: dropped and counted, as a failed CRC check is
+                self._report("frame copy allocation failed:", e)
+                self._count_discarded(self._frame_consumed)
+                return None
         timeout = start_timeout_ms  # wait time for the first message part
         size = 0
         while size < nbytes:
@@ -553,8 +617,9 @@ class UART(Lockable):
             size += want
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
         try:
-            checked = await self.crc.check(msg)
-        except MemoryError:  # check()'s own bytearr[0:n] slice allocates a fresh copy
+            checked = self.crc.check(msg)
+        except MemoryError as e:  # check()'s own bytearr[0:n] slice allocates a fresh copy
+            self._report("CRC check allocation failed:", e)
             checked = None
         if checked is None:
             self._count_discarded(size)
@@ -580,8 +645,6 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None or nbytes < 0:
             return None  # a negative size is refused, as writefrom() refuses one
-        if nbytes == 0:
-            return 0
         nbytes += self.crc.length()
         if self.framing.is_delimited():
             if self.framing.max_encoded(nbytes) > len(buf):
@@ -607,7 +670,7 @@ class UART(Lockable):
                 return None
             size += want
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
-        checked = await self.crc.check_from(buf, size=size)
+        checked = self.crc.check_from(buf, size=size)
         if checked is None:
             self._count_discarded(size)
         return checked
@@ -628,7 +691,8 @@ class UART(Lockable):
             if self._rx_copy(out, 0, n) < 0:
                 return None
             return bytes(out)
-        except MemoryError:
+        except MemoryError as e:
+            self._report("line buffer allocation failed:", e)
             return None
 
     async def readline_until_complete(
@@ -639,7 +703,11 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None or max_bytes < 1 or chunk_bytes < 1:
             return None
-        line: PieceBuffer | None = PieceBuffer(max_bytes, chunk_bytes)
+        try:
+            line: PieceBuffer | None = PieceBuffer(max_bytes, chunk_bytes)
+        except MemoryError as e:  # before any byte is read: the line stays in the ring, as readline()'s own catch
+            self._report("line pieces allocation failed:", e)
+            return None
         timeout = start_timeout_ms  # wait time for the first message part
         size = 0  # the line's length so far, saturated at COUNTER_CAP once it is being dropped
         while True:
@@ -668,7 +736,7 @@ class UART(Lockable):
                 break
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
         if line is None:
-            await log.err_s("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
+            log.err_s("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
             return None
         return line if line.trim(size) else None
 
@@ -704,16 +772,16 @@ class UART(Lockable):
                 if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
                     return False
                 await asyncio.sleep_ms(wait_ms)
-            except (MemoryError, OSError, OverflowError, TypeError):
-                # TypeError: a malformed mask/timeout_ms; callers' excepts wrap only the UART call.
+            except (MemoryError, OSError, OverflowError) as e:
                 # OverflowError: a wait beyond the ticks range - asyncio.sleep_ms() raises it for a delta >= 2**29 ms.
+                if isinstance(e, MemoryError):
+                    self._report("readiness poll failed:", e)
                 return False
         # The one yield every read loop relies on: readiness is reported with no await of its own,
         # so a caller looping ready()->read()->ready() over a frame still in flight would hold the
         # event loop for the whole transmission - the clamp above alone made that worse (F.5.8).
         await asyncio.sleep_ms(0)
-        # A deinit() during the yield must not hand the caller a dead UART (its RX ring is unrooted, F.5.7).
-        return self.poller is not None
+        return True
 
     def resync_framing(self) -> None:
         # After a resync the read path is somewhere inside a frame, so the bytes up to the
@@ -745,6 +813,8 @@ class UART(Lockable):
             self._rx_dma, self._rx_reload = data, reload
             self._arm_rx()
         except (MemoryError, OSError, ValueError) as e:
+            if isinstance(e, MemoryError):  # "allocation" below names the cause; this line carries its text
+                self._report("receive ring allocation failed:", e)
             for channel in (data, reload):
                 if channel is not None:
                     channel.close()
@@ -754,25 +824,23 @@ class UART(Lockable):
         self.rx_ring_refusal = ""
         return True
 
-    async def write(self, msg: bytearray, timeout_ms: int = -1) -> bool:  # write msg (+ CRC, if configured), retrying until it's all sent
+    async def write(self, msg: bytearray) -> bool:  # write msg (+ CRC, if configured), retrying until it's all sent
         uart = self._active_uart()
         if uart is None:
             return False
-        # A zero-length payload is sent as nothing: no receiver can verify a CRC-only frame.
-        if not msg:
-            return True
         try:
-            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy
-        except MemoryError:
+            framed = self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy
+        except MemoryError as e:
+            self._report("CRC frame allocation failed:", e)
             return False
         if framed is None:
             return False
         encoded = await self.framing.encode_into(framed, len(framed))
         if encoded is None:
             return False
-        return await self._write_all(uart, encoded, timeout_ms)
+        return await self._write_all(uart, encoded)
 
-    async def writefrom(self, buf: bytearray, size: int, timeout_ms: int = -1) -> bool:  # write buf's first size bytes (+ CRC), retrying until it's all sent
+    async def writefrom(self, buf: bytearray, size: int) -> bool:  # write buf's first size bytes (+ CRC), retrying until it's all sent
         # buf belongs to this call for its duration - the caller must not mutate it until the call
         # returns. This instance's own uses are already serialized by the session lock.
         uart = self._active_uart()
@@ -780,12 +848,10 @@ class UART(Lockable):
             return False
         if size < 0 or size + self.crc.length() > len(buf):
             return False  # a short buffer is never a partial transfer reported as success
-        if size == 0:
-            return True
-        crcsize = await self.crc.add_into(buf, size)
+        crcsize = self.crc.add_into(buf, size)
         if crcsize is None:
             return False
         encoded = await self.framing.encode_into(buf, crcsize)
         if encoded is None:
             return False
-        return await self._write_all(uart, encoded, timeout_ms)
+        return await self._write_all(uart, encoded)

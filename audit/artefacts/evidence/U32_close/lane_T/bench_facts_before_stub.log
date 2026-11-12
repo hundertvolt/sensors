@@ -1,0 +1,17 @@
+..F.........                                                             [100%]
+=================================== FAILURES ===================================
+_________ test_the_device_stub_declares_every_attribute_a_script_reads _________
+
+    def test_the_device_stub_declares_every_attribute_a_script_reads() -> None:
+        stub = ast.parse((_SCRIPTS / "_bench_device.pyi").read_text(encoding="utf-8"))
+        declared = {n.target.id for n in stub.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)}
+        declared |= {n.name for n in stub.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
+        used = {f"{path.name}: device.{n.attr}" for path in _scripts() for n in ast.walk(ast.parse(path.read_text(encoding="utf-8"))) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "device" and n.attr not in declared}
+>       assert not used, f"_bench_device.pyi does not declare: {sorted(used)}"
+E       AssertionError: _bench_device.pyi does not declare: ['c_stack_budget.py: device._collect_task_names', 'heap_layout_after_full_boot_sequence.py: device._collect_task_names', 'reset_code_command_incomplete.py: device._collect_task_names', 'reset_code_stack_exhausted.py: device._collect_task_names', 'sgp40_sample_cadence.py: device._collect_task_names', 'system_command_config_reset.py: device._collect_task_names', 'system_command_fram_erase.py: device._collect_task_names', 'system_command_hang.py: device._collect_task_names', 'system_command_reboot.py: device._collect_task_names']
+E       assert not {'c_stack_budget.py: device._collect_task_names', 'heap_layout_after_full_boot_sequence.py: device._collect_task_names...gp40_sample_cadence.py: device._collect_task_names', 'system_command_config_reset.py: device._collect_task_names', ...}
+
+tests_scripts/test_device_script_bench_facts.py:96: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_bench_facts.py::test_the_device_stub_declares_every_attribute_a_script_reads
+1 failed, 11 passed in 1.49s

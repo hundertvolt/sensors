@@ -1,0 +1,34 @@
+........................................................................ [  6%]
+........................................................................ [ 13%]
+........................................................................ [ 19%]
+........................................................................ [ 26%]
+........................................................................ [ 33%]
+........................................................................ [ 39%]
+........................................................................ [ 46%]
+........................................................................ [ 53%]
+........................................................................ [ 59%]
+........................................................................ [ 66%]
+........................................................................ [ 73%]
+...........F............................................................ [ 79%]
+........................................................................ [ 86%]
+........................................................................ [ 93%]
+........................................................................ [ 99%]
+...                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites _
+
+    def test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites() -> None:
+        # The premise of everything below. If tests/ is ever added to it, this guard is obsolete rather
+        # than failing - delete it then, do not widen it.
+        assert "tests" not in _layouts()["twin"].split(":"), "the twin layout now carries tests/, so this guard is obsolete"
+        sites = [path.relative_to(REPO_ROOT).as_posix() for path, text in _launch_files(REPO_ROOT) if _launches_a_twin_runner(text)]
+>       assert len(sites) >= 5, f"found only {sites} - this guard cannot check its own premise"  # the runners, the JS frame, the smoke, the boot test, the bench
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: found only ['scripts/_twin_process.py', 'tests_scripts/test_digital_twin_generated_boot.py', 'tests_hardware/twin_board.py'] - this guard cannot check its own premise
+E       assert 3 >= 5
+E        +  where 3 = len(['scripts/_twin_process.py', 'tests_scripts/test_digital_twin_generated_boot.py', 'tests_hardware/twin_board.py'])
+
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:140: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites
+1 failed, 1082 passed in 152.28s (0:02:32)

@@ -1,0 +1,3 @@
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+2 failed, 734 passed in 98.42s (0:01:38)

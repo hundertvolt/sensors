@@ -11,7 +11,6 @@ import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 /** @typedef {import("../js/definitions.js").Section} Section */
 
 const SAMPLES = /** @type {import("../js/definitions.js").MockSamples} */ (samples);
-// @tunable l0.section_render_wait_ms = 5000
 const SECTION_RENDER_WAIT_MS = 5000;
 
 // Polls instead of a fixed sleep: a section paints once its GET and any /status sub-request answer.
@@ -57,7 +56,6 @@ describe.each(DEVICE_IDS)("%s's generated definitions", (device) => {
         stop?.();
         uninstall?.();
         mainEl?.remove();
-        vi.restoreAllMocks();
     });
 
     it("pass the validator", () => {

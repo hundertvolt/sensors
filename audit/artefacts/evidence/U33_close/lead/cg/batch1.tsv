@@ -1,0 +1,16 @@
+cov	a	test_asy_system_service	4.88	27.008	4.582	0.295	0	mem=0	178/178 passed, 0 failed, 0 skipped
+cov	b	test_asy_system_service	4.81	26.863	4.521	0.293	0	mem=0	183/183 passed, 0 failed, 0 skipped
+cov	b	test_asy_uart_comm	11.66	64.773	11.242	0.413	0	mem=0	200/200 passed, 0 failed, 0 skipped
+cov	a	test_asy_uart_comm	11.23	63.512	10.873	0.356	0	mem=0	193/193 passed, 0 failed, 0 skipped
+cov	a	test_asy_webserver_service	2.69	5.314	2.615	0.079	0	mem=0	220/220 passed, 0 failed, 0 skipped
+cov	b	test_asy_webserver_service	2.86	5.542	2.803	0.058	0	mem=0	222/222 passed, 0 failed, 0 skipped
+cov	b	test_asy_neopixel_driver	0.38	7.358	0.332	0.049	0	mem=0	54/54 passed, 0 failed, 0 skipped
+cov	a	test_asy_neopixel_driver	0.39	9.688	0.351	0.044	1	mem=0	53/54 passed, 1 failed, 0 skipped
+cov	a	test_asy_uart_link_driver	0.61	2.885	0.548	0.064	0	mem=0	36/36 passed, 0 failed, 0 skipped
+cov	b	test_asy_uart_link_driver	0.62	2.806	0.572	0.052	0	mem=0	36/36 passed, 0 failed, 0 skipped
+cov	b	test_digital_twin_fram	1.04	1.383	0.932	0.104	0	mem=0	48/48 passed, 0 failed, 0 skipped
+cov	a	test_digital_twin_fram	1.01	1.237	0.929	0.076	0	mem=0	48/48 passed, 0 failed, 0 skipped
+cov	a	test_digital_twin_timer_pool	0.07	0.077	0.037	0.033	1	mem=0	
+cov	b	test_digital_twin_timer_pool	0.06	0.064	0.033	0.030	1	mem=0	
+cov	b	test_ntp_fram_system_integration	0.55	7.802	0.455	0.099	0	mem=0	12/12 passed, 0 failed, 0 skipped
+cov	a	test_ntp_fram_system_integration	0.45	7.712	0.381	0.072	0	mem=0	12/12 passed, 0 failed, 0 skipped

@@ -10,58 +10,41 @@ import functools
 import json
 import re
 import shutil
-from datetime import datetime
+import subprocess
+import sys
+from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING
 
 import pytest
-from _devices import DEVICE_NAMES
+import tomllib
+from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
-from _toml_fixtures import base_doc, write_doc
+from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
-import buildgen.generate as generate_module
-from buildgen.codegen import _Ctx, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
+from buildgen.codegen import _build_args_notification, _build_call, _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
-from buildgen.generate import GeneratedDevice, generate_device
+from buildgen.generate import GeneratedDevice, generate_device, main
 from buildgen.graph import build_construction_order
 from buildgen.model import DeviceModel, TomlDoc, instance_label
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, build_model, module_int_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
+from scripts._generate_sensortask_modules import expected_facts
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-@pytest.fixture
-def src_dir(repo_root: Path) -> Path:
-    return repo_root / "src"
-
-
-@pytest.fixture
-def ext_dir(repo_root: Path) -> Path:
-    return repo_root / "ext"
-
-
-@pytest.fixture
-def fixtures_dir(repo_root: Path) -> Path:
-    return repo_root / "tests_scripts" / "buildgen_fixtures"
-
-
-@pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
-    tree = ast.parse(result.module_source, filename=f"sensortask_{device}.py")
-    assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "build_system" for n in tree.body)
-    assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "main" for n in tree.body)
-    ast.parse(result.boot_entry_source, filename=f"{device}_boot.py")
-
-
 @functools.cache
-def _real(device: str) -> GeneratedDevice:
-    # One generation per real device for the read-only pins below; a test that mutates builds its own.
-    return generate_device(_REPO_ROOT / "devices" / f"{device}.toml", _REPO_ROOT / "src", _REPO_ROOT / "ext")
+def _all_sources(name: str) -> "tuple[str, str, str]":
+    # The module and both boot entries of a real device or a buildgen fixture.
+    result = _real(name) if name in DEVICE_NAMES else generate_device(_REPO_ROOT / "tests_scripts" / "buildgen_fixtures" / f"{name}.toml", _REPO_ROOT / "src", _REPO_ROOT / "ext")
+    return result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source
 
 
 def _body(source: str) -> "list[ast.stmt]":
@@ -72,13 +55,50 @@ def _body(source: str) -> "list[ast.stmt]":
     return tree.body[1:]
 
 
+@pytest.mark.parametrize("value", ["plain", "it's", 'say "hi"', "both ' and \"", "emoji \U0001f600", "tab\tnl\n", "\x7f", "\u00e9", "\\"])
+def test_an_emitted_string_reads_back_as_itself_double_quoted_unless_it_holds_a_double_quote(value: str) -> None:
+    # A non-BMP character must stay one code point: a JSON-style surrogate-pair escape reads back as two in Python.
+    literal = _lit(value)
+    assert ast.literal_eval(literal) == value, literal
+    assert literal.startswith('"') or '"' in value, literal
+
+
+def _build_date_problems(module_source: str, now: datetime) -> "list[str]":
+    match = re.search(r'_BUILD_DATE = const\("([^"]+)"\)', module_source)
+    assert match is not None
+    stamp = datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
+    if stamp.tzinfo is None or stamp.utcoffset() != timedelta(0):
+        return [f"the build date {match.group(1)} is not timezone-aware UTC"]
+    return [] if abs(now - stamp) <= timedelta(minutes=1) else [f"the build date {match.group(1)} is not within a minute of the generation time {now:%Y-%m-%dT%H:%M:%SZ}"]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_generates_syntactically_valid_module(device: str) -> None:
+    result = _real(device)
+    tree = ast.parse(result.module_source, filename=f"sensortask_{device}.py")
+    assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "build_system" for n in tree.body)
+    assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "main" for n in tree.body)
+    ast.parse(result.boot_entry_source, filename=f"{device}_boot.py")
+
+
 def _calls(nodes: "list[ast.stmt]", name: str) -> "list[ast.Call]":
     return [n for stmt in nodes for n in ast.walk(stmt) if isinstance(n, ast.Call) and ast.unparse(n.func) == name]
 
 
-def _index(stmts: "list[ast.stmt]", text: str) -> int:
-    (found,) = [i for i, stmt in enumerate(stmts) if ast.unparse(stmt) == text]
-    return found
+def _collected_modules(source: str, collector: str) -> "list[str]":
+    (loop,) = [n for n in ast.walk(_function(source, collector)) if isinstance(n, ast.For)]
+    assert isinstance(loop.iter, ast.Tuple)
+    return [elt.id for elt in loop.iter.elts if isinstance(elt, ast.Name)]
+
+
+def _expected_triggers(model: DeviceModel) -> "list[str]":
+    # The device's trigger readers in construction order: the device's order is data, never a literal here.
+    return [instance_label(k) for k in model.construction_order if isinstance(k, tuple) and k[0] in _TRIGGER_DRIVERS]
+
+
+def _fram_var(result: GeneratedDevice) -> str:
+    (key,) = [key for key in result.model.instances if key[0] == "fram"]
+    return instance_label(key)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -92,7 +112,7 @@ def test_real_device_module_constructs_no_watchdog_and_its_boot_entry_exactly_on
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_arms_the_watchdog_as_its_first_statement(device: str) -> None:
     stmts = _body(_real(device).boot_entry_source)
-    assert ast.unparse(stmts[0]) == "from machine import WDT"
+    assert ast.unparse(stmts[0]) == "from machine import WDT, reset"
     assert ast.unparse(stmts[1]) == f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})"
 
 
@@ -121,27 +141,32 @@ def test_real_device_boot_entry_reserves_the_emergency_exception_buffer_before_t
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_boot_entry_records_an_interrupt_before_the_watchdog_resets(device: str) -> None:
-    # asyncio's loop catches only CancelledError and Exception (extmod/asyncio/core.py:153, 194, v1.29.0),
-    # so a console Ctrl-C leaves asyncio.run(); the tail records it and re-raises, nothing else.
+def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_the_watchdog_resets(device: str) -> None:
+    # asyncio's loop catches only CancelledError and Exception (extmod/asyncio/core.py:154, 194, v1.29.0): Ctrl-C is
+    # recorded and re-raised; any other exception recorded and not re-raised (rp2 soft-resets on SystemExit).
     stmts = _body(_real(device).boot_entry_source)
-    assert _index(stmts, "from asy_system_service import RR_INTERRUPTED, write_reset_record") > _index(stmts, f"from sensortask_{device} import main")
+    record_import = "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"
+    assert _index(stmts, record_import) > _index(stmts, f"from sensortask_{device} import main")
     tail = stmts[-1]
     assert isinstance(tail, ast.Try)
     assert [ast.unparse(s) for s in tail.body] == ["asyncio.run(main(watchdog=watchdog))"]
-    (handler,) = tail.handlers
-    assert handler.type is not None and ast.unparse(handler.type) == "KeyboardInterrupt"
-    assert handler.name is None
-    assert [ast.unparse(s) for s in handler.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
+    interrupt, other = tail.handlers
+    assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
+    assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
+    assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name is None
+    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()", "reset()"]  # nothing printed, at every DebugLevel
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
+    # Every name the tail calls is one the entry binds before it.
+    bound = {alias.asname or alias.name for stmt in stmts if isinstance(stmt, (ast.Import, ast.ImportFrom)) for alias in stmt.names}
+    bound |= {target.id for stmt in stmts if isinstance(stmt, ast.Assign) for target in stmt.targets if isinstance(target, ast.Name)}
+    called = {node.func.id if isinstance(node.func, ast.Name) else ast.unparse(node.func).split(".")[0] for node in ast.walk(tail) if isinstance(node, ast.Call)}
+    assert called <= bound, called - bound
 
 
-def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
-    # Up to gc.threshold(), without the watchdog lines and the interrupt record's import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, write_reset_record"}
-    texts = [ast.unparse(stmt) for stmt in stmts]
-    return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
+def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
+    tree = ast.parse(source)
+    return next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -170,15 +195,9 @@ def test_real_device_manual_start_line_names_every_keyword_main_takes(device: st
     assert match.group(1).split(", ") == [a.arg for a in main.args.kwonlyargs if a.arg != "watchdog"]
 
 
-def _setup_names(source: str) -> "list[str]":
-    # The bound setup methods _collect_setups() returns, in order.
-    returned = next(n.value for n in ast.walk(_function(source, "_collect_setups")) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.List)
-    out = []
-    for elt in returned.elts:
-        assert isinstance(elt, ast.Attribute) and elt.attr == "setup" and isinstance(elt.value, ast.Name), ast.unparse(elt)
-        out.append(elt.value.id)
-    return out
+def _index(stmts: "list[ast.stmt]", text: str) -> int:
+    (found,) = [i for i, stmt in enumerate(stmts) if ast.unparse(stmt) == text]
+    return found
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -204,8 +223,8 @@ def test_real_device_hands_every_setup_to_one_list_in_the_fixed_order(device: st
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_module_neither_feeds_nor_collects_and_constructs_without_awaiting(device: str) -> None:
-    # Every feed and every boot placement collect sits in SystemService (run_setups(), start_tasks());
-    # the module keeps gc for MemFree's gc.mem_free().
+    # Every boot feed sits in SystemService (run_setups(), start_tasks()), and nothing collects; the module keeps gc
+    # for MemFree's gc.mem_free().
     source = _real(device).module_source
     assert "gc.collect(" not in source
     assert "feed_watchdog(" not in source
@@ -224,7 +243,7 @@ def test_real_device_main_runs_the_boot_sequence_with_its_phase_marks(device: st
         "sysfunct.boot_phase(BOOT_SETUP)",
         "await sysfunct.run_setups(_collect_setups())",
         "sysfunct.boot_phase(BOOT_TASKS)",
-        "await sysfunct.start_tasks(_collect_task_starters())",
+        "await sysfunct.start_tasks(_collect_task_starters(), task_names=_collect_task_names())",
         "sysfunct.boot_phase(BOOT_TIMERS)",
         "await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())",
         "sysfunct.boot_phase(BOOT_NTP)",
@@ -310,21 +329,15 @@ def test_real_device_system_command_callback_answers_the_service_for_every_comma
     }
 
 
-def _src_tuple_const(path: Path, name: str) -> "tuple[str, ...]":
-    # A module-level `name = const((...))` read from source: an underscore const() is no attribute on MicroPython.
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
-            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
-            value = ast.literal_eval(node.value.args[0])
-            assert isinstance(value, tuple)
-            return value
-    raise AssertionError(f"{path.name} has no {name}")
+def _loads_outside_annotations(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "list[ast.Name]":
+    skip = {id(sub) for stmt in ast.walk(fn) if isinstance(stmt, ast.AnnAssign) for sub in ast.walk(stmt.annotation)}
+    return [n for stmt in fn.body for n in ast.walk(stmt) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in skip]
 
 
-def _status_entries(source: str, name: str) -> "dict[str, str]":
-    returned = next(n.value for n in ast.walk(_function(source, name)) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.Dict)
-    return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
+@functools.cache
+def _real(device: str) -> GeneratedDevice:
+    # One generation per real device for the read-only pins below; a test that mutates builds its own.
+    return generate_device(device_toml(device), _REPO_ROOT / "src", _REPO_ROOT / "ext")
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -332,14 +345,25 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime", "UnixTime"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime"]
     assert list(entries) == expected
+    assert entries["LastTaskEnd"] == "sysfunct.get_last_task_end()"  # None until a supervised task ends this boot
     assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
     assert entries["ResetReason"] == "sysfunct.get_reset_reason()"
-    assert entries["ResetBits"] == "sysfunct.get_reset_bits()"
     assert entries["MemFree"] == "gc.mem_free()"
     assert entries["ConfigFaults"] == "list(sysfunct.get_config_faults())"
-    assert entries["ConfigUnpersisted"] == "list(sysfunct.get_config_unpersisted())"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_shows_utc_time_through_a_stale_sync_and_flags_it(device: str) -> None:
+    # UTCTime reads the clock a sync set this boot, unset only by a settings change; NTPSynced is the flag that it may
+    # have drifted. The boot signature still reads the sync itself.
+    source = _real(device).module_source
+    gates = [ast.unparse(n.value) for n in ast.walk(_function(source, "_system_status")) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "utc"]
+    assert gates == ["time.gmtime() if await ntp.ntp_clock_valid() else None"]
+    assert "TimeStale" not in _status_entries(source, "_system_status")
+    assert _status_entries(source, "_networking_status")["NTPSynced"] == "ntp_data.Synced"
+    assert "    sysfunct = SystemService(ntp.ntp_issynced, " in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -355,7 +379,7 @@ def test_real_device_header_imports_the_boot_marks_and_the_watchdog_type_only(de
     source = _real(device).module_source
     tree = ast.parse(source)
     runtime = [ast.unparse(n) for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
-    assert "from asy_system_service import SystemService, begin_boot, BOOT_SETUP, BOOT_TASKS, BOOT_TIMERS, BOOT_NTP, BOOT_DONE" in runtime
+    assert "from asy_system_service import BOOT_DONE, BOOT_NTP, BOOT_SETUP, BOOT_TASKS, BOOT_TIMERS, SystemService, begin_boot" in runtime
     assert [line for line in runtime if line.startswith("from asy_base_classes import ")] in (["from asy_base_classes import ValueRef, utc_now"], ["from asy_base_classes import utc_now"])
     assert "import frozen_html" in runtime
     assert "from machine import WDT" not in runtime
@@ -369,17 +393,18 @@ def test_real_device_header_imports_the_boot_marks_and_the_watchdog_type_only(de
 def test_real_device_types_the_collectors_by_what_the_service_takes(device: str) -> None:
     source = _real(device).module_source
     returns = {}
-    for name in ("_collect_setups", "_collect_task_starters", "_collect_timer_starters", "_collect_trigger_starters", "_collect_error_sources", "_collect_level_setters", "_collect_config_stores"):
+    for name in ("_collect_setups", "_collect_task_starters", "_collect_task_names", "_collect_timer_starters", "_collect_trigger_starters", "_collect_error_sources", "_collect_level_setters", "_collect_config_stores"):
         fn = _function(source, name)
         assert fn.returns is not None
         returns[name] = ast.unparse(fn.returns)
     assert returns == {
         "_collect_setups": "'list[SetupFct]'",
         "_collect_task_starters": "'list[TaskStarter]'",
+        "_collect_task_names": "list[str]",
         "_collect_timer_starters": "'list[TimerStarter]'",
         "_collect_trigger_starters": "'list[TimerStarter]'",
         "_collect_error_sources": "'list[ErrorSource]'",
-        "_collect_level_setters": "'list[Callable[[int], bool]]'",
+        "_collect_level_setters": "'list[Callable[[int], None]]'",
         "_collect_config_stores": "list[cm.ConfigManager]",
     }
 
@@ -388,7 +413,7 @@ def test_real_device_types_the_collectors_by_what_the_service_takes(device: str)
 def test_real_device_expected_facts_name_the_setups_construction_and_phases_the_module_runs(device: str) -> None:
     # The boot-sequence oracle and the generated module agree, each derived on its own.
     result = _real(device)
-    sequence = result.expected_facts["boot_sequence"]
+    sequence = expected_facts(result.model)["boot_sequence"]
     assert isinstance(sequence, dict)
     assert sequence["setups"] == _setup_names(result.module_source)
     assert sequence["construction"] == [node if isinstance(node, str) else instance_label(node) for node in build_construction_order(result.model)]
@@ -403,9 +428,52 @@ def test_real_device_expected_facts_name_the_setups_construction_and_phases_the_
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_expected_facts_name_the_fram_backed_loggers(device: str) -> None:
+    # SYSTEM's log is FRAM-backed exactly when [device.wiring] sets fram_target; every FRAM-wired instance's own
+    # logger is in the set and the FRAM store's own never is (it cannot keep its failures through itself).
+    result = _real(device)
+    facts = expected_facts(result.model)
+    found = facts["fram_backed_loggers"]
+    assert isinstance(found, list) and all(isinstance(name, str) for name in found), found
+    loggers = [str(name) for name in found]
+    assert loggers == sorted(set(loggers)), loggers
+    device_table = result.model.doc["device"]
+    assert isinstance(device_table, dict)
+    wiring = device_table.get("wiring", {})
+    assert isinstance(wiring, dict)
+    assert ("SYSTEM" in loggers) == ("fram_target" in wiring), loggers
+    wired = facts["fram_wired"]
+    assert isinstance(wired, list)
+    specs = list(result.model.instances.values())
+    assert {spec.resolved_name for spec in specs if spec.label in wired} <= set(loggers), loggers
+    assert not {spec.resolved_name for spec in specs if spec.driver == "fram"} & set(loggers), loggers
+
+
+def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> None:
+    # A class-level _CFG_LOG_FRAM = False (read from the driver source, never named in buildgen/) keeps the
+    # module's CFGMGR_ log RAM-only while the module's own log stays on FRAM.
+    checked = []
+    for device in devices_with("scd30"):
+        result = _real(device)
+        facts = expected_facts(result.model)
+        wired, loggers = facts["fram_wired"], facts["fram_backed_loggers"]
+        assert isinstance(wired, list) and isinstance(loggers, list)
+        for spec in result.model.instances.values():
+            if spec.driver == "scd30" and spec.label in wired:
+                assert spec.resolved_name in loggers and f"CFGMGR_{spec.resolved_name}" not in loggers, (device, loggers)
+                checked.append(device)
+    assert checked, "no device wires an scd30 to FRAM - the check compares nothing"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) -> None:
-    # Guard: the build checks key collisions on the same SETTINGS_GROUPS rows codegen renders.
+    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order, and no other page has any but
+    # notification's, which comes from its schema at boot.
     source = _real(device).module_source
+    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    settings = next(k.value for k in routes.keywords if k.arg == "settings")
+    assert isinstance(settings, ast.Dict)
+    assert {k.value for k in settings.keys if isinstance(k, ast.Constant)} - {"notification"} == {row[0] for row in SETTINGS_GROUPS}
     for page in ("networking", "system"):
         expected = [(module, fields, dict([hook.split("=", 1)]) if hook else {}) for section, module, fields, hook in SETTINGS_GROUPS if section == page]
         # The MQTT client's group is its schema's, computed at boot like notification's: no table row.
@@ -416,12 +484,9 @@ def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) ->
 _EMITTED_FUNCTIONS = frozenset({"build_system", "main", "_gmtimestruct_to_dict", "_system_cmd_callback", "_notification_led_callback", "_notification_pause_callback", "_networking_status", "_system_status", "_notification_status"})
 
 
-@functools.cache
-def _all_sources(name: str) -> "tuple[str, str, str]":
-    # The module and both boot entries of a real device or a buildgen fixture.
-    toml = _REPO_ROOT / "devices" / f"{name}.toml" if name in DEVICE_NAMES else _REPO_ROOT / "tests_scripts" / "buildgen_fixtures" / f"{name}.toml"
-    result = generate_device(toml, _REPO_ROOT / "src", _REPO_ROOT / "ext")
-    return result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source
+def _reset_refusals(source: str) -> str:
+    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    return next(ast.unparse(k.value) for k in call.keywords if k.arg == "reset_refusals")
 
 
 _GENERATED = [*DEVICE_NAMES, "novel_combo", "multi_instance"]
@@ -470,9 +535,28 @@ def _runtime_module_names(tree: ast.Module) -> "set[str]":
     return names
 
 
-def _loads_outside_annotations(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "list[ast.Name]":
-    skip = {id(sub) for stmt in ast.walk(fn) if isinstance(stmt, ast.AnnAssign) for sub in ast.walk(stmt.annotation)}
-    return [n for stmt in fn.body for n in ast.walk(stmt) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in skip]
+def _whole_schema(source: str, module: str, src_dir: Path) -> "tuple[str, ...]":
+    # A group built from `cm.schema_names(<module>.get_cfg_schema())` takes the module's whole schema, read from its source.
+    cls = next(ast.unparse(n.value.func) for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == module and isinstance(n.value, ast.Call))
+    imported = next(n.module for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ImportFrom) and any(a.name == cls for a in n.names))
+    assert imported is not None
+    return tuple(extract_field_schemas(src_dir / f"{imported}.py"))
+
+
+def _settings_groups(source: str, page: str, src_dir: Path = _REPO_ROOT / "src") -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
+    # (module, field names, hook keywords) of each SettingsGroup the generated RouteSources lists for `page`.
+    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    settings = next(k.value for k in routes.keywords if k.arg == "settings")
+    assert isinstance(settings, ast.Dict)
+    groups = next(v for k, v in zip(settings.keys, settings.values, strict=True) if isinstance(k, ast.Constant) and k.value == page)
+    assert isinstance(groups, ast.List)
+    out = []
+    for call in groups.elts:
+        assert isinstance(call, ast.Call) and ast.unparse(call.func) == "SettingsGroup"
+        module, names = ast.unparse(call.args[0]), call.args[1]
+        fields = _whole_schema(source, module, src_dir) if ast.unparse(names) == f"cm.schema_names({module}.get_cfg_schema())" else ast.literal_eval(names)
+        out.append((module, fields, {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
+    return out
 
 
 @pytest.mark.parametrize("name", _GENERATED)
@@ -498,8 +582,8 @@ def test_an_optional_value_wiring_field_left_out_renders_no_keyword(tmp_path: Pa
     assert text.count("# @value-wiring humidity_source humidity required") == 1
     path.write_text(text.replace("# @value-wiring humidity_source humidity required", "# @value-wiring humidity_source humidity optional"), encoding="utf-8")
     doc = base_doc()
-    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
-    del sgp40["wiring"]["humidity_source"]
+    sgp40 = instance_of(doc, "sgp40")
+    del table_at(sgp40, "wiring")["humidity_source"]
     source = generate_device(write_doc(tmp_path, "optional_value_wiring", doc), src, ext_dir).module_source
     compile(source, "sensortask_optional_value_wiring.py", "exec")
     (call,) = _calls(_function(source, "build_system").body, "SGP40_Reader")
@@ -539,23 +623,28 @@ def test_a_device_without_any_bus_generates(tmp_path: Path, src_dir: Path, ext_d
     doc = base_doc()
     del doc["bus"]
     doc["instance"] = [{"driver": "neopixel", "pin": 15}]
-    del doc["device"]["wiring"]["fram_target"]
+    del table_at(doc, "device", "wiring")["fram_target"]
     result = generate_device(write_doc(tmp_path, "busless", doc), src_dir, ext_dir)
     compile(result.module_source, "sensortask_busless.py", "exec")
     assert not [n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func).startswith("asy_") and ast.unparse(n.func).endswith(("I2C", "SPI", "UART"))]
 
 
-def _uart_bus_calls(source: str) -> "dict[str, str]":
-    fn = _function(source, "build_system")
-    return {s.targets[0].id: ast.unparse(s.value) for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "asy_uart_driver.UART"}
+def _setup_names(source: str) -> "list[str]":
+    # The bound setup methods _collect_setups() returns, in order.
+    returned = next(n.value for n in ast.walk(_function(source, "_collect_setups")) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.List)
+    out = []
+    for elt in returned.elts:
+        assert isinstance(elt, ast.Attribute) and elt.attr == "setup" and isinstance(elt.value, ast.Name), ast.unparse(elt)
+        out.append(elt.value.id)
+    return out
 
 
-def _uart_link_model(src_dir: Path) -> DeviceModel:
-    # The device carrying a uart_link pair, chosen by that property, never by name.
-    (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
-    model = build_model(_REPO_ROOT / "devices" / f"{device}.toml", src_dir)
-    build_construction_order(model)
-    return model
+def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
+    # Up to gc.threshold(), without the watchdog lines and the reset records' import.
+    own = {"from machine import WDT, reset", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    texts = [ast.unparse(stmt) for stmt in stmts]
+    return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 
 
 def test_a_link_naming_a_crc_mode_gets_that_check_on_its_uart_bus_and_its_import(src_dir: Path) -> None:
@@ -568,7 +657,7 @@ def test_a_link_naming_a_crc_mode_gets_that_check_on_its_uart_bus_and_its_import
     calls = _uart_bus_calls(source)
     assert calls[str(links[0].fields["bus"])].endswith(", crc=CRC16())")
     assert "crc=" not in calls[str(links[1].fields["bus"])]
-    assert [ast.unparse(n) for n in ast.parse(source).body if isinstance(n, ast.ImportFrom) and n.module == "asy_crc_checks"] == ["from asy_crc_checks import CRC16"]
+    assert [ast.unparse(n) for n in ast.parse(source).body if isinstance(n, ast.ImportFrom) and n.module == "crc_checks"] == ["from crc_checks import CRC16"]
 
 
 def test_a_crc_mode_the_validator_never_checked_is_an_internal_error(src_dir: Path) -> None:
@@ -583,16 +672,16 @@ def test_real_device_without_a_crc_key_imports_no_crc_and_passes_none(device: st
     # Guard: no shipped link names a CRC (the UART wire format is untouched), so no bus gets one.
     source = _real(device).module_source
     assert "crc=" not in source
-    assert "asy_crc_checks" not in source
+    assert "crc_checks" not in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_passes_each_uart_bus_its_stated_rx_ring(device: str) -> None:
     result = _real(device)
     calls = _uart_bus_calls(result.module_source)
-    for bus, table in _toml_tables(result.model.doc, "bus").items():
+    for bus, bus_table in _toml_tables(result.model.doc, "bus").items():
         if bus.startswith("uart"):
-            stated = table.get("rx_ring")
+            stated = bus_table.get("rx_ring")
             assert (f"rx_ring={stated}" in calls[bus]) if stated is not None else ("rx_ring=" not in calls[bus]), calls[bus]
 
 
@@ -606,15 +695,32 @@ def test_an_unstated_rx_ring_is_left_to_the_uart_constructor_default(src_dir: Pa
     assert "rx_ring=" not in calls[buses[1]]
 
 
-def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
-    tables = doc.get(key, {})
-    assert isinstance(tables, dict) and all(isinstance(table, dict) for table in tables.values())
-    return cast("dict[str, TomlDoc]", tables)
+def _src_tuple_const(path: Path, name: str) -> "tuple[str, ...]":
+    # A module-level `name = const((...))` read from source: an underscore const() is no attribute on MicroPython.
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
+            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
+            value = ast.literal_eval(node.value.args[0])
+            assert isinstance(value, tuple)
+            return value
+    raise AssertionError(f"{path.name} has no {name}")
 
 
-def _uart_link_lines(source: str) -> "dict[str, ast.Call]":
-    fn = _function(source, "build_system")
-    return {s.targets[0].id: s.value for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "UARTLinkDriver"}
+def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
+    # A src/ copy in which exactly the named drivers' reader classes declare their own read triggers.
+    copy = tmp_path / "src"
+    shutil.copytree(src_dir, copy)
+    for path in copy.glob("asy_*_driver.py"):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE), encoding="utf-8")
+    for driver in drivers:
+        path = copy / f"asy_{driver}_driver.py"
+        text = path.read_text(encoding="utf-8")
+        match = re.search(r"^class \w+_Reader\(SensorReader(?:Config)?\):\n", text, re.MULTILINE)
+        assert match is not None, driver
+        method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
+        path.write_text(text[: match.end()] + method + text[match.end() :], encoding="utf-8")
+    return copy
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -644,7 +750,7 @@ def test_real_device_links_keep_the_protocol_default_limits(src_dir: Path, devic
 def test_a_crc_mode_named_on_both_ends_of_the_bench_link_reaches_both_uart_buses(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # The device carrying the uart_link pair, its TOML copied with crc = "crc16" on both links.
     (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
-    text = (_REPO_ROOT / "devices" / f"{device}.toml").read_text(encoding="utf-8")
+    text = device_toml(device).read_text(encoding="utf-8")
     edited = re.sub(r'^(driver = "uart_link"\n)', r'\1crc = "crc16"\n', text, flags=re.MULTILINE)
     assert edited.count('crc = "crc16"') == 2
     path = tmp_path / f"{device}.toml"
@@ -653,49 +759,70 @@ def test_a_crc_mode_named_on_both_ends_of_the_bench_link_reaches_both_uart_buses
     calls = _uart_bus_calls(source)
     assert len(calls) == 2
     assert all(call.endswith(", crc=CRC16())") for call in calls.values()), calls
-    assert "from asy_crc_checks import CRC16" in source
+    assert "from crc_checks import CRC16" in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+def test_real_device_boot_entry_imports_the_right_module(device: str) -> None:
+    result = _real(device)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(src_dir: Path, ext_dir: Path, device: str) -> None:
     # Part L.7: buildgen.version is the one source of truth for the two version constants, and
     # the build date is explicitly injected rather than computed on-device - which is what lets
     # this assert an exact match instead of a moving "now".
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
+    result = generate_device(device_toml(device), src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
     assert result.module_source.count("_FIRMWARE_VERSION = const(") == 1
     assert result.module_source.count("_WEBSITE_VERSION = const(") == 1
     assert result.module_source.count("_BUILD_DATE = const(") == 1
-    assert f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})" in result.module_source
-    assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
-    assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
+    assert f"_FIRMWARE_VERSION = const({_lit(FIRMWARE_VERSION)})" in result.module_source
+    assert f"_WEBSITE_VERSION = const({_lit(WEBSITE_VERSION)})" in result.module_source
+    assert '_BUILD_DATE = const("2026-09-12T10:00:00Z")' in result.module_source
     assert 'build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE}' in result.module_source
     # Regression guard against an earlier, corrected design: the version no longer
     # lives on GET /status's "system" section, so build_info above is its only key.
     assert result.module_source.count('"FirmwareVersion": _FIRMWARE_VERSION') == 1
 
 
+def test_a_test_override_is_named_in_the_build_info_and_a_release_build_names_none(src_dir: Path, ext_dir: Path) -> None:
+    # A test image says what it is from the device itself (GET /system's build object); a release image keeps
+    # exactly its three keys, so the API reference and the website's Build group are unchanged.
+    toml = device_toml(DEVICE_NAMES[0])
+    release = generate_device(toml, src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
+    tested = generate_device(toml, src_dir, ext_dir, build_date="2026-09-12T10:00:00Z", test_overrides=("tick_offset_test", "a_second_override"))
+    assert "TestOverrides" not in release.module_source
+    want = 'build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE, "TestOverrides": ["a_second_override", "tick_offset_test"]},'
+    changed = [(old, new) for old, new in zip(release.module_source.splitlines(), tested.module_source.splitlines(), strict=True) if old != new]
+    assert [new.strip() for _old, new in changed] == [want], changed
+
+
+def _status_entries(source: str, name: str) -> "dict[str, str]":
+    returned = _status_literal(_function(source, name))
+    return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
+
+
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
-    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", result.module_source)
-    assert match is not None
-    datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
+def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(device_toml(device), src_dir, ext_dir)
+    assert _build_date_problems(result.module_source, datetime.now(UTC)) == []
 
 
-def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
-    tree = ast.parse(source)
-    return next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+@pytest.mark.parametrize("stamp", ["2026-09-12T10:00:00", "2026-09-12T12:00:00+02:00", "2026-09-12T09:58:30Z"])
+def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
+    # Against a clock at 10:00:00 UTC: no zone, another zone, or ninety seconds old is no build-time UTC now.
+    assert _build_date_problems(f'_BUILD_DATE = const("{stamp}")\n', datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
+
+
+def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
+    # Each sub-table of doc[key], checked; a new dict over the same tables, so an edit to one reaches `doc`.
+    return {name: table(sub) for name, sub in table(doc.get(key, {})).items()}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_main_starts_read_triggers_apart_from_the_timer_starters(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+def test_real_device_main_starts_read_triggers_apart_from_the_timer_starters(device: str) -> None:
+    result = _real(device)
     main = ast.unparse(_function(result.module_source, "main"))
     assert "await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())" in main
     # start_timers() awaits its own stagger inline, so the old completion flag has no reader left.
@@ -742,9 +869,9 @@ def test_real_device_renders_each_wired_warn_schema_unchanged_and_bare_annotated
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(device: str) -> None:
     # One response, one consistent snapshot: every address and the RSSI come from conn.get_data()'s tuple.
-    fn = _function(generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source, "_networking_status")
+    fn = _function(_real(device).module_source, "_networking_status")
     calls = [ast.unparse(n.func) for n in ast.walk(fn) if isinstance(n, ast.Call)]
     assert calls.count("conn.get_data") == 1
     assert not [c for c in calls if c.startswith("conn.") and c not in ("conn.get_data", "conn.get_wifi_uptime")], calls
@@ -757,31 +884,10 @@ def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(repo
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_networking_status_reads_the_webservers_drop_window(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
-    fn = _function(source, "_networking_status")
-    returned = _status_literal(fn)
+def test_real_device_networking_status_reads_the_webservers_drop_window(device: str) -> None:
+    returned = _status_literal(_function(_real(device).module_source, "_networking_status"))
     entries = {k.value: ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
     assert entries["HTTPDropped"] == "await webserver.get_dropped_count()"
-
-
-@pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_led_callback_takes_the_validated_values_and_only_signals(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # The webserver validates R/G/B/T against its own schemas, so the callback is a plain hand-over.
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
-    fn = _function(source, "_notification_led_callback")
-    assert ast.unparse(fn.args) == "r: int, g: int, b: int, t: float"
-    assert fn.returns is not None and ast.unparse(fn.returns) == "bool"
-    assert [ast.unparse(n) for n in fn.body] == ["return neopixel.led_signal(r, g, b, t)"]
-    assert "_FIELD_LED_" not in source
-
-
-@pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
-    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
-    assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "static", "log"]
-    assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "uptime_s") == "sysfunct.get_uptime"
 
 
 def _status_literal(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> ast.Dict:
@@ -795,72 +901,29 @@ def _status_literal(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> ast.Dict:
     return returned
 
 
-def _whole_schema(source: str, module: str, src_dir: Path) -> "tuple[str, ...]":
-    # A group built from `cm.schema_names(<module>.get_cfg_schema())` takes the module's whole schema, read from its source.
-    cls = next(ast.unparse(n.value.func) for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == module and isinstance(n.value, ast.Call))
-    imported = next(n.module for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ImportFrom) and any(a.name == cls for a in n.names))
-    assert imported is not None
-    return tuple(extract_field_schemas(src_dir / f"{imported}.py"))
-
-
-def _settings_groups(source: str, page: str, src_dir: Path = _REPO_ROOT / "src") -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
-    # (module, field names, hook keywords) of each SettingsGroup the generated RouteSources lists for `page`.
-    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
-    settings = next(k.value for k in routes.keywords if k.arg == "settings")
-    assert isinstance(settings, ast.Dict)
-    groups = next(v for k, v in zip(settings.keys, settings.values, strict=True) if isinstance(k, ast.Constant) and k.value == page)
-    assert isinstance(groups, ast.List)
-    out = []
-    for call in groups.elts:
-        assert isinstance(call, ast.Call) and ast.unparse(call.func) == "SettingsGroup"
-        module, names = ast.unparse(call.args[0]), call.args[1]
-        fields = _whole_schema(source, module, src_dir) if ast.unparse(names) == f"cm.schema_names({module}.get_cfg_schema())" else ast.literal_eval(names)
-        out.append((module, fields, {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
-    return out
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_led_callback_takes_the_validated_values_and_only_signals(device: str) -> None:
+    # The webserver validates R/G/B/T against its own schemas, so the callback is a plain hand-over.
+    source = _real(device).module_source
+    fn = _function(source, "_notification_led_callback")
+    assert ast.unparse(fn.args) == "r: int, g: int, b: int, t: float"
+    assert fn.returns is not None and ast.unparse(fn.returns) == "bool"
+    assert [ast.unparse(n) for n in fn.body] == ["return neopixel.led_signal(r, g, b, t)"]
+    assert "_FIELD_LED_" not in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
-    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
-    assert _settings_groups(source, "networking", src_dir) == [
-        ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
-        ("conn", ("LEDWifiOn",), {}),
-        ("ntp", ("NTPHost", "NTPOffset", "NTPInterval"), {"post_asy_fct": "ntp.ntp_force_sync"}),
-        ("ntp", ("DNSFallback",), {}),
-        *(mqtt if "mqtt = MQTTClient(" in source else []),
-    ]
+def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+    source = _real(device).module_source
+    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+    assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "static", "log"]
+    assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "uptime_s") == "sysfunct.get_uptime"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_settings_groups_accept_exactly_what_their_page_shows_as_writable(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # One source: the page's writable fields are what its PUT route's settings groups accept, group by
-    # group on Networking (HotspotPW in identity, DNSFallback alone) and as one set on System.
-    toml = repo_root / "devices" / f"{device}.toml"
-    source = generate_device(toml, src_dir, ext_dir).module_source
-    sections = {s["key"]: s for s in json.loads(json.dumps(definitions_for_toml(toml, src_dir)))["sections"]}
-    shown = {page: [tuple(f["key"] for f in g["fields"] if f.get("kind") != "readonly" and not f.get("dispatch")) for g in sections[page]["groups"] if "fields" in g] for page in ("networking", "system")}
-    accepted = {page: [fields for _module, fields, _hooks in _settings_groups(source, page, src_dir)] for page in ("networking", "system")}
-    assert shown["networking"] == accepted["networking"]
-    assert sorted(k for group in shown["system"] for k in group) == sorted(k for group in accepted["system"] for k in group)
-
-
-def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
-    # A src/ copy in which exactly the named drivers' reader classes declare their own read triggers.
-    copy = tmp_path / "src"
-    shutil.copytree(src_dir, copy)
-    for path in copy.glob("asy_*_driver.py"):
-        text = path.read_text()
-        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE))
-    for driver in drivers:
-        path = copy / f"asy_{driver}_driver.py"
-        text = path.read_text()
-        match = re.search(r"^class \w+_Reader\(SensorReader(?:Config)?\):\n", text, re.MULTILINE)
-        assert match is not None, driver
-        method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
-        path.write_text(text[: match.end()] + method + text[match.end() :])
-    return copy
+def test_real_device_reset_errors_is_refused_by_the_reset_decision_and_the_fram_managers_own_pause(device: str) -> None:
+    # Each read where it lives, not a copy: ResetErrors clears nothing from the reset decision on, nor while the pause holds.
+    assert _reset_refusals(_real(device).module_source) == f"(sysfunct.is_reset_decided, {_fram_var(_real(device))}.get_pause)"
 
 
 def _trigger_modules(source: str) -> "list[str]":
@@ -872,36 +935,117 @@ def _trigger_modules(source: str) -> "list[str]":
     return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
 
 
-@pytest.mark.parametrize(
-    ("device", "expected"),
-    # dev: sgp40 and isl29125 share i2c1, bmp3xx sits alone on i2c0 - slots 0, 250, 500 ms;
-    # wozi: sgp40 and bmp3xx share i2c1 (scd30 keeps its own tick) - slots 0, 333 ms.
-    [("dev", ["sgp40", "bmp3xx", "isl29125"]), ("wozi", ["sgp40", "bmp3xx"])],
-)
-def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str, expected: "list[str]") -> None:
-    src = _src_with_read_triggers(src_dir, tmp_path, ("bmp3xx", "isl29125", "sgp40"))
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src, ext_dir)
-    assert _trigger_modules(result.module_source) == expected
+def _uart_bus_calls(source: str) -> "dict[str, str]":
+    fn = _function(source, "build_system")
+    return {s.targets[0].id: ast.unparse(s.value) for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "asy_uart_driver.UART"}
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(device: str) -> None:
+    # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
+    source = _real(device).module_source
+    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
+    assert _settings_groups(source, "networking") == [
+        ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
+        ("conn", ("LEDWifiOn",), {}),
+        ("ntp", ("NTPHost", "NTPOffset", "NTPInterval"), {"post_asy_fct": "ntp.ntp_force_sync"}),
+        ("ntp", ("DNSFallback",), {}),
+        *(mqtt if "mqtt = MQTTClient(" in source else []),
+    ]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_settings_groups_accept_exactly_what_their_page_shows_as_writable(src_dir: Path, device: str) -> None:
+    # One source: the page's writable fields are what its PUT route's settings groups accept, group by
+    # group on Networking (HotspotPW in identity, DNSFallback alone) and as one set on System.
+    toml = device_toml(device)
+    source = _real(device).module_source
+    sections = {s["key"]: s for s in json.loads(json.dumps(definitions_for_toml(toml, src_dir)))["sections"]}
+    shown = {page: [tuple(f["key"] for f in g["fields"] if f.get("kind") != "readonly" and not f.get("dispatch")) for g in sections[page]["groups"] if "fields" in g] for page in ("networking", "system")}
+    accepted = {page: [fields for _module, fields, _hooks in _settings_groups(source, page, src_dir)] for page in ("networking", "system")}
+    assert shown["networking"] == accepted["networking"]
+    assert sorted(k for group in shown["system"] for k in group) == sorted(k for group in accepted["system"] for k in group)
+
+
+def _uart_link_lines(source: str) -> "dict[str, ast.Call]":
+    fn = _function(source, "build_system")
+    return {s.targets[0].id: s.value for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "UARTLinkDriver"}
+
+
+def _uart_link_model(src_dir: Path) -> DeviceModel:
+    # The device carrying a uart_link pair, chosen by that property, never by name.
+    (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
+    model = build_model(device_toml(device), src_dir)
+    build_construction_order(model)
+    return model
+
+
+def _webserver_keywords(source: str) -> dict[str, object]:
+    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ServingLimits"]
+    assert len(calls) == 1, len(calls)
+    return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
+
+
+_TRIGGER_DRIVERS = ("bmp3xx", "isl29125", "sgp40")
+# Every device declaring two or more of them: its trigger order is a choice between bus groups.
+_SPREAD_DEVICES = [d for d in DEVICE_NAMES if sum(d in devices_with(driver) for driver in _TRIGGER_DRIVERS) >= 2]
+
+
+@pytest.fixture
+def ext_dir(repo_root: Path) -> Path:
+    return repo_root / "ext"
+
+
+def test_the_trigger_order_reaches_a_real_device() -> None:
+    assert _SPREAD_DEVICES, f"no device declares two of {_TRIGGER_DRIVERS}, so the order below orders nothing"
+
+
+@pytest.mark.parametrize("device", _SPREAD_DEVICES)
+def test_read_triggers_are_collected_in_construction_order(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
+    src = triggers_src(_TRIGGER_DRIVERS)
+    result = generate_device(device_toml(device), src, ext_dir)
+    assert _trigger_modules(result.module_source) == _expected_triggers(result.model)
     assert "scd30" not in _trigger_modules(result.module_source)
 
 
-def _collected_modules(source: str, collector: str) -> "list[str]":
-    (loop,) = [n for n in ast.walk(_function(source, collector)) if isinstance(n, ast.For)]
-    assert isinstance(loop.iter, ast.Tuple)
-    return [elt.id for elt in loop.iter.elts if isinstance(elt, ast.Name)]
+@pytest.fixture
+def fixtures_dir(repo_root: Path) -> Path:
+    return repo_root / "tests_scripts" / "buildgen_fixtures"
 
 
-def _fram_var(result: GeneratedDevice) -> str:
-    (key,) = [key for key in result.model.instances if key[0] == "fram"]
-    return instance_label(key)
+@pytest.fixture
+def src_dir(repo_root: Path) -> Path:
+    return repo_root / "src"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.parametrize("collector", ["_collect_task_starters", "_collect_timer_starters"])
-def test_real_device_collects_the_fram_managers_starters(repo_root: Path, src_dir: Path, ext_dir: Path, device: str, collector: str) -> None:
+def test_real_device_collects_the_fram_managers_starters(device: str, collector: str) -> None:
     # A declared chip that fails setup escalates through its supervised task like any other chip.
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    result = _real(device)
     assert _fram_var(result) in _collected_modules(result.module_source, collector)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+    # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+    source = _real(device).module_source
+    assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+    (loop,) = [n for n in ast.walk(_function(source, "_collect_task_names")) if isinstance(n, ast.For)]
+    assert [ast.unparse(s) for s in loop.body] == [ast.unparse(ast.parse('names.extend(f"{module.pr.name}.{starter.__name__}" for starter in module.get_task_starters())'))]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_gates_the_voc_backup_timestamp_on_the_clock_set_this_boot(device: str) -> None:
+    # The NTP client's clock check, unset only by a settings change: a backup keeps its timestamp through
+    # a stale sync, as UTCTime does, never through a generated gate of its own.
+    result = _real(device)
+    tree = ast.parse(result.module_source)
+    backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+    wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+    assert len(backups) == len(wired)
+    assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_clock_valid\)", b) for b in backups), backups
+    assert "_clock_was_set" not in {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
 
 
 @pytest.mark.parametrize("collector", ["_collect_task_starters", "_collect_timer_starters"])
@@ -911,17 +1055,12 @@ def test_a_fixture_without_fram_target_still_collects_its_declared_fram(fixtures
     assert _fram_var(result) in _collected_modules(result.module_source, collector)
 
 
-def test_bus_spread_takes_the_largest_group_first_and_keeps_construction_order_on_ties() -> None:
-    order = trigger_spread([("a", "i2c0"), ("b", "i2c1"), ("c", "i2c1"), ("d", "i2c0"), ("e", "i2c1"), ("f", "spi0")])
-    assert order == ["b", "a", "f", "c", "d", "e"]
-    assert trigger_spread([]) == []
-
-
-def test_a_device_whose_readers_declare_no_read_triggers_collects_none(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path) -> None:
-    src = _src_with_read_triggers(src_dir, tmp_path, ())
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_a_device_whose_readers_declare_no_read_triggers_collects_none(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
+    src = triggers_src(())
     for path in src.glob("asy_*_driver.py"):
-        assert "def get_trigger_starters" not in path.read_text(), path.name
-    result = generate_device(repo_root / "devices" / "dev.toml", src, ext_dir)
+        assert "def get_trigger_starters" not in path.read_text(encoding="utf-8"), path.name
+    result = generate_device(device_toml(device), src, ext_dir)
     assert _trigger_modules(result.module_source) == []
     assert ast.unparse(_function(result.module_source, "_collect_trigger_starters")).rstrip().endswith("return []")
 
@@ -929,20 +1068,20 @@ def test_a_device_whose_readers_declare_no_read_triggers_collects_none(repo_root
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
     # The mandatory synthetic novel-combination fixture (Part L.1's criterion 2): existing
     # drivers in a layout no real device uses - two SCD30s, an SGP40 compensated from each,
-    # BMP3xx at its alternate address - proving generality beyond the six hand-verified files.
+    # BMP3xx at its alternate address - proving generality beyond the hand-verified device files.
     result = generate_device(fixtures_dir / "novel_combo.toml", src_dir, ext_dir)
     ast.parse(result.module_source)
     ast.parse(result.boot_entry_source)
     assert "scd30_primary" in result.module_source
     assert "scd30_secondary" in result.module_source
-    assert "SGP40_Reader(i2c1, temperature=ValueRef(scd30_secondary, 'Temp')" in result.module_source
-    assert "humidity=ValueRef(scd30_primary, 'Hum')" in result.module_source
+    assert 'SGP40_Reader(i2c1, temperature=ValueRef(scd30_secondary, "Temp")' in result.module_source
+    assert 'humidity=ValueRef(scd30_primary, "Hum")' in result.module_source
     # Only warn_co2 is wired - warn_voc/warn_hum must not appear at all.
     assert "WarnCO2" in result.module_source
     assert "WarnVOC" not in result.module_source
     assert "WarnHum" not in result.module_source
-    # ISL29125 on i2c0 with no fram_target - proves the driver generalizes beyond dev.toml's own
-    # i2c1/GPIO6/fram-wired instance.
+    # ISL29125 on i2c0 with no fram_target - proves the driver generalizes beyond the fram-wired
+    # i2c1 instance a real device declares.
     isl_call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "ISL29125_Reader(i2c0, 3, trigger_s=5" in isl_call
     assert "log=log_ram" in isl_call
@@ -967,10 +1106,10 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     assert "scd30_b" in result.module_source
     assert "sgp40_a" in result.module_source
     assert "sgp40_b" in result.module_source
-    assert "temperature=ValueRef(scd30_b, 'Temp')" in result.module_source
-    assert "humidity=ValueRef(scd30_b, 'Hum')" in result.module_source
-    assert "temperature=ValueRef(bmp3xx_only, 'Temp')" in result.module_source
-    assert "humidity=ValueRef(_DefaultHumiditySource(relative_humidity=35), 'value')" in result.module_source
+    assert 'temperature=ValueRef(scd30_b, "Temp")' in result.module_source
+    assert 'humidity=ValueRef(scd30_b, "Hum")' in result.module_source
+    assert 'temperature=ValueRef(bmp3xx_only, "Temp")' in result.module_source
+    assert 'humidity=ValueRef(_DefaultHumiditySource(relative_humidity=35), "value")' in result.module_source
     assert "_DefaultSignalSink().request_signal" in result.module_source
     # led_target/fram_target both left unwired - conn gets no LED, sysfunct no storage, both RAM logs.
     assert "ext_led=None" in result.module_source
@@ -978,7 +1117,7 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     # Only sgp40_a is monitored via warn_voc - exactly one NotificationSignal is passed
     # (warn_co2/warn_hum are absent from this fixture entirely, and sgp40_b is never a warn_* source).
     assert result.module_source.count("NotificationSignal(") == 1
-    assert "signals=(NotificationSignal('WarnVOC', ValueRef(sgp40_a, 'VOC'), _FIELD_WARN_VOC, (0, 1, 0)),)" in result.module_source
+    assert 'signals=(NotificationSignal("WarnVOC", ValueRef(sgp40_a, "VOC"), _FIELD_WARN_VOC, (0, 1, 0)),)' in result.module_source
     # Two scd30 instances and two sgp40 instances share one module each - one import line per
     # module, not one per instance, merging whichever _Default* extras either instance needs.
     assert result.module_source.count("from asy_scd30_driver import") == 1
@@ -991,11 +1130,11 @@ def test_multi_instance_same_module_merges_distinct_default_extras(tmp_path: Pat
     # Here the two sgp40 instances default DIFFERENT fields, so the merged import line must
     # carry both even though neither instance alone needs both.
     doc = base_doc()
-    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
-    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
+    table_at(doc, "bus")["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
+    sgp40 = instance_of(doc, "sgp40")
     sgp40["name_ext"] = "a"
-    sgp40["wiring"]["humidity_source"] = {"default": True, "relative_humidity": 35}
-    doc["instance"].append(
+    table_at(sgp40, "wiring")["humidity_source"] = {"default": True, "relative_humidity": 35}
+    array_at(doc, "instance").append(
         {
             "driver": "sgp40",
             "name_ext": "b",
@@ -1046,20 +1185,13 @@ def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path,
     assert all("max_module_error" not in line for line in calls), calls
 
 
-def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    def ntp_line(doc: "dict[str, object]", name: str) -> str:
-        source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
-        ast.parse(source)
-        return next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
-
-    doc = base_doc()
-    unstated = ntp_line(doc, "ntp_backoff_unstated")
-    # Unstated, the src/ defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) are passed as literals.
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 10, 600)" in unstated
-    assert "max_module_error" not in unstated  # NTP keeps no give-up streak (Part C.7.2)
-    doc["device"]["ntp_retry_s"] = 30
-    doc["device"]["ntp_retry_max_s"] = 900
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 30, 900)" in ntp_line(doc, "ntp_backoff_stated")
+def test_ntp_timing_carries_the_dns_bounds_and_the_fetch_timeout(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The unsynced retry wait is the client's own constant: no device setting reaches NtpTiming (owner, 2026-11-03).
+    source = generate_device(write_doc(tmp_path, "ntp_timing", base_doc()), src_dir, ext_dir).module_source
+    ast.parse(source)
+    line = next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _NTP_FETCH_TIMEOUT_MS)" in line
+    assert "max_module_error" not in line  # NTP keeps no give-up streak (Part C.7.2)
 
 
 def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -1067,8 +1199,8 @@ def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_o
     # has no fram instance) must build byte-for-byte as it always has - no fram= kwarg anywhere on
     # the mandatory-infra constructors, and no forced construction-order dependency on fram either.
     doc = base_doc()
-    del doc["device"]["wiring"]["fram_target"]
-    del doc["device"]["wiring"]["led_target"]  # its FRAM-logged NeoPixel would rightly precede conn
+    del table_at(doc, "device", "wiring")["fram_target"]
+    del table_at(doc, "device", "wiring")["led_target"]  # its FRAM-logged NeoPixel would rightly precede conn
     result = generate_device(write_doc(tmp_path, "device_fram_absent", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
@@ -1091,11 +1223,11 @@ def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Pa
     # different constants. default_class_name() maps the field name alone, so the import line
     # must list the class once rather than twice.
     doc = base_doc()
-    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
-    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
+    table_at(doc, "bus")["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
+    sgp40 = instance_of(doc, "sgp40")
     sgp40["name_ext"] = "a"
-    sgp40["wiring"]["humidity_source"] = {"default": True, "relative_humidity": 35}
-    doc["instance"].append(
+    table_at(sgp40, "wiring")["humidity_source"] = {"default": True, "relative_humidity": 35}
+    array_at(doc, "instance").append(
         {
             "driver": "sgp40",
             "name_ext": "b",
@@ -1115,8 +1247,8 @@ def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Pa
 
 def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"] = [i for i in doc["instance"] if i["driver"] not in ("neopixel", "notification")]
-    del doc["device"]["wiring"]["led_target"]
+    doc["instance"] = [i for i in instances(doc) if i["driver"] not in ("neopixel", "notification")]
+    del table_at(doc, "device", "wiring")["led_target"]
     result = generate_device(write_doc(tmp_path, "minimal", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "notification_led=None" in result.module_source
@@ -1126,8 +1258,8 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
 
 def _mqtt_doc() -> TomlDoc:
     doc = base_doc()
-    doc["device"]["max_connections"] = 5  # the client's connection takes the sixth (buildgen/validate.py)
-    doc["instance"].append({"driver": "mqtt", "wiring": {"fram_target": "fram"}})
+    table_at(doc, "device")["max_connections"] = 5  # the client's connection takes the sixth (buildgen/validate.py)
+    array_at(doc, "instance").append({"driver": "mqtt", "wiring": {"fram_target": "fram"}})
     return doc
 
 
@@ -1135,8 +1267,8 @@ def test_mqtt_is_built_after_conn_and_every_sensor_it_publishes(tmp_path: Path, 
     source = generate_device(write_doc(tmp_path, "mqtt", _mqtt_doc()), src_dir, ext_dir).module_source
     ast.parse(source)
     line = next(text for text in source.splitlines() if text.strip().startswith("mqtt = MQTTClient("))
-    assert "MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig('SensorStationTest', _MQTT_RESPONSE_TIMEOUT_MS," in line
-    assert line.rstrip().endswith("_DNS_TIMEOUT_MS, _DNS_TRIES), sources=(scd30, sgp40), cfg_path=cfg_path, log=log_fram)")
+    assert 'MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig("SensorStationTest", _MQTT_RESPONSE_TIMEOUT_MS,' in line
+    assert line.rstrip().endswith("_MQTT_IDLE_RECHECK_MS, _DNS_TIMEOUT_MS), sources=(scd30, sgp40), cfg_path=cfg_path, log=log_fram)")
     for earlier in ("conn = WifiService(", "scd30 = SCD30_Reader(", "sgp40 = SGP40_Reader("):
         assert source.index(earlier) < source.index(line)
     assert "from asy_mqtt_client import MQTTClient, MqttConfig" in source
@@ -1153,20 +1285,33 @@ def test_a_device_without_mqtt_carries_none_of_its_wiring(tmp_path: Path, src_di
     assert "    return {" in source.split("async def _networking_status()")[1].split("async def ")[0]
 
 
+def test_device_without_a_fram_manager_refuses_reset_errors_by_the_reset_decision_alone(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    doc = base_doc()
+    doc["instance"] = [i for i in instances(doc) if i["driver"] != "fram"]
+    for owner in [table_at(doc, "device"), *instances(doc)]:  # every fram_target, the device's and each instance's
+        wiring = owner.get("wiring")
+        if isinstance(wiring, dict):
+            wiring.pop("fram_target", None)
+    del table_at(doc, "device", "wiring")["led_target"]  # its FRAM-logged NeoPixel names the chip too
+    del table_at(doc, "bus")["spi0"]  # the FRAM chip's bus, which nothing else uses
+    result = generate_device(write_doc(tmp_path, "no_fram_manager", doc), src_dir, ext_dir)
+    assert _reset_refusals(result.module_source) == "(sysfunct.is_reset_decided,)"
+
+
 def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # SPECIFICATION.md Part L.6.2's generated-code shape: the provider is constructed inline, at the exact
     # call-site the real wiring expression would occupy, with no separate named global.
     doc = base_doc()
-    doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
-    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 20}
+    table_at(doc, "instance", 4, "wiring")["signal_sink"] = {"default": True}
+    table_at(doc, "instance", 1, "wiring")["temperature_source"] = {"default": True, "temperature": 20}
     result = generate_device(write_doc(tmp_path, "with_defaults", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "_DefaultSignalSink().request_signal" in result.module_source
     # Every defaulted per-value field always resolves to (provider, "value") - the fixed contract
     # every _Default<Field> class's get_data() follows - not the real field name.
-    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=20), 'value')" in result.module_source
+    assert 'temperature=ValueRef(_DefaultTemperatureSource(temperature=20), "value")' in result.module_source
     # humidity_source stays a real reference - not defaulted in this fixture.
-    assert "humidity=ValueRef(scd30, 'Hum')" in result.module_source
+    assert 'humidity=ValueRef(scd30, "Hum")' in result.module_source
 
 
 def test_device_level_led_target_unwired_passes_no_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -1174,7 +1319,7 @@ def test_device_level_led_target_unwired_passes_no_led(tmp_path: Path, src_dir: 
     # confirms validate.py accepts neopixel-present-but-led_target-unwired; the generated conn
     # line then passes ext_led=None.
     doc = base_doc()
-    del doc["device"]["wiring"]["led_target"]
+    del table_at(doc, "device", "wiring")["led_target"]
     result = generate_device(write_doc(tmp_path, "no_led_target", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
@@ -1192,9 +1337,9 @@ def test_a_device_with_led_target_builds_the_neopixel_first_and_passes_it_to_con
 
 def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # One LogConfig per FRAM store, built right after it; the FRAM manager itself gets the FRAM-less
-    # one, and so does any module with no fram_target (here: the notification).
+    # one, and so does any module with no fram_target (here: the notification, and the neopixel, which has nothing to log).
     doc = base_doc()
-    del doc["instance"][4]["wiring"]["fram_target"]
+    del table_at(doc, "instance", 4, "wiring")["fram_target"]
     source = generate_device(write_doc(tmp_path, "log_configs", doc), src_dir, ext_dir).module_source
     lines = [line.strip() for line in source.splitlines()]
     assert "log_ram = LogConfig(None, DEFAULT_LOG.history_length, debug)" in lines
@@ -1202,17 +1347,17 @@ def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Pa
     assert fram_line == "fram = FRAMManager(spi0, 1, max_size=0x2000, log=log_ram)"
     assert after == "log_fram = LogConfig(fram, DEFAULT_LOG.history_length, debug)"
     calls = {line.split(" = ")[0]: line for line in lines if re.match(r"\w+ = [A-Z]\w*\(", line) and not line.startswith(("log_", "watchdog", "app"))}
-    for var in ("scd30", "sgp40", "neopixel", "conn", "ntp", "sysfunct"):
+    for var in ("scd30", "sgp40", "conn", "ntp", "sysfunct"):
         assert "log=log_fram" in calls[var], calls[var]
-    assert "log=log_ram" in calls["notification"]
+    assert "log=log_ram" in calls["notification"] and "log=log_ram" in calls["neopixel"]
     assert "debug=debug" not in source.split("async def build_system(")[1].split("async def main(")[0].split(") -> None:")[1]
     assert "fram=" not in source
 
 
 def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
-    del doc["instance"][0]["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
+    doc["instance"] = [i for i in instances(doc) if i["driver"] != "sgp40"]
+    del table_at(doc, "instance", 0)["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
     result = generate_device(write_doc(tmp_path, "nosgp40", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "maintenance_sensors=()," in result.module_source
@@ -1220,7 +1365,7 @@ def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir:
 
 def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    del doc["device"]["hotspot_time_min"]
+    del table_at(doc, "device")["hotspot_time_min"]
     path = write_doc(tmp_path, "broken_device", doc)
     with pytest.raises(BuildError) as exc_info:
         generate_device(path, src_dir)
@@ -1228,30 +1373,25 @@ def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path) -> 
     assert "hotspot_time_min" in str(exc_info.value)
 
 
-def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: Path) -> None:
-    from buildgen.generate import main
-
+def test_cli_writes_module_and_boot_entry_to_out_dir(tmp_path: Path) -> None:
+    device = DEVICE_NAMES[0]
     out_dir = tmp_path / "out"
-    exit_code = main([str(repo_root / "devices" / "wozi.toml"), "--out-dir", str(out_dir)])
+    exit_code = main([str(device_toml(device)), "--out-dir", str(out_dir)])
     assert exit_code == 0
-    assert sorted(p.name for p in out_dir.iterdir()) == ["sensortask_wozi.py", "sensortask_wozi_main.py", "sensortask_wozi_main_noautostart.py"]
-    ast.parse((out_dir / "sensortask_wozi.py").read_text())
+    assert sorted(p.name for p in out_dir.iterdir()) == [f"sensortask_{device}.py", f"sensortask_{device}_main.py", f"sensortask_{device}_main_noautostart.py"]
+    ast.parse((out_dir / f"sensortask_{device}.py").read_text(encoding="utf-8"))
 
 
-def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from buildgen.generate import main
-
-    exit_code = main([str(repo_root / "devices" / "wozi.toml")])
+def test_cli_prints_module_source_without_out_dir(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main([str(device_toml(DEVICE_NAMES[0]))])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "async def build_system(" in captured.out
 
 
 def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from buildgen.generate import main
-
     doc = base_doc()
-    del doc["device"]["hotspot_time_min"]
+    del table_at(doc, "device")["hotspot_time_min"]
     path = write_doc(tmp_path, "broken_device", doc)
     exit_code = main([str(path), "--src-dir", str(Path(__file__).resolve().parent.parent / "src")])
     assert exit_code == 1
@@ -1264,12 +1404,14 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
     assert "Traceback" not in captured.err
 
 
-def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_hostname_and_hotspot_password_are_wired_into_generated_code(device: str) -> None:
     # The inverse of the tripwire this replaces: hostname and hotspot_password were validated
     # and then reached nothing, so every device booted as the shared "SensorNode". They are
     # passed to WifiService now, as the two persisted fields' per-device defaults.
-    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert "WifiConfig('SensorStationWozi', '12345678', " in result.module_source
+    stated = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))["device"]
+    result = _real(device)
+    assert f"WifiConfig({_lit(stated['hostname'])}, {_lit(stated['hotspot_password'])}, " in result.module_source
     ast.parse(result.module_source)
 
 
@@ -1277,16 +1419,16 @@ def test_bmp3xx_trigger_s_is_rendered_into_the_constructor_call(tmp_path: Path, 
     # trigger_s is declared only on scd30 in every real device and fixture; this pins bmp3xx's own
     # trigger_s rendering, which its @limits domain depends on.
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": 0x77, "trigger_s": 42, "wiring": {"fram_target": "fram"}})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": 0x77, "trigger_s": 42, "wiring": {"fram_target": "fram"}})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     assert "trigger_s=42" in result.module_source
     ast.parse(result.module_source)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_constructs_scd30_with_the_boot_config_path(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_constructs_scd30_with_the_boot_config_path(device: str) -> None:
     # SCD30 keeps its three FRC readiness settings in a config file, so it is built like the other config readers.
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    result = _real(device)
     calls = [line for line in result.module_source.splitlines() if "SCD30_Reader(" in line]
     assert calls, f"{device} constructs no SCD30_Reader - the check holds nothing"
     for call in calls:
@@ -1297,8 +1439,8 @@ def test_isl29125_irq_pin_and_trigger_s_are_rendered_into_the_constructor_call(t
     # irq_pin is a required positional arg (like scd30's own shape); trigger_s is optional (like
     # bmp3xx's own shape) - ISL29125_Reader is the one driver combining both.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "trigger_s": 5, "wiring": {"fram_target": "fram"}})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "trigger_s": 5, "wiring": {"fram_target": "fram"}})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     assert "ISL29125_Reader(i2c0, 6, trigger_s=5" in result.module_source
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "log=log_fram" in call
@@ -1308,8 +1450,8 @@ def test_isl29125_irq_pin_and_trigger_s_are_rendered_into_the_constructor_call(t
 def test_isl29125_without_trigger_s_or_fram_target_omits_both(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # Both are optional - a device wiring neither must still generate a valid, minimal call.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "trigger_s" not in call
     assert "log=log_ram" in call
@@ -1318,12 +1460,12 @@ def test_isl29125_without_trigger_s_or_fram_target_omits_both(tmp_path: Path, sr
 
 
 def test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # A board with its own external pull-up resistor (the real dev bench) sets this - the driver's
+    # A board with its own external pull-up resistor (the real bench board) sets this - the driver's
     # own default (omitted here) is True, the internal pull-up, for a board with no resistor of
     # its own.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "irq_pull_up": False})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "irq_pull_up": False})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     assert "irq_pull_up=False" in result.module_source
     ast.parse(result.module_source)
 
@@ -1341,25 +1483,21 @@ def test_a_warn_signal_outside_the_catalog_reaching_codegen_is_an_internal_error
 def test_identifier_rejects_a_name_python_could_not_use(src_dir: Path) -> None:
     # A name_ext such as "a-b" reaches it through a TOML; driven directly for every kind of bad name -
     # it is the one guard standing between a bad name and generated source that would not parse.
-    from buildgen.codegen import _identifier
-
     for bad in ("class", "not-an-identifier", "9leading_digit", ""):
         with pytest.raises(BuildError, match="not usable as a generated Python identifier - fix: ") as exc_info:
-            _identifier(bad, "dev")
+            _identifier(bad, "fixture")
         assert exc_info.value.rule == "names.not-an-identifier"
-    assert _identifier("i2c0", "dev") == "i2c0"
+    assert _identifier("i2c0", "fixture") == "i2c0"
 
 
 def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # driver_registry can resolve a driver that codegen has no constructor recipe for - the build
     # must say exactly that, and name where to add one.
-    from buildgen.codegen import _build_call, _Ctx
-    from buildgen.validate import build_model
 
     # Driven at the _build_call() level: an instance of such a driver can't be carried through a
     # whole build, because _check_required_fields() rejects a driver with no buildspec.py entry
     # long before codegen sees it.
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     spec = model.instances[("scd30", "")]
     spec.driver = "not_a_real_driver"
     assert spec.driver_info is not None
@@ -1372,10 +1510,8 @@ def test_notification_with_no_signal_sink_wiring_field_fails_loud(tmp_path: Path
     # _build_args_notification()'s internal invariant: signal_sink is always resolved by
     # validate.py before codegen runs, so no real TOML reaches this. Driven by mutating an
     # already-validated spec, the same way the unknown-driver test above reaches its branch.
-    from buildgen.codegen import _build_args_notification, _Ctx
-    from buildgen.validate import build_model
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     spec = model.instances[("notification", "")]
     spec.wiring_schema = tuple(wf for wf in spec.wiring_schema if wf.toml_field != "signal_sink")
     with pytest.raises(BuildInternalError, match="no signal_sink wiring field by codegen time"):
@@ -1386,11 +1522,8 @@ def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path,
     # _emit_header_and_imports()'s internal invariant: driver_info is always resolved before
     # codegen runs. Driven through generate_module_source(), the same seam generate_device()
     # uses, on a valid model with one instance's driver_info cleared afterwards.
-    from buildgen.codegen import generate_module_source
-    from buildgen.graph import build_construction_order
-    from buildgen.validate import build_model
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     build_construction_order(model)
     model.instances[("scd30", "")].driver_info = None
     with pytest.raises(BuildInternalError, match="driver_info unresolved by codegen time"):
@@ -1401,11 +1534,8 @@ def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_ke
     # _emit_build_system()'s internal invariant: build_construction_order() only emits the three
     # infra names or a real instance key, so no TOML reaches this. Driven by inserting a bogus
     # bare string into an already-computed construction order.
-    from buildgen.codegen import generate_module_source
-    from buildgen.graph import build_construction_order
-    from buildgen.validate import build_model
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     build_construction_order(model)
     mutated_order = [*model.construction_order, "bogus_node"]
     with pytest.raises(BuildInternalError, match="is not a known bare node or an instance key"):
@@ -1426,37 +1556,25 @@ def test_an_sgp40_without_its_resolved_name_is_an_internal_error(tmp_path: Path,
         _sgp40_status_vars(model.construction_order, _Ctx(model))
 
 
-def test_a_generator_bug_emitting_invalid_python_is_an_internal_error(tmp_path: Path, src_dir: Path, ext_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # generate_device() compiles what it emits before returning it, so a template bug never reaches a file.
-    monkeypatch.setattr(generate_module, "generate_module_source", lambda *_args, **_kwargs: "def broken(:\n")
-    with pytest.raises(BuildInternalError, match="broken_template"):
-        generate_device(write_doc(tmp_path, "broken_template", base_doc()), src_dir, ext_dir)
-
-
 def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:
     # The one real entry point a person invokes by hand. Run as a subprocess so the __main__ guard
     # and the process exit code are both genuinely exercised, not just main()'s return value.
-    import subprocess
-    import sys
-
+    device = DEVICE_NAMES[0]
     out = tmp_path / "out"
     result = subprocess.run(
-        [sys.executable, "-m", "buildgen.generate", str(repo_root / "devices" / "wozi.toml"), "--out-dir", str(out)],
+        [sys.executable, "-m", "buildgen.generate", str(device_toml(device)), "--out-dir", str(out)],
         cwd=repo_root,
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["sensortask_wozi.py", "sensortask_wozi_main.py", "sensortask_wozi_main_noautostart.py"]
-    ast.parse((out / "sensortask_wozi.py").read_text())
+    assert sorted(p.name for p in out.iterdir()) == [f"sensortask_{device}.py", f"sensortask_{device}_main.py", f"sensortask_{device}_main_noautostart.py"]
+    ast.parse((out / f"sensortask_{device}.py").read_text(encoding="utf-8"))
 
 
 def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path, repo_root: Path) -> None:
-    import subprocess
-    import sys
-
-    bad = write_doc(tmp_path, "dev", {"device": {"name": "Test"}})
+    bad = write_doc(tmp_path, "fixture", {"device": {"name": "Test"}})
     result = subprocess.run(
         [sys.executable, "-m", "buildgen.generate", str(bad)],
         cwd=repo_root,
@@ -1471,10 +1589,17 @@ def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path,
     assert " - fix: " in result.stderr
 
 
-def _webserver_keywords(source: str) -> dict[str, object]:
-    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ServingLimits"]
-    assert len(calls) == 1, len(calls)
-    return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
+@pytest.fixture(scope="module")
+def triggers_src(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "Callable[[tuple[str, ...]], Path]":
+    # One copy per driver set for the module, so the device-parametrized tests share its writes and its parses.
+    copies: dict[tuple[str, ...], Path] = {}
+
+    def copy_for(drivers: "tuple[str, ...]") -> Path:
+        if drivers not in copies:
+            copies[drivers] = _src_with_read_triggers(repo_root / "src", tmp_path_factory.mktemp("triggers"), drivers)
+        return copies[drivers]
+
+    return copy_for
 
 
 @pytest.mark.parametrize(
@@ -1490,7 +1615,7 @@ def test_the_stated_connection_ceiling_reaches_the_webserver_and_an_absent_one_i
     # worth anything if the same values are the ones the device is then built with.
     doc = base_doc()
     for key in ("max_connections", "backlog"):
-        doc["device"].pop(key, None)
-    doc["device"].update(stated)
+        table_at(doc, "device").pop(key, None)
+    table_at(doc, "device").update(stated)
     result = generate_device(write_doc(tmp_path, "ceiling", doc), src_dir, ext_dir)
     assert _webserver_keywords(result.module_source) == expected

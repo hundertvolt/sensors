@@ -1,6 +1,8 @@
+// Tests js/definitions.js: validateDefinitions()'s accepts and refusals of the document's shape, isRecord(),
+// resolveFieldValue()'s flat keys and nested paths, loadDefinitions(), and the generated loader's TOML stamp.
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run: no node:fs).
-import { GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { GENERATED_DEFINITIONS, staleAgainst } from "./_generated_definitions.js";
 import { readIntConst } from "./_source_constants.js";
 import definitionsSource from "../js/definitions.js?raw";
 import pollManagerSource from "../js/poll-manager.js?raw";
@@ -9,8 +11,6 @@ import { pollManager } from "../js/poll-manager.js";
 
 const SUPPORTED_SCHEMA_MAJOR = readIntConst(definitionsSource, "SUPPORTED_SCHEMA_MAJOR");
 const DEFAULT_TIMEOUT_MS = readIntConst(pollManagerSource, "DEFAULT_TIMEOUT_MS");
-// setTimeout's own ceiling: a larger delay fires at once.
-const TIMEOUT_CEILING_MS = 2 ** 31 - 1;
 
 const MINIMAL_VALID = {
     schemaVersion: "1.0.0",
@@ -97,27 +97,6 @@ describe("validateDefinitions", () => {
     it("rejects a missing or non-positive defaultPollIntervalMs", () => {
         for (const defaultPollIntervalMs of [undefined, 0, -1, "3000"]) {
             expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs }).some((p) => p.includes("defaultPollIntervalMs"))).toBe(true);
-        }
-    });
-
-    it("holds both poll intervals to setTimeout's ceiling", () => {
-        const sectionWith = (/** @type {number} */ pollIntervalMs) => ({ ...MINIMAL_VALID, sections: [{ ...MINIMAL_VALID.sections[0], pollIntervalMs }] });
-        expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs: TIMEOUT_CEILING_MS })).toEqual([]);
-        expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS))).toEqual([]);
-        expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs: TIMEOUT_CEILING_MS + 1 })).toEqual([
-            "defaultPollIntervalMs must be a positive number of at most 2147483647 ms",
-        ]);
-        expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS + 1))).toEqual(["sections[0].pollIntervalMs must be a positive number of at most 2147483647 ms"]);
-    });
-
-    it("takes the site's default decimals as an integer from 0 to 100 only", () => {
-        for (const defaultDecimals of [0, 2, 100]) {
-            expect(validateDefinitions({ ...MINIMAL_VALID, defaultDecimals })).toEqual([]);
-        }
-        for (const defaultDecimals of [-1, 1.5, 101, "2", null]) {
-            expect(validateDefinitions({ ...MINIMAL_VALID, defaultDecimals }), JSON.stringify(defaultDecimals)).toEqual([
-                "defaultDecimals must be an integer from 0 to 100 when present",
-            ]);
         }
     });
 
@@ -218,22 +197,6 @@ describe("validateDefinitions", () => {
     it("rejects a path on a writable field, where a PUT body is always flat", () => {
         const problems = validateDefinitions(withField({ key: "R", label: "Red", kind: "number", path: ["RGB", "R"] }));
         expect(problems.some((p) => p.includes(".path is only valid on a readonly field"))).toBe(true);
-    });
-
-    it("asks for confirmation on an enum or a toggle only, and only with a boolean", () => {
-        const options = [{ value: "reboot", label: "Reboot" }];
-        expect(validateDefinitions(withField({ key: "C", label: "Command", kind: "enum", options, confirm: true }))).toEqual([]);
-        expect(validateDefinitions(withField({ key: "R", label: "Reset", kind: "toggle", confirm: false }))).toEqual([]);
-        for (const field of [
-            { key: "C", label: "Command", kind: "enum", options, confirm: "yes" },
-            { key: "N", label: "Number", kind: "number", confirm: true },
-            { key: "S", label: "Text", kind: "string", confirm: true },
-            { key: "R", label: "Reading", kind: "readonly", confirm: true },
-        ]) {
-            expect(validateDefinitions(withField(field)), JSON.stringify(field)).toEqual([
-                "sections[0].groups[0].fields[0].confirm must be a boolean on an enum or toggle field when present",
-            ]);
-        }
     });
 
     it("rejects a malformed decimals hint", () => {
@@ -373,7 +336,24 @@ describe("loadDefinitions", () => {
         const assertion = expect(pending).rejects.toThrow(/timed out/i);
         await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
         await assertion;
+    });
+});
 
-        vi.useRealTimers();
+describe("the generated-definitions loader's TOML stamp", () => {
+    const TOML = 'name = "fixture-device"\n';
+    // sha256 of TOML's UTF-8 bytes, as sha256sum prints it.
+    const TOML_SHA256 = "7dd835ef5e55c7c98444b97605ce72fb468a0a1d9ac2d9734b1d256b50b8b1cf";
+
+    it("passes a stamp naming exactly the TOMLs, each with its own hash", async () => {
+        expect(await staleAgainst(new Map([["fixture-device", TOML]]), { tomls: { "fixture-device": TOML_SHA256 } })).toEqual([]);
+    });
+
+    it.each([
+        ["a TOML changed since generation", { tomls: { "fixture-device": "0".repeat(64) } }, ["fixture-device: changed since the tree was generated"]],
+        ["a TOML the stamp does not name", { tomls: {} }, ["fixture-device: no stamp"]],
+        ["a stamped device with no TOML", { tomls: { "fixture-device": TOML_SHA256, "gone-device": TOML_SHA256 } }, ["gone-device: stamped, but no such TOML"]],
+        ["no stamp at all", undefined, ["no TOML stamp"]],
+    ])("reports %s", async (_case, stamp, problems) => {
+        expect(await staleAgainst(new Map([["fixture-device", TOML]]), stamp)).toEqual(problems);
     });
 });

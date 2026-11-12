@@ -1,6 +1,6 @@
-"""Bench tier for the MQTT client (SPECIFICATION.md Part A.11): the real client on the bench board against a mosquitto
+"""Bench tier for the MQTT client (SPECIFICATION.md Part A.12): the real client on the bench board against a mosquitto
 on this host's own LAN address, through broker faults, path loss, a client-id takeover, inbound floods, an AP outage, a
-reboot, the status and session settings at the firmware's gc threshold, then the faults at MicroPython's default (I.4(e))."""
+reboot, the status and session settings at the firmware's gc threshold, then the faults at the gc default (I.4(e))."""
 
 import contextlib
 import itertools
@@ -8,22 +8,19 @@ import json
 import math
 import signal
 import socket
-import sys
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+import _load
 import http_client
 import pytest
 import serial
-import tomllib
-from error_log_helpers import assert_no_task_ended, code, get_errcount, reset_all_error_logs
-from harness import MEMORY_ERROR_MARKERS, REPO_ROOT, restore_board_to_serving, wait_for_script_server, wait_until
+from error_log_helpers import assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, device_toml, kick_then_reset, parse_facts, recover_by_reset, restore_board_to_serving, wait_for_script_server, wait_until
 from mqtt_probe import Mosquitto, Probe, session_present, wait_for
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # the repo root, for buildgen
 
 from buildgen.definitions import definitions_for_toml
 
@@ -32,71 +29,47 @@ if TYPE_CHECKING:
 
     from bench_control import BenchBridge
     from harness import Board
+    from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_mqtt_broker_faults",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_14_mqtt_broker_faults",)
 
-DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 _BROKER_PORT = 18883  # fixed, so every iptables rule names it; a distribution mosquitto keeps 1883 to itself
 _AUTH_PORT = 18884  # the password broker's, beside the anonymous one
 _AUTH_DEVICE = ("bench-device", "bench-device-pass")  # a throwaway broker's accounts, not real secrets
 _AUTH_OBSERVER = ("bench-observer", "bench-observer-pass")
 _STALL_OFFSETS_S = (1.0, 5.0, 9.0, 13.0)  # after a connect, across two of the 10 s publish rounds
-_FAULT_COMMENT = "sensors-bench-mqtt-fault"
 _OBSERVER_ID = "bench-observer"
 _SLOT_PAYLOAD_MAX = 384  # mqtt.out_payload_max: a larger measurement object would be dropped, counted
-_MODULE_PLACEHOLDER = "import sensortask_ as sensortask_bench"
 
-# @tunable l4.mqtt_pub_interval_s = 10
-_PUB_INTERVAL_S = 10  # MQTTPubInterval's minimum, so the measurement checks wait least
-# @tunable l4.mqtt_connect_wait_s = 90.0
+_PUB_INTERVAL_S = int(str(_load.field_schema("asy_mqtt_client.py", "MQTTPubInterval")[2]))  # its minimum: the checks wait least
 _CONNECT_WAIT_S = 90.0  # a connect once the fault is gone, the bench's WiFi latency included
 # @tunable mqtt.backoff_max_ms = 60.0
 _BACKOFF_CAP_S = 60.0  # the reconnect wait the earlier faults' short sessions may have grown to
-# @tunable l4.mqtt_step_wait_s = 20.0
 _STEP_WAIT_S = 20.0  # one message's round trip through the broker and the device's status
-# @tunable l4.mqtt_outage_s = 5.0
 _OUTAGE_S = 5.0  # the killed broker's downtime: the client's first attempts fail inside it
-# @tunable l4.mqtt_detect_bound_s = 35.0
 _DETECT_BOUND_S = 35.0  # the next publish round's ping + mqtt.response_timeout_ms (20 s), plus ticks and WiFi latency
-# @tunable l4.mqtt_detect_wait_s = 60.0
 _DETECT_WAIT_S = 60.0
-# @tunable l4.mqtt_takeover_s = 20.0
 _TAKEOVER_S = 20.0
-# @tunable l4.mqtt_takeover_max_connects = 5
 _TAKEOVER_MAX_CONNECTS = 5  # the doubling backoff allows about four retakes in the window; the minimum would allow ten
-# @tunable l4.mqtt_flood_messages = 3000
 _FLOOD_MESSAGES = 3000  # about 200 KB through the device's 1 KB receive buffer
-# @tunable l4.mqtt_qos1_burst = 500
 _QOS1_BURST = 500  # below mosquitto's default 1000-message queue, so the broker delivers every one
-# @tunable l4.mqtt_oversize_bytes = 4096
 _OVERSIZE_BYTES = 4096  # four times mqtt.rx_buf_bytes
-# @tunable l4.mqtt_rest_budget_s = 15.0
 _REST_BUDGET_S = 15.0
-# @tunable l4.mqtt_ap_outage_s = 30.0
 _AP_OUTAGE_S = 30.0
-# @tunable l4.mqtt_ap_reconnect_timeout_s = 240.0
 _AP_RECONNECT_TIMEOUT_S = 240.0  # past the WiFi service's 60 s retry after a loss, twice
-# @tunable l4.mqtt_ap_max_failed_attempts = 6
 _AP_MAX_FAILED_ATTEMPTS = 6  # attempts only before the WiFi service reports the loss, then the backoff's 2+4+...+64 s
-# @tunable l4.mqtt_reboot_wait_s = 180.0
 _REBOOT_WAIT_S = 180.0
-# @tunable l4.mqtt_default_gc_script_timeout_s = 600.0
 _SCRIPT_TIMEOUT_S = 600.0  # the device script's 420 s window, its boot and mpremote's own overhead
-# @tunable l4.mqtt_default_gc_driver_join_s = 60.0
 _DRIVER_JOIN_S = 60.0
-# @tunable l4.mqtt_poll_s = 1.0
 _POLL_S = 1.0
-# @tunable l4.mqtt_refused_window_s = 40.0
 _REFUSED_WINDOW_S = 40.0  # failed attempts are counted over it: about five at the 2 s doubling backoff
-# @tunable l4.mqtt_refused_max_attempts = 6
 _REFUSED_MAX_ATTEMPTS = 6  # one over the doubling backoff's count in the window; the minimum alone would allow about 20
-# @tunable l4.mqtt_stall_phase_tolerance_s = 1.5
 _STALL_PHASE_TOLERANCE_S = 1.5  # the keeper's 100 ms tick, the console's USB latency and this host's scheduling
 _STATUS_TOPIC = "bench/availability"  # a status topic outside the device's own tree (owner, 2026-10-13: 'Any full topic')
 
 _E_CONNECT = code("E", "MQTT_CONNECT")
-# What this module's faults may log: a failed attempt, a lost connection, a missed PINGRESP, a stalled drain and the
-# short-session warning. The history spans tests, so one set: a protocol, refusal or allocation code fails the module.
+# What this module's broker faults may log: a failed attempt, a lost connection, a missed PINGRESP, a stalled drain and
+# the short-session warning; each fault test names them in provokes_log, a protocol, refusal or allocation code fails.
 _EXPECTED_MQTT_CODES = {_E_CONNECT, code("E", "MQTT_LOST"), code("E", "MQTT_NO_PINGRESP"), code("E", "MQTT_STALLED"), code("W", "MQTT_SHORT_SESSIONS")}
 
 
@@ -110,16 +83,9 @@ class MqttBench:
     client_id: str
 
 
-def _mqtt_device() -> str:
-    # The one device whose TOML carries the client; the bench board runs its image. Read as data, never named here.
-    found = [p.stem for p in sorted((REPO_ROOT / "devices").glob("*.toml")) if any(i.get("driver") == "mqtt" for i in tomllib.loads(p.read_text()).get("instance", []))]
-    assert len(found) == 1, f"expected exactly one device TOML carrying the MQTT client, found {found}"
-    return found[0]
-
-
 def _sensor_names(device: str) -> list[str]:
     # The modules the client publishes: every sensor, the same set as the website's measurements cards.
-    definitions = json.loads(json.dumps(definitions_for_toml(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")))
+    definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), REPO_ROOT / "src")))
     section = next(s for s in definitions["sections"] if s["key"] == "measurements")
     return [str(g["key"]) for g in section["groups"]]
 
@@ -131,11 +97,8 @@ def _host_ip_toward(dut_ip: str) -> str:
         return str(s.getsockname()[0])
 
 
-def _networking(dut_ip: str) -> dict[str, Any]:
-    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_REST_BUDGET_S)
-    assert res.status_code == 200, f"GET /status returned {res.status_code}: {res.body!r}"
-    networking: dict[str, Any] = res.json().get("networking", {})
-    return networking
+def _networking(dut_ip: str) -> "JSONObject":
+    return _load.as_object(_load.get_object(dut_ip, "/status", _REST_BUDGET_S).get("networking"), "GET /status networking")
 
 
 def _count(dut_ip: str, key: str) -> int:
@@ -157,16 +120,15 @@ def _wait_count_above(dut_ip: str, key: str, floor: int, timeout_s: float, what:
 
 
 def _strict_json(payload: bytes) -> object:
-    # json.loads() accepts NaN and Infinity, which the device writes as null (Part A.11).
+    # json.loads() accepts NaN and Infinity, which the device writes as null (Part A.12).
     def refuse(token: str) -> None:
         raise ValueError(f"non-finite JSON token {token}")
 
     return json.loads(payload, parse_constant=refuse)
 
 
-def _mqtt_history(dut_ip: str) -> list[dict[str, Any]]:
-    entry = get_errcount(dut_ip).get("MQTT", {})
-    return [h for h in entry.get("history", []) if h.get("type") in ("E", "W")]
+def _mqtt_history(dut_ip: str) -> "list[JSONObject]":
+    return [h for h in errcount_entry(get_errcount(dut_ip), "MQTT")["history"] if h.get("type") in ("E", "W")]
 
 
 def _assert_mqtt_logged_only(dut_ip: str, context: str) -> None:
@@ -178,19 +140,18 @@ def _enable_mqtt(dut_ip: str, host_ip: str) -> None:
     # This module's shared prerequisite write (config_MQTT.cfg): every test below needs a client pointed at this
     # host's broker. Unchanged values write nothing, so a rerun on an enabled board spends no flash.
     res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"MQTTEnable": True, "MQTTHost": host_ip, "MQTTPort": _BROKER_PORT, "MQTTPubInterval": _PUB_INTERVAL_S}, timeout_s=_REST_BUDGET_S)
-    result = res.json().get("result", {}) if res.status_code == 200 else {}
-    assert result and all(v in ("Valid", "Unchanged") for v in result.values()), f"enabling the MQTT client was refused: {res.status_code} {res.body!r}"
+    _assert_taken(res, "enabling the MQTT client")
 
 
 def _disable_mqtt(dut_ip: str) -> None:
     # Its undo, so the bench tests after this module see the old baseline: the client says offline and idles.
     res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"MQTTEnable": False}, timeout_s=_REST_BUDGET_S)
-    assert res.status_code == 200 and res.json().get("result", {}).get("MQTTEnable") in ("Valid", "Unchanged"), f"disabling the MQTT client was refused: {res.status_code} {res.body!r}"
+    _assert_taken(res, "disabling the MQTT client")
 
 
 def _assert_taken(res: "http_client.HttpResponse", what: str) -> None:
     # A PUT /networking answer every field of which was taken; the bodies stay literal at the call, for the wear guard.
-    result = res.json().get("result", {}) if res.status_code == 200 else {}
+    result = _load.as_object(res.json().get("result"), f"{what}: the PUT's result") if res.status_code == 200 else {}
     assert result and all(v in ("Valid", "Unchanged") for v in result.values()), f"{what} was refused: {res.status_code} {res.body!r}"
 
 
@@ -246,7 +207,7 @@ def _password_broker(m: MqttBench, workdir: Path, password: str) -> "Iterator[tu
     try:
         assert observer.wait_connected(), f"the bench's own account was refused (log: {broker.log_path})"
         res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPort": _AUTH_PORT, "MQTTUser": _AUTH_DEVICE[0], "MQTTPW": password}, timeout_s=_REST_BUDGET_S)
-        assert res.status_code == 200 and all(v in ("Valid", "Unchanged") for v in res.json().get("result", {}).values()), f"the credentials were refused at PUT: {res.body!r}"
+        _assert_taken(res, "the credentials")
         yield broker, observer
     finally:
         restore = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPort": _BROKER_PORT, "MQTTUser": "", "MQTTPW": ""}, timeout_s=_REST_BUDGET_S)
@@ -260,23 +221,13 @@ def _broker_attempts_from(broker: Mosquitto, dut_ip: str) -> int:
 
 
 def _mqtt_counter(dut_ip: str) -> int:
-    return int(get_errcount(dut_ip).get("MQTT", {}).get("counter", 0))
+    return errcount_entry(get_errcount(dut_ip), "MQTT")["counter"]
 
 
 class _Console:
-    # The board's console with this host's monotonic time per line, read passively while a test runs.
-    def __init__(self, device: str) -> None:
+    # The board's console lines, each with this host's monotonic time, as _console() reads them.
+    def __init__(self) -> None:
         self.lines: list[tuple[float, str]] = []
-        self._stop = threading.Event()
-        self._port = serial.Serial(device, 115200, timeout=0.2)
-        self._thread = threading.Thread(target=self._read, daemon=True)
-        self._thread.start()
-
-    def _read(self) -> None:
-        while not self._stop.is_set():
-            raw = self._port.readline()
-            if raw:
-                self.lines.append((time.monotonic(), raw.decode("utf-8", errors="replace").rstrip("\r\n")))
 
     def first_after(self, since: float, text: str, timeout_s: float) -> float | None:
         def hit() -> float | None:
@@ -285,34 +236,46 @@ class _Console:
         wait_for(lambda: hit() is not None, timeout_s, 0.05)
         return hit()
 
-    def close(self) -> None:
-        self._stop.set()
-        self._thread.join(timeout=2.0)
-        self._port.close()
+
+@contextlib.contextmanager
+def _console(device: str) -> "Iterator[_Console]":
+    # The board's console read passively while a test runs; its reader stopped and joined, its port closed, on every path.
+    console = _Console()
+    stop = threading.Event()
+    with serial.Serial(device, 115200, timeout=0.2) as port:
+
+        def read() -> None:
+            while not stop.is_set():
+                raw = port.readline()
+                if raw:
+                    console.lines.append((time.monotonic(), raw.decode("utf-8", errors="replace").rstrip("\r\n")))
+
+        reader = threading.Thread(target=read, name="mqtt-console")
+        try:
+            reader.start()
+            yield console
+        finally:
+            stop.set()
+            reader.join(timeout=2.0)
 
 
 @pytest.fixture(scope="module")
-def mqtt_bench(bench: "BenchBridge", dut_ip: str, tmp_path_factory: pytest.TempPathFactory) -> "Iterator[MqttBench]":
+def mqtt_bench(bench_device_name: str, dut_ip: str, tmp_path_factory: pytest.TempPathFactory) -> "Iterator[MqttBench]":
     if "MQTTState" not in _networking(dut_ip):
-        pytest.fail(f"this firmware carries no MQTT client - flash the {_mqtt_device()} image built from this branch (tests_hardware/README.md)")
-    # The FRAM logs are evidence a reset erases (CLAUDE.md), so whatever they hold is recorded first.
-    logged = {name: entry for name, entry in get_errcount(dut_ip).items() if entry.get("counter")}
-    print(f"[HW] FRAM-backed logs before this module's ResetErrors: {json.dumps(logged)}")
-    reset_all_error_logs(dut_ip)
+        pytest.fail(f"this firmware carries no MQTT client - the bench device {bench_device_name} wires none, or its image predates it (tests_hardware/README.md)")
+    reset_all_error_logs(dut_ip, "mqtt_bench")  # the verbatim /status goes to the run's evidence first
     host_ip = _host_ip_toward(dut_ip)
     broker = Mosquitto(tmp_path_factory.mktemp("mqtt"), _BROKER_PORT, bind=host_ip)
     observer: Probe | None = None
     try:
         broker.start()
         _enable_mqtt(dut_ip, host_ip)
-        cfg = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_REST_BUDGET_S).json()
+        cfg = _load.get_object(dut_ip, "/networking", _REST_BUDGET_S)
         client_id = str(cfg["MQTTClientId"])
         observer = Probe(host_ip, _BROKER_PORT, _OBSERVER_ID, (f"{cfg['MQTTPrefix']}/{client_id}/#",)).start()
         assert observer.wait_connected(), f"the bench's own observer could not connect to {host_ip}:{_BROKER_PORT} (log: {broker.log_path})"
         yield MqttBench(dut_ip, host_ip, broker, observer, f"{cfg['MQTTPrefix']}/{client_id}", client_id)
     finally:
-        for reset in (False, True):
-            bench.unblock_tcp_port_from(dut_ip, _BROKER_PORT, reset=reset, comment=_FAULT_COMMENT)
         try:
             _disable_mqtt(dut_ip)
         finally:
@@ -322,7 +285,7 @@ def mqtt_bench(bench: "BenchBridge", dut_ip: str, tmp_path_factory: pytest.TempP
             print(f"[HW] mosquitto log: {broker.log_path}")
 
 
-def test_the_client_connects_and_announces_itself_online(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+def test_the_client_connects_and_announces_itself_online(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     m = mqtt_bench
     took = _wait_connected(m.dut_ip, "after the enabling PUT")
     status = _networking(m.dut_ip)
@@ -332,18 +295,19 @@ def test_the_client_connects_and_announces_itself_online(mqtt_bench: MqttBench, 
     result_note(f"connected within {took:.1f}s of the first poll; MQTTState {status['MQTTState']!r}")
 
 
-def test_every_sensor_publishes_strict_json_on_its_own_topic(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+def test_every_sensor_publishes_strict_json_on_its_own_topic(mqtt_bench: MqttBench, bench_device_name: str, result_note: "_load.Note") -> None:
     m = mqtt_bench
-    names = _sensor_names(_mqtt_device())
+    names = _sensor_names(bench_device_name)
     arrived = wait_for(lambda: all(m.observer.received(f"{m.base}/measurements/{n}") for n in names), _PUB_INTERVAL_S * 3)
     assert arrived, f"not every sensor published within three intervals: {[n for n in names if not m.observer.received(f'{m.base}/measurements/{n}')]}"
-    meas = http_client.fetch(m.dut_ip, 80, "GET", "/measurements", timeout_s=_REST_BUDGET_S).json()
+    meas = _load.get_object(m.dut_ip, "/measurements", _REST_BUDGET_S)
     largest = 0
     for name in names:
         payload = m.observer.received(f"{m.base}/measurements/{name}")[-1].payload
         largest = max(largest, len(payload))
         parsed = _strict_json(payload)
-        assert isinstance(parsed, dict) and set(parsed) == set(meas[name]), f"{name}: {parsed!r} does not carry /measurements' keys {sorted(meas[name])}"
+        keys = set(_load.as_object(meas.get(name), f"GET /measurements {name}"))
+        assert isinstance(parsed, dict) and set(parsed) == keys, f"{name}: {parsed!r} does not carry /measurements' keys {sorted(keys)}"
     published = {msg.topic.rsplit("/", 1)[-1] for msg in m.observer.received() if msg.topic.startswith(f"{m.base}/measurements/")}
     assert published == set(names), f"published {sorted(published)}, expected the sensors {names}"
     assert _count(m.dut_ip, "MQTTTxDropped") == 0, f"messages were dropped: {_networking(m.dut_ip)!r}"
@@ -360,7 +324,15 @@ def test_an_inbound_command_is_received_and_shown(mqtt_bench: MqttBench) -> None
     assert _count(m.dut_ip, "MQTTRxMsgs") > before
 
 
-def test_a_killed_broker_is_reconnected_after_its_restart(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log(
+    "the killed broker's lost connection, the attempts while it is down and a shortened session",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_a_killed_broker_is_reconnected_after_its_restart(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the kill")
     connects = _count(m.dut_ip, "MQTTConnects")
@@ -373,7 +345,15 @@ def test_a_killed_broker_is_reconnected_after_its_restart(mqtt_bench: MqttBench,
     result_note(f"reconnected {took:.1f}s after the restart (outage {_OUTAGE_S:g}s)")
 
 
-def test_a_stalled_broker_is_detected_by_the_pingresp_deadline(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log(
+    "the stalled broker's missed PINGRESP or stalled drain, and the reconnect's attempts",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_a_stalled_broker_is_detected_by_the_pingresp_deadline(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the stall")
     pings = _count(m.dut_ip, "MQTTPingTimeouts")
@@ -387,39 +367,63 @@ def test_a_stalled_broker_is_detected_by_the_pingresp_deadline(mqtt_bench: MqttB
     result_note(f"stall detected in {took:.1f}s; reconnected {back:.1f}s after the resume")
 
 
-def test_a_silent_path_loss_is_detected_and_recovered(mqtt_bench: MqttBench, bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log(
+    "the dropped path's missed PINGRESP or stalled drain, and the attempts until it is restored",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_a_silent_path_loss_is_detected_and_recovered(mqtt_bench: MqttBench, bench: "BenchBridge", result_note: "_load.Note") -> None:
     # The case lwIP alone never sees: no FIN, no RST, both directions dropped on this host. WiFi and REST stay up.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the path loss")
     teardowns = _count(m.dut_ip, "MQTTTeardowns")
-    bench.block_tcp_port_from(m.dut_ip, _BROKER_PORT, comment=_FAULT_COMMENT)
+    bench.block_tcp_port_from(m.dut_ip, _BROKER_PORT)
     try:
         took = _wait_count_above(m.dut_ip, "MQTTTeardowns", teardowns, _DETECT_WAIT_S, "the client ending a connection whose path is gone")
         assert http_client.fetch(m.dut_ip, 80, "GET", "/status", timeout_s=_REST_BUDGET_S).status_code == 200
     finally:
-        bench.unblock_tcp_port_from(m.dut_ip, _BROKER_PORT, comment=_FAULT_COMMENT)
+        bench.unblock_tcp_port_from(m.dut_ip, _BROKER_PORT)
     assert took <= _DETECT_BOUND_S, f"a silent path loss took {took:.1f}s to detect, past {_DETECT_BOUND_S:g}s"
     reason = _networking(m.dut_ip).get("MQTTLastReason")
     back = _wait_connected(m.dut_ip, "once the path was restored")
     result_note(f"path loss detected in {took:.1f}s ({reason!r}); reconnected {back:.1f}s after the restore")
 
 
-def test_a_reset_path_ends_the_connection_and_attempts_stay_bounded(mqtt_bench: MqttBench, bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log(
+    "the reset path's lost connection and its refused attempts",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_a_reset_path_ends_the_connection_and_attempts_stay_bounded(mqtt_bench: MqttBench, bench: "BenchBridge", result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the reset path")
     connects, teardowns = _count(m.dut_ip, "MQTTConnects"), _count(m.dut_ip, "MQTTTeardowns")
-    bench.block_tcp_port_from(m.dut_ip, _BROKER_PORT, reset=True, comment=_FAULT_COMMENT)
+    bench.block_tcp_port_from(m.dut_ip, _BROKER_PORT, reset=True)
     try:
         took = _wait_count_above(m.dut_ip, "MQTTTeardowns", teardowns, _DETECT_WAIT_S, "the client ending a connection answered with resets")
         time.sleep(_TAKEOVER_S)  # an absence: refused attempts must not turn into connections
         assert _count(m.dut_ip, "MQTTConnects") == connects, "a connection succeeded through a path answering every segment with a reset"
     finally:
-        bench.unblock_tcp_port_from(m.dut_ip, _BROKER_PORT, reset=True, comment=_FAULT_COMMENT)
+        bench.unblock_tcp_port_from(m.dut_ip, _BROKER_PORT, reset=True)
     back = _wait_connected(m.dut_ip, "once the resets stopped")
     result_note(f"reset path ended the connection in {took:.1f}s; reconnected {back:.1f}s after the restore")
 
 
-def test_a_duplicate_client_id_is_bounded_by_the_backoff(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log(
+    "each takeover by the duplicate ends a short session",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_a_duplicate_client_id_is_bounded_by_the_backoff(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the takeover")
     connects, teardowns = _count(m.dut_ip, "MQTTConnects"), _count(m.dut_ip, "MQTTTeardowns")
@@ -436,7 +440,7 @@ def test_a_duplicate_client_id_is_bounded_by_the_backoff(mqtt_bench: MqttBench, 
     result_note(f"{retakes} retakes in {_TAKEOVER_S:g}s against {thief.connects} by the duplicate; reconnected {back:.1f}s after it left")
 
 
-def test_an_inbound_flood_leaves_rest_serving_and_the_session_up(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+def test_an_inbound_flood_leaves_rest_serving_and_the_session_up(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     # A QoS 1 marker closes the flood: the broker may shed QoS 0 for a slow reader, never the marker, so the
     # marker arriving proves the device read through everything the broker passed on, framing intact.
     m = mqtt_bench
@@ -456,7 +460,7 @@ def test_an_inbound_flood_leaves_rest_serving_and_the_session_up(mqtt_bench: Mqt
     result_note(f"{taken} of {_FLOOD_MESSAGES + 1} messages taken; GET /status under the flood: max {max(latencies):.2f}s, median {sorted(latencies)[len(latencies) // 2]:.2f}s")
 
 
-def test_an_inbound_qos1_burst_is_acknowledged_in_full(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+def test_an_inbound_qos1_burst_is_acknowledged_in_full(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the QoS 1 burst")
     received, teardowns = _count(m.dut_ip, "MQTTRxMsgs"), _count(m.dut_ip, "MQTTTeardowns")
@@ -482,8 +486,8 @@ def test_an_oversized_inbound_message_is_discarded_and_framing_kept(mqtt_bench: 
 
 
 @pytest.mark.persistence_write("networking/mqtt")
-def test_the_broker_is_found_by_the_bench_hosts_local_name(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
-    # The DUT asks for this host's .local name with a one-shot mDNS query, answered by this host's Avahi (Part A.11).
+def test_the_broker_is_found_by_the_bench_hosts_local_name(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
+    # The DUT asks for this host's .local name with a one-shot mDNS query, answered by this host's Avahi (Part A.12).
     # The test owns both writes: the name, then this host's IP back.
     m = mqtt_bench
     name = f"{socket.gethostname()}.local"
@@ -491,7 +495,7 @@ def test_the_broker_is_found_by_the_bench_hosts_local_name(mqtt_bench: MqttBench
     connects = _count(m.dut_ip, "MQTTConnects")
     try:
         res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTHost": name}, timeout_s=_REST_BUDGET_S)
-        assert res.status_code == 200 and res.json().get("result", {}).get("MQTTHost") == "Valid", f"{name} was refused: {res.body!r}"
+        assert res.status_code == 200 and _load.as_object(res.json().get("result"), "PUT /networking result").get("MQTTHost") == "Valid", f"{name} was refused: {res.body!r}"
         took = _wait_count_above(m.dut_ip, "MQTTConnects", connects, _CONNECT_WAIT_S, f"a connection through {name} (is avahi-daemon running here and publishing that name?)")
         broker = _networking(m.dut_ip).get("MQTTBroker")
         assert broker == m.host_ip, f"{name} resolved to {broker!r}, not this host's {m.host_ip}"
@@ -507,13 +511,13 @@ def test_no_task_ended_and_only_expected_codes_were_logged(mqtt_bench: MqttBench
     # server logged nothing, and MQTT logged only what its faults explain.
     m = mqtt_bench
     assert_no_task_ended(m.dut_ip, "MQTT broker faults")
-    web = get_errcount(m.dut_ip).get("WEBSERVER", {})
-    assert not web.get("counter"), f"the web server logged during the MQTT faults: {web!r}"
+    web = errcount_entry(get_errcount(m.dut_ip), "WEBSERVER")
+    assert not web["counter"], f"the web server logged during the MQTT faults: {web!r}"
     _assert_mqtt_logged_only(m.dut_ip, "MQTT broker faults")
 
 
 @pytest.mark.persistence_write("networking/mqtt")
-def test_a_password_broker_admits_the_stored_credentials(mqtt_bench: MqttBench, tmp_path: Path, result_note: "Callable[..., None]") -> None:
+def test_a_password_broker_admits_the_stored_credentials(mqtt_bench: MqttBench, tmp_path: Path, result_note: "_load.Note") -> None:
     # MQTTUser/MQTTPW reach the CONNECT; GET /networking never shows the password back.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before switching to the password broker")
@@ -534,7 +538,8 @@ def test_a_password_broker_admits_the_stored_credentials(mqtt_bench: MqttBench, 
 
 
 @pytest.mark.persistence_write("networking/mqtt")
-def test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff(mqtt_bench: MqttBench, tmp_path: Path, result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log("the wrong password's refused CONNACKs, which the test asserts as MQTT_REFUSED", ("MQTT", "E", "MQTT_REFUSED"))
+def test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff(mqtt_bench: MqttBench, tmp_path: Path, result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the wrong password")
     connects, logged = _count(m.dut_ip, "MQTTConnects"), _mqtt_counter(m.dut_ip)
@@ -552,20 +557,22 @@ def test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff(mqtt_benc
         fixed = _wait_count_above(m.dut_ip, "MQTTConnects", connects, _CONNECT_WAIT_S, "a connection once the password was corrected")
         window = time.monotonic() - started
     _wait_connected(m.dut_ip, "back on the anonymous broker")
-    result_note(f"{attempts} refused attempts in {_REFUSED_WINDOW_S:g}s, {_mqtt_counter(m.dut_ip) - logged} MQTT log entries, codes {sorted({int(h['num']) for h in _mqtt_history(m.dut_ip)})}; connected {fixed:.1f}s after the correction ({window:.0f}s in all)")
+    codes = sorted({num for h in _mqtt_history(m.dut_ip) if isinstance(num := h.get("num"), int)})
+    result_note(f"{attempts} refused attempts in {_REFUSED_WINDOW_S:g}s, {_mqtt_counter(m.dut_ip) - logged} MQTT log entries, codes {codes}; connected {fixed:.1f}s after the correction ({window:.0f}s in all)")
 
 
 @pytest.mark.persistence_write("networking/mqtt")
+@pytest.mark.provokes_log("the unresolvable name's attempts, which the test asserts as MQTT_DNS alone", ("MQTT", "E", "MQTT_DNS"))
 @pytest.mark.parametrize("name", ["no-such-broker.invalid", "no-such-broker.local"])
-def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_bench: MqttBench, name: str, result_note: "Callable[..., None]") -> None:
+def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_bench: MqttBench, name: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # .invalid never resolves (RFC 6761): the router answers NXDOMAIN; nobody answers the .local name's mDNS query.
     m = mqtt_bench
     _wait_connected(m.dut_ip, f"before switching to {name}")
     connects = _count(m.dut_ip, "MQTTConnects")
-    reset_all_error_logs(m.dut_ip)
+    reset_all_error_logs(m.dut_ip, request.node.name)
     try:
         res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTHost": name}, timeout_s=_REST_BUDGET_S)
-        assert res.status_code == 200 and res.json().get("result", {}).get("MQTTHost") == "Valid", f"{name} was refused at PUT: {res.body!r}"
+        assert res.status_code == 200 and _load.as_object(res.json().get("result"), "PUT /networking result").get("MQTTHost") == "Valid", f"{name} was refused at PUT: {res.body!r}"
         started = time.monotonic()
         wait_until(lambda: any(h.get("num") == code("E", "MQTT_DNS") for h in _mqtt_history(m.dut_ip)), timeout_s=_DETECT_WAIT_S, poll_interval_s=_POLL_S, description=f"MQTT_DNS logged for {name}")
         first = time.monotonic() - started
@@ -583,14 +590,21 @@ def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_b
     result_note(f"{name}: MQTT_DNS first logged {first:.1f}s after the PUT, {failures} entries in {_REFUSED_WINDOW_S:g}s; reconnected {back:.1f}s after the restore")
 
 
+@pytest.mark.provokes_log(
+    "each sweep kills and restarts the broker, then stalls it into a missed PINGRESP",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
 @pytest.mark.parametrize("offset_s", _STALL_OFFSETS_S)
-def test_stall_detection_follows_the_publish_rounds(mqtt_bench: MqttBench, board: "Board", offset_s: float, result_note: "Callable[..., None]") -> None:
+def test_stall_detection_follows_the_publish_rounds(mqtt_bench: MqttBench, board: "Board", offset_s: float, result_note: "_load.Note") -> None:
     # A round every 10 s from the connect, each confirmed by a PINGREQ whose PINGRESP is due 10 s later (the idle interval,
     # 180 s, never falls due): a stall `offset_s` after a connect is detected 10 s after the next round. The console times it.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the stall sweep's connect")
-    console = _Console(board.device)
-    try:
+    with _console(board.device) as console:
         killed = time.monotonic()
         m.broker.stop(signal.SIGKILL)
         time.sleep(_OUTAGE_S)  # an absence, as in the kill test
@@ -604,8 +618,6 @@ def test_stall_detection_follows_the_publish_rounds(mqtt_bench: MqttBench, board
             detected = console.first_after(stalled, "No PINGRESP", _DETECT_WAIT_S)
         finally:
             m.broker.send(signal.SIGCONT)
-    finally:
-        console.close()
     assert detected is not None, f"no PINGRESP deadline on the console within {_DETECT_WAIT_S:g}s of a stall {offset_s:g}s after the connect"
     took, expected = detected - stalled, math.ceil(offset_s / _PUB_INTERVAL_S) * _PUB_INTERVAL_S - offset_s + 10.0
     assert abs(took - expected) <= _STALL_PHASE_TOLERANCE_S, f"a stall {offset_s:g}s after the connect was detected in {took:.2f}s, expected {expected:.1f}s"
@@ -614,38 +626,48 @@ def test_stall_detection_follows_the_publish_rounds(mqtt_bench: MqttBench, board
     result_note(f"stall {offset_s:g}s after the connect: detected in {took:.2f}s (expected {expected:.1f}s); reconnected {back:.1f}s after the resume")
 
 
-def test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
-    # MQTT never drives WiFi (Part A.11): the client waits out the outage without logging per attempt, then reconnects.
+@pytest.mark.provokes_log(
+    "the outage's WLAN warnings and NTP attempts as the WiFi outage test has them, and the client's attempts and lost"
+    " connection, which the test bounds",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("NTP", "E", "NTP_DNS"),
+    ("NTP", "E", "NTP_NOT_SENT"),
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # MQTT never drives WiFi (Part A.12): the client waits out the outage without logging per attempt, then reconnects.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the AP outage")
-    reset_all_error_logs(m.dut_ip)
+    reset_all_error_logs(m.dut_ip, request.node.name)
     bench.ap_down()
     try:
         time.sleep(_AP_OUTAGE_S)  # an absence: the DUT is unreachable for its whole length
     finally:
         bench.ap_up()
         bench.kick_all_stations()  # stale AP-side entries stop the DUT reassociating (README)
-    try:
-        back = _wait_connected(m.dut_ip, "after the AP came back", timeout_s=_AP_RECONNECT_TIMEOUT_S)
-        note, recovery = f"reconnected {back:.1f}s after the AP came back", False
-    except TimeoutError:  # the CYW43 false-positive the WiFi tests document; a hard reset is a genuine pass (CLAUDE.md)
-        bench.kick_all_stations()
-        board.hard_reset()
-        back = _wait_connected(m.dut_ip, "after a recovery hard reset", timeout_s=_REBOOT_WAIT_S)
-        note, recovery = f"reconnected {back:.1f}s after a recovery hard reset", True
+    started = time.monotonic()
+    # The CYW43 false positive the WiFi tests document: one recovery reset, reported, is a genuine pass (CLAUDE.md).
+    recover_by_reset(board, bench, lambda: _networking(m.dut_ip).get("MQTTConnected") is True, first_wait_s=_AP_RECONNECT_TIMEOUT_S, retry_wait_s=_REBOOT_WAIT_S, skipped="the passive reconnect with the link", note=result_note, description="the MQTT client connected after the AP came back")
+    back = time.monotonic() - started
     attempts = sum(1 for h in _mqtt_history(m.dut_ip) if h.get("num") == _E_CONNECT)
     assert attempts <= _AP_MAX_FAILED_ATTEMPTS, f"{attempts} failed attempts logged across the outage: {_mqtt_history(m.dut_ip)!r}"
     assert_no_task_ended(m.dut_ip, "AP outage")  # on both paths: FRAM keeps SYSTEM across the hard reset
     _assert_mqtt_logged_only(m.dut_ip, "AP outage")
-    result_note(f"{note}; {attempts} failed attempt(s) logged", recovery=recovery)
+    result_note(f"connected {back:.1f}s after the AP came back; {attempts} failed attempt(s) logged")
 
 
-def test_a_reboot_reconnects_from_the_stored_settings(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+def test_a_reboot_reconnects_from_the_stored_settings(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "_load.Note") -> None:
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the reboot")
     seen = len(m.observer.received(f"{m.base}/status"))
-    bench.kick_all_stations()
-    board.hard_reset()
+    kick_then_reset(board, bench)
     back = _wait_connected(m.dut_ip, "after the reboot", timeout_s=_REBOOT_WAIT_S)
     fresh = wait_for(lambda: any(msg.payload == b"online" and not msg.retained for msg in m.observer.received(f"{m.base}/status")[seen:]), _STEP_WAIT_S)
     assert fresh, f"no fresh online after the reboot: {m.observer.received(f'{m.base}/status')[seen:]!r}"
@@ -653,41 +675,47 @@ def test_a_reboot_reconnects_from_the_stored_settings(mqtt_bench: MqttBench, boa
     result_note(f"connected {back:.1f}s after the reset; the broker {'published' if will else 'did not publish'} the will on the takeover")
 
 
-def test_the_broker_faults_run_clean_at_micropythons_default_gc(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", tmp_path: Path, result_note: "Callable[..., None]") -> None:
+@pytest.mark.provokes_log(
+    "the script's own boot of the graph meets the same broker faults as the tests above, on the production loggers",
+    ("MQTT", "E", "MQTT_CONNECT"),
+    ("MQTT", "E", "MQTT_LOST"),
+    ("MQTT", "E", "MQTT_NO_PINGRESP"),
+    ("MQTT", "E", "MQTT_STALLED"),
+    ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
+)
+def test_the_broker_faults_run_clean_at_micropythons_default_gc(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "_load.Note") -> None:
     # The firmware's own graph at gc.threshold(-1) while this host kills, stalls, floods and takes over the session:
-    # not one allocation failure (Part I.4(e)). The script is handed the bench device's module, never a name here.
+    # not one allocation failure (Part I.4(e)). The harness renders the bench device's module into the script.
     m = mqtt_bench
-    script = tmp_path / "mqtt_at_default_gc.py"
-    source = (DEVICE_SCRIPTS / "mqtt_at_default_gc.py").read_text()
-    assert source.count(_MODULE_PLACEHOLDER) == 1, "the device script's module placeholder moved"
-    script.write_text(source.replace(_MODULE_PLACEHOLDER, f"import sensortask_{_mqtt_device()} as sensortask_bench"))
     stop = threading.Event()
     steps: list[str] = []
-    driver = threading.Thread(target=_drive_faults, args=(m, stop, steps), daemon=True)
-    driver.start()
+    driver = threading.Thread(target=_drive_faults, args=(m, stop, steps), name="mqtt-fault-driver")
     try:
-        output = board.run_isolated(script, timeout_s=_SCRIPT_TIMEOUT_S)
+        driver.start()
+        output = board.run_isolated(DEVICE_SCRIPTS_DIR / "mqtt_at_default_gc.py", timeout_s=_SCRIPT_TIMEOUT_S)
     finally:
         stop.set()
-        driver.join(timeout=_DRIVER_JOIN_S)
+        alive = _load.join([driver], _DRIVER_JOIN_S)
         m.broker.send(signal.SIGCONT)
         restore_board_to_serving(board, bench, m.dut_ip)
-    assert not driver.is_alive(), "the fault driver outlived its test"
-    assert "GC_THRESHOLD=-1" in output, f"the script did not run at the reactive default: {output[-1500:]}"
-    assert "RESULT: PASS" in output, output[-2000:]
+    assert not alive, "the fault driver outlived its test"
+    facts = parse_facts(output)
+    assert facts.get("gc_threshold") == -1, f"the script did not run at the reactive default: {facts}"
     assert not any(marker in output for marker in MEMORY_ERROR_MARKERS), f"allocation failure at the reactive default (I.4(e)): {output[-2500:]}"
     assert "UNRETRIEVED TASK EXCEPTION" not in output, output[-2500:]
     assert steps and steps[-1] == "done", f"the fault timeline did not finish inside the script's window: {steps}"
     # At the reactive default free memory sinks until an allocation forces a collect, so the lowest sample is only how
     # near a collect it landed, never a margin: the note keeps every sample and counts the collects they straddle.
-    free = [int(line.split("free=")[1].split()[0]) for line in output.splitlines() if line.startswith("MEM_SAMPLE")]
+    samples = facts.get("mem_free")
+    assert isinstance(samples, list), f"the script reported no heap samples: {facts}"
+    free = [v for v in samples if isinstance(v, int)]
     rises = sum(1 for before, after in itertools.pairwise(free) if after > before)
     result_note(f"timeline {steps}; free heap at the reactive default over {len(free)} samples, {rises} collects between them: {free} B")
     _wait_connected(m.dut_ip, "after the board went back to its own firmware", timeout_s=_REBOOT_WAIT_S)
 
 
 @pytest.mark.persistence_write("networking/mqtt")
-def test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fires(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+def test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fires(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "_load.Note") -> None:
     # The test owns both writes, the settings and the defaults back. A reboot drops the board without a DISCONNECT, so
     # the broker publishes the configured will, at its keepalive deadline or at the clean session's takeover.
     m = mqtt_bench
@@ -701,8 +729,7 @@ def test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fi
         offline = [msg.payload for msg in m.observer.received(f"{m.base}/status")]
         assert offline[-1:] == [b"offline"], f"the old status topic was not set offline before the reconnect: {offline!r}"
         seen = len(watch.received(_STATUS_TOPIC))
-        bench.kick_all_stations()
-        board.hard_reset()
+        kick_then_reset(board, bench)
         back = _wait_connected(m.dut_ip, "after the reboot", timeout_s=_REBOOT_WAIT_S)
         will = wait_for(lambda: any(msg.payload == b"down" for msg in watch.received(_STATUS_TOPIC)[seen:]), _STEP_WAIT_S)
         assert will, f"the broker never published the configured will: {watch.received(_STATUS_TOPIC)[seen:]!r}"
@@ -715,7 +742,7 @@ def test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fi
 
 
 @pytest.mark.persistence_write("networking/mqtt")
-def test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+def test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "_load.Note") -> None:
     # The broker keeps the session across the reboot and holds the QoS 1 command for it (owner, 2026-10-13: 'Setting,
     # default off (Recommended)'); the test owns the switch and puts it back off.
     m = mqtt_bench
@@ -723,8 +750,7 @@ def test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted(m
         res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPersistent": True}, timeout_s=_REST_BUDGET_S)
         _assert_taken(res, "the persistent session")
         _wait_connected(m.dut_ip, "with a persistent session")
-        bench.kick_all_stations()
-        board.hard_reset()
+        kick_then_reset(board, bench)
         assert m.observer.publish(f"{m.base}/cmd/queued", b"while-away", qos=1), "the observer lost its broker"
         back = _wait_connected(m.dut_ip, "after the reboot", timeout_s=_REBOOT_WAIT_S)
         wait_until(lambda: _networking(m.dut_ip).get("MQTTLastRxTopic") == f"{m.base}/cmd/queued", timeout_s=_STEP_WAIT_S, poll_interval_s=_POLL_S, description="the command queued during the reboot delivered")
@@ -736,7 +762,7 @@ def test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted(m
 
 
 @pytest.mark.persistence_write("networking/mqtt")
-def test_a_changed_client_id_retires_the_old_persistent_session(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+def test_a_changed_client_id_retires_the_old_persistent_session(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     # The keeper ends the old identity's session with one clean connect before it connects as the new one (owner,
     # 2026-10-13: 'Retire it (Recommended)'); the test owns the writes and puts the client id and the switch back.
     m = mqtt_bench

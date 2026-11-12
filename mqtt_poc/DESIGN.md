@@ -24,7 +24,7 @@ session on the Pi4 with the owner's go-ahead given in that session (CLAUDE.md), 
 | Client | `src/asy_mqtt_client.py` → `MQTTClient(SensorReaderConfig)` | Config, the connection keeper, the per-connection reader, the outbound slots, inbound dispatch, the measurement publisher, status, logging. |
 | Wiring | `buildgen/*`, `devices/dev.toml` | An optional singleton `[[instance]] driver = "mqtt"`, on `dev` only (owner, 8.2). |
 | L1 | `tests/test_mqtt_codec.py`, `tests/test_asy_mqtt_client.py` | Codec against the specification's bytes; the client against an in-process scripted broker over real loopback sockets. |
-| L2 | `scripts/_digital_twin_ci_suite.py` Run 12 | The generated `dev` twin against a real mosquitto, both GC stages, host-side driver (E.9). |
+| L2 | `scripts/_digital_twin_ci_suite.py` Run 14 | The generated `dev` twin against a real mosquitto, both GC stages, host-side driver (E.9). |
 | L4 | `tests_hardware/bench/test_mqtt_broker_faults.py` + device script | The real board against a mosquitto on the bench Pi4, both GC stages, every fault the twin ran plus the ones only silicon has. |
 
 The prototype in `prototype/` stays as the evidence for `RESULTS.md` and is not promoted; the `src/`
@@ -95,7 +95,7 @@ run) and closing every finding in `RESULTS.md`.
 
 ### 3.2 Connect
 
-- Resolve with `resolve_ipv4(host, (dns_server,), timeout_ms, tries, pr=...)`; an IPv4 literal returns at
+- Resolve with `resolve_ipv4(host, (dns_server,), timeout_ms, logger=...)`; an IPv4 literal returns at
   once. Only the DHCP-provided server is asked (§13 item 12). Re-resolved on every attempt (the address may move).
 - CONNECT: protocol level 4, a keep-alive of `MQTTPingInterval` plus `mqtt.response_timeout_ms` in whole
   seconds, or 0 with no idle ping (§13 item 22), client id `MQTTClientId`, a clean session
@@ -313,11 +313,11 @@ keeps each packet small (RESEARCH.md §4 fact 6). Consumers read the retained `s
 
 ## 8. Errors and warnings
 
-New catalog owner `mqtt`, logger `MQTT`, bands E 115–124 and W 82–85:
+New catalog owner `mqtt`, logger `MQTT`, bands E 116–124 and W 82–85 (`MQTT_DNS` was E 115 until the
+audit merge gave 115 to `SYSTEM`'s `SUPERVISOR_RAISED`; agent, 2026-11-12, decided on the owner's behalf):
 
 | Code | Name | When |
 |---|---|---|
-| E 115 | `MQTT_DNS` | the broker name did not resolve |
 | E 116 | `MQTT_CONNECT` | the TCP connect or CONNACK failed or timed out |
 | E 117 | `MQTT_REFUSED` | CONNACK carried a refusal code |
 | E 118 | `MQTT_PROTOCOL` | a malformed or unexpected packet from the broker |
@@ -325,6 +325,7 @@ New catalog owner `mqtt`, logger `MQTT`, bands E 115–124 and W 82–85:
 | E 120 | `MQTT_LOST` | the broker closed the connection, or a socket error ended it |
 | E 121 | `MQTT_STALLED` | the broker stopped reading (backlog or drain timeout) |
 | E 122 | `MQTT_SUB_REFUSED` | the broker refused a subscription |
+| E 123 | `MQTT_DNS` | the broker name did not resolve |
 | W 82 | `MQTT_SHORT_SESSIONS` | sessions keep ending right after they start |
 | W 83 | `MQTT_RETIRE_FAILED` | a persistent session left behind could not be ended; the broker's expiry applies |
 
@@ -338,7 +339,7 @@ to one history slot. `MQTT` and `CFGMGR_MQTT` are FRAM-backed on `dev` (`fram_ta
 Generated constants in the `dev` module (the per-service timeouts rule, N.1), passed whole as
 `MqttConfig`: `mqtt.response_timeout_ms` 10,000,
 `mqtt.connect_timeout_ms` 10,000, `mqtt.backoff_min_ms` 2,000, `mqtt.backoff_max_ms` 60,000,
-`mqtt.stable_after_ms` 30,000, plus the shared `dns.timeout_ms`/`dns.tries` and the client id default.
+`mqtt.stable_after_ms` 30,000, plus the shared `dns.timeout_ms` and the client id default.
 In `src/`: `mqtt.tick_ms` 100, `mqtt.link_poll_ms` 1,000, `mqtt.idle_recheck_ms` 60,000,
 `mqtt.drain_timeout_ms` 5,000, `mqtt.max_out_backlog` 2,048, `mqtt.qos1_retry_ms` 10,000,
 `mqtt.qos1_max_tries` 3, `mqtt.short_session_warn` 3, `mqtt.pub_step_ms` 1,000, `mqtt.unconfirmed_max_bytes`
@@ -378,7 +379,7 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   both ways, the resend order and ids, every retire trigger and a failed retire), and an allocation-flat run. The publisher's cadence runs on a
   virtual clock whose loop stalls as the bench board's did (§13 item 13), and `online` is checked to go out
   with the SUBSCRIBE, not a keeper tick later.
-- **L2** (Run 12 of the twin CI suite, devices carrying `mqtt`): a real mosquitto on a free port; enable over
+- **L2** (Run 14 of the twin CI suite, devices carrying `mqtt`): a real mosquitto on a free port; enable over
   REST; `online` retained and every module's measurements arrive; inbound `cmd` messages counted; broker
   SIGKILL and restart, SIGSTOP stall, client-id takeover and an inbound flood, each recovered by the rules
   above; REST serving throughout; no task restarted; then (§15) a configured status topic and payloads, the
@@ -389,14 +390,14 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   speed, so the board's loop stalls (a `GET /status` held it about 0.8 s every 5 s) are L1's virtual clock
   above; its fake readings print more digits than the board's, so its payloads run larger than the real
   ones; and the 60 s backoff after a run of short sessions, which the board measured, is pinned by L1's
-  `test_only_a_stable_session_resets_the_backoff`, not by a Run 12 wait of a minute or more.
+  `test_only_a_stable_session_resets_the_backoff`, not by a Run 14 wait of a minute or more.
 - **L4** (bench, Pi4, `tests_hardware/bench/test_mqtt_broker_faults.py`): §11.1.
 
 ### 11.1 Bench runbook (a session on the Pi4, owner's go-ahead in that session)
 
 `mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
 before the flash, the one flash, the scoped run
-(`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`),
+(`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`),
 what each of its 3 flash and 78 bench tests covers, where the results go and which Part N rows they settle,
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
@@ -408,7 +409,7 @@ chunk layout and the `env --tier flash` rerun; every SCD30 write waits for the f
 SPECIFICATION.md: C.7.1 band row; C.9 task-table row (the reader); A.7 construction/FRAM chunk order for
 `dev`; A.8 `/networking` and `/status` fields; F.2 (the client connects to IPv4 literals only, after
 `resolve_ipv4()`); H.7 (the `dev` connection budget with MQTT); I.6 body figure; Part N rows; a new Part M
-section for the MQTT client's settled rules (this file's §2–§8). CLAUDE.md's FRAM-logger list gains
+section for the MQTT client's settled rules (this file's §2–§8). A.7's per-device FRAM-backed set gains
 `MQTT`/`CFGMGR_MQTT` (dev only). `DEVICE_REFERENCE.md` gains the user-facing MQTT settings.
 
 ## 13. Decided on the owner's behalf during design (agent, 2026-10-08)

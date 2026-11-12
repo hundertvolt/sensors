@@ -1,0 +1,3 @@
+PASS test_fram_chunk_layout_is_contiguous_deterministic_and_in_owner_order
+PASS test_fram_chunks_are_all_successfully_allocated_not_out_of_memory
+2/2 passed, 0 failed, 0 skipped

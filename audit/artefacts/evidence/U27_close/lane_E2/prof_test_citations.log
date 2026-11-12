@@ -1,0 +1,8 @@
+...............                                                          [100%]
+============================= slowest 10 durations =============================
+11.74s setup    tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+0.13s call     tests_scripts/test_citations.py::test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free
+0.02s call     tests_scripts/test_citations.py::test_a_listing_without_specification_md_raises
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+15 passed in 12.35s

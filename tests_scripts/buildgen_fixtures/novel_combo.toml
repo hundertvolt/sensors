@@ -10,8 +10,8 @@
 # sources both values from the same one sensor), BMP3xx at the alternate hardwired-address-select
 # value (0x76, every real device uses 0x77), NotificationService wired to only one of the three
 # warn_* signals (every real device wires all three or none), and a uart_link initiator/responder
-# pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond
-# dev.toml's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule),
+# pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond the
+# uart_link device's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule),
 # and the MQTT client publishing two SCD30s plus SGP40/BMP3xx, with no FRAM wiring of its own.
 
 [device]
@@ -44,10 +44,10 @@ sck_pin = 18
 mosi_pin = 19
 miso_pin = 4
 
-# uart0 = GP16/17, distinct from dev.toml's own GP0/1 - proves uart0 generalizes beyond the one
+# uart0 = GP16/17, distinct from the uart_link device's own GP0/1 - proves uart0 generalizes beyond the one
 # pair the real device happens to use. uart1 has only two legal pairs at all (GP4/5, GP8/9 -
 # buildgen.pico_gpio.UART_ROLE), and GP4 is already spi0's own miso_pin here, so GP8/9 is this
-# fixture's only option - same pair dev.toml uses for uart1, coincidentally, not because it's the
+# fixture's only option - same pair the uart_link device uses for uart1, coincidentally, not because it's the
 # only one that would ever work in general.
 [bus.uart0]
 tx_pin = 16
@@ -107,8 +107,8 @@ address = 0x76
 [instance.wiring]
 fram_target = "fram"
 
-# ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_s combo no real device
-# uses, and deliberately no [instance.wiring] - dev.toml's own instance always wires fram_target,
+# ISL29125 on i2c0 (the one real ISL29125 device wires it on i2c1) with an irq_pin/trigger_s combo no real device
+# uses, and no [instance.wiring] - that device's own instance always wires fram_target,
 # so this fixture is what exercises the "no fram_target" branch of _build_args_isl29125.
 [[instance]]
 driver = "isl29125"
@@ -126,9 +126,6 @@ max_size = 0x40000
 [[instance]]
 driver = "neopixel"
 pin = 14
-
-[instance.wiring]
-fram_target = "fram"
 
 [[instance]]
 driver = "notification"

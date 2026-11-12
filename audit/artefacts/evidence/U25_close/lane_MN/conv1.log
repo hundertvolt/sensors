@@ -1,0 +1,59 @@
+.......F................................................................ [ 11%]
+........................................................................ [ 22%]
+........................................................................ [ 33%]
+........................................................................ [ 44%]
+........................................................................ [ 55%]
+........................................................................ [ 66%]
+........................................................................ [ 78%]
+..F.................F................................................... [ 89%]
+......................................................................   [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{t}" for p, t in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           digital_twin/machine.py	Step 5
+E           digital_twin/machine.py	Step 5
+E       assert not [('digital_twin/machine.py', 'Step 5'), ('digital_twin/machine.py', 'Step 5')]
+
+tests_scripts/test_citations.py:256: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests/test_digital_twin_http_client.py:30: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:32: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:88: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:90: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:92: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['tests/test_digital_twin_http_client.py:30: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part...est_digital_twin_machine.py:92: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('digital_twin/machine.py', '_build_i2c_chip', '_bmp3xx_chip')
+E           ('digital_twin/machine.py', '_build_i2c_chip', '_isl29125_chip')
+E           ('digital_twin/machine.py', '_build_i2c_chip', '_scd30_chip')
+E           ('digital_twin/machine.py', '_build_i2c_chip', '_sgp40_chip')
+E           ('digital_twin/machine.py', '_wire_spi_device', '_fram_chip')
+E       assert not [('digital_twin/machine.py', '_build_i2c_chip', '_bmp3xx_chip'), ('digital_twin/machine.py', '_build_i2c_chip', '_isl2...tal_twin/machine.py', '_build_i2c_chip', '_sgp40_chip'), ('digital_twin/machine.py', '_wire_spi_device', '_fram_chip')]
+
+tests_scripts/test_import_placement.py:230: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+3 failed, 643 passed in 76.14s (0:01:16)

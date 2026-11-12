@@ -1,0 +1,14 @@
+test_asy_uart_comm@-1	61.54	0	0	192/192 passed, 0 failed, 0 skipped
+test_asy_uart_comm@32768	62.41	0	0	192/192 passed, 0 failed, 0 skipped
+test_asy_uart_driver@-1	5.94	0	0	160/160 passed, 0 failed, 0 skipped
+test_asy_uart_driver@32768	9.80	0	0	160/160 passed, 0 failed, 0 skipped
+test_uart_comm_hazard@-1	103.49	0	0	121/121 passed, 0 failed, 0 skipped
+test_uart_comm_hazard@32768	107.93	0	0	121/121 passed, 0 failed, 0 skipped
+test_uart_comm_cancel_sweep@-1	41.75	0	0	10/10 passed, 0 failed, 0 skipped
+test_uart_comm_cancel_sweep@32768	40.95	0	0	10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_comm_hazard@-1	1.77	0	0	10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_comm_hazard@32768	1.79	0	0	10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_field_sweep@-1	61.04	0	0	10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_field_sweep@32768	61.64	0	0	10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_link@-1	55.23	0	0	20/20 passed, 0 failed, 0 skipped
+test_digital_twin_uart_link@32768	59.32	0	0	20/20 passed, 0 failed, 0 skipped

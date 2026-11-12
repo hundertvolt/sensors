@@ -1,3 +1,5 @@
+// Tests js/templates.js: formatFieldValue(), each field kind's markup, ids and labels, the clear button, codes and
+// timestamps, unavailable sources, the errcount group, the section shell, the nav drawer and textContent-only output.
 import { afterEach, describe, expect, it } from "vitest";
 import { userEvent } from "vitest/browser";
 import { ERR_COUNT_CAP, isUnavailable } from "../js/api-contract.js";
@@ -5,6 +7,7 @@ import { buildErrcountGroup, buildFieldGroupCard, buildNavDrawer, buildSectionSh
 import { formatFieldValue } from "../js/field-format.js";
 import NTP_CLIENT_SOURCE from "../src/asy_ntp_client.py?raw";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { mustQuery } from "./_dom_helpers.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 /** @typedef {import("../js/definitions.js").FieldGroup} FieldGroup */
@@ -23,20 +26,6 @@ afterEach(() => {
         el.remove();
     }
 });
-
-/**
- * @template {Element} [T=HTMLElement]
- * @param {ParentNode} root
- * @param {string} selector
- * @returns {T}
- */
-function mustQuery(root, selector) {
-    const found = root.querySelector(selector);
-    if (found === null) {
-        throw new Error(`Expected to find "${selector}"`);
-    }
-    return /** @type {T} */ (found);
-}
 
 /**
  * Attaches `el` to the document until the test ends.
@@ -109,6 +98,8 @@ const BACKUP_TS_FIELD = {
     ],
 };
 /** @type {FieldDef} */
+const LAST_TASK_END_FIELD = { key: "LastTaskEnd", label: "Task Last Ended", kind: "readonly", format: "lasttaskend" };
+/** @type {FieldDef} */
 const RESET_REASON_FIELD = {
     key: "ResetReason",
     label: "Last Reset Reason",
@@ -158,6 +149,24 @@ describe("formatFieldValue", () => {
         expect(formatFieldValue(field, { Year: 2025, Month: 8, MDay: 2, Minute: 4, Second: 3 })).toBe("invalid time value");
         expect(formatFieldValue(field, { Year: 2025, Month: 8, MDay: 2, Hour: "8", Minute: 4, Second: 3 })).toBe("invalid time value");
         expect(formatFieldValue(field, "2025-08-02 08:04:03")).toBe("invalid time value");
+    });
+
+    it("leaves a time struct that is null at the em dash, never an invalid time value", () => {
+        const field = { key: "UTCTime", label: "UTC Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("gmtimestruct") };
+        expect(formatFieldValue(field, null)).toBe("—");
+    });
+
+    it("shows the last task end as its task name and the uptime it ended at, and an em dash before one", () => {
+        // Real shape: LastTaskEnd in the generated module's _system_status() (buildgen/codegen.py).
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read", Uptime: 3600 })).toBe("SCD30.start_asy_read at uptime 3600 s");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, null)).toBe("—");
+    });
+
+    it("reads a task-end record of the wrong shape as an invalid value, never 'undefined'", () => {
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read" })).toBe("invalid value");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read", Uptime: 1.5 })).toBe("invalid value");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: 7, Uptime: 3600 })).toBe("invalid value");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, "SCD30.start_asy_read")).toBe("invalid value");
     });
 
     it.each([
@@ -254,6 +263,11 @@ describe("field markup, through a one-field buildFieldGroupCard()", () => {
         expect(mustQuery(el, '[data-field-key="CO2"]').textContent).toBe("612");
     });
 
+    it("renders the last task end's record as its text in the card, never [object Object]", () => {
+        const el = fieldCard(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read", Uptime: 3600 });
+        expect(mustQuery(el, '[data-field-key="LastTaskEnd"]').textContent).toBe("SCD30.start_asy_read at uptime 3600 s");
+    });
+
     it("renders a nested readonly field's own value, not [object Object]", () => {
         // The card resolves the path, so what reaches the field's markup is already the leaf.
         const el = fieldCard({ key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], decimals: 4 }, 0.02814159);
@@ -299,7 +313,7 @@ describe("field markup, through a one-field buildFieldGroupCard()", () => {
     });
 
     it("names the form a host name or an IPv4 list takes, from the server's own shape rules", () => {
-        // The server's _ntp_host_ok() and _dns_fallback_ok() (src/asy_ntp_client.py); the list's bound is read from there.
+        // The server's host_name_ok() (src/asy_dns_client.py) and _dns_fallback_ok() (src/asy_ntp_client.py); the list's bound is read from there.
         const listMax = /^_DNS_FALLBACK_MAX = const\((?<max>\d+)\)/mu.exec(NTP_CLIENT_SOURCE)?.groups?.max;
         expect(listMax).toBeDefined();
         /** @type {FieldDef} */
@@ -574,7 +588,7 @@ describe.each(DEVICE_IDS)("%s's generated code fields", (device) => {
     const codeFields = (defs?.sections ?? []).flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : []))).filter((field) => field.codes !== undefined);
 
     it("render each code with its catalog text: a button with the description on click, or the toned text", () => {
-        expect(codeFields.map((field) => field.key)).toEqual(expect.arrayContaining(["ResetReason", "State"]));
+        expect(codeFields.map((field) => field.key)).toEqual(expect.arrayContaining(["ResetReason"]));
         for (const field of codeFields) {
             const [code, text] = Object.entries(field.codes ?? {})[0] ?? ["", ""];
             const el = fieldCard(field, Number(code));
@@ -588,6 +602,20 @@ describe.each(DEVICE_IDS)("%s's generated code fields", (device) => {
                 expect(value.dataset.codeTone, field.key).toBe(field.codeTones[code]);
             }
         }
+    });
+});
+
+describe.each(DEVICE_IDS)("%s's generated NTP sync flag", (device) => {
+    const fields = (GENERATED_DEFINITIONS.get(device)?.sections ?? []).flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])));
+    const field = fields.find((candidate) => candidate.key === "NTPSynced");
+
+    it("shows true or false read-only under its label, says the times may have drifted, and a dash when absent", () => {
+        if (field === undefined) {
+            throw new Error("no NTPSynced field in the generated definitions");
+        }
+        expect([field.label, field.kind]).toEqual(["NTP Synced", "readonly"]);
+        expect(hintText(fieldCard(field, false))).toContain("the times shown may have drifted.");
+        expect([true, false, null].map((value) => mustQuery(fieldCard(field, value), '[data-field-key="NTPSynced"]').textContent)).toEqual(["true", "false", "—"]);
     });
 });
 
@@ -724,6 +752,25 @@ describe("a group whose source is unavailable", () => {
         const source = { error: "unavailable", MeasInterval: 5 };
         const card = mount(buildFieldGroupCard(GROUP, source, 0, displayFor(source)));
         expect(mustQuery(card, '[data-current-value-for="MeasInterval"]').textContent).toBe("Current value: 5");
+    });
+});
+
+describe.each(DEVICE_IDS)("%s's generated status commands", (device) => {
+    const status = (GENERATED_DEFINITIONS.get(device)?.sections ?? []).find((section) => section.key === "status");
+    const groups = (status?.groups ?? []).flatMap((group) => ("fields" in group && group.fields.some((field) => field.dispatch === true) ? [group] : []));
+
+    it("render each command group off, with its own toggle labels and submit label", () => {
+        expect(groups.map((group) => group.key)).toContain("resetErrors");
+        for (const group of groups) {
+            const card = mount(buildFieldGroupCard(group, {}, 0, AVAILABLE));
+            expect(mustQuery(card, ".apply-button").textContent, group.key).toBe(group.submitLabel ?? "Apply");
+            for (const field of group.fields) {
+                const toggle = mustQuery(card, `[data-field-key="${field.key}"]`);
+                expect([field.kind, field.confirm, toggle.dataset.value, toggle.textContent], field.key).toEqual(["toggle", true, "false", field.offLabel ?? "Off"]);
+                toggle.click();
+                expect([toggle.dataset.value, toggle.textContent], field.key).toEqual(["true", field.onLabel ?? "On"]);
+            }
+        }
     });
 });
 
@@ -877,8 +924,9 @@ describe("buildErrcountGroup", () => {
             { key: "SGP40", label: "SGP40" },
             { key: "BMP3XX", label: "BMP388" },
         ],
-        codes: { E: { 2: "the sensor did not answer", 4: "a read failed" }, W: { 5: "a reading was out of range" } },
     };
+    /** @type {import("../js/definitions.js").ErrcountCodes} */
+    const CODES = { E: { 2: "the sensor did not answer", 4: "a read failed" }, W: { 5: "a reading was out of range" } };
     /** @type {Record<string, ErrcountEntry>} */
     const THREE_MODULE_ERRCOUNT = {
         SCD30: { counter: 0, history: [{ num: 0, type: "N" }] },
@@ -1064,7 +1112,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("shows a history code's catalog text below the row's history on click, hides it on a second click, and moves it on another pill", () => {
-        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT));
+        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT, CODES));
         clickAction(wrapper, "all");
         const bmp = mustQuery(wrapper, '.errcount-row-wrapper[data-worst="E"]');
         const [first, second] = /** @type {HTMLButtonElement[]} */ ([...bmp.querySelectorAll("button.history-entry-num")]);
@@ -1088,7 +1136,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("opens a history code's description from the keyboard", async () => {
-        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT));
+        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT, CODES));
         clickAction(wrapper, "all");
         const sgp40 = rowAt(wrapper, 1);
         mustQuery(sgp40, "button.history-entry-num").focus();
@@ -1097,7 +1145,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("says a history code with no catalog entry has no description", () => {
-        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, { SCD30: { counter: 1, history: [{ num: 77, type: "E" }] } }));
+        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, { SCD30: { counter: 1, history: [{ num: 77, type: "E" }] } }, CODES));
         clickAction(wrapper, "all");
         mustQuery(wrapper, "button.history-entry-num").click();
         expect(mustQuery(wrapper, ".code-description").textContent).toBe("No description for code 77");
@@ -1114,8 +1162,9 @@ describe("updateErrcountGroup", () => {
             { key: "SCD30", label: "SCD30" },
             { key: "SGP40", label: "SGP40" },
         ],
-        codes: { E: { 2: "the sensor did not answer" }, W: {} },
     };
+    /** @type {import("../js/definitions.js").ErrcountCodes} */
+    const CODES = { E: { 2: "the sensor did not answer" }, W: {} };
     /** @type {Record<string, ErrcountEntry>} */
     const HEALTHY = { SCD30: { counter: 0, history: [{ num: 0, type: "N" }] }, SGP40: { counter: 0, history: [{ num: 0, type: "N" }] } };
     /** @type {Record<string, ErrcountEntry>} */
@@ -1145,14 +1194,14 @@ describe("updateErrcountGroup", () => {
     });
 
     it("keeps a row's history nodes and open description while the history is unchanged, and rebuilds and closes them when it changes", () => {
-        const card = mount(buildErrcountGroup(GROUP, FAILING));
+        const card = mount(buildErrcountGroup(GROUP, FAILING, CODES));
         const pill = mustQuery(card, "button.history-entry-num");
         pill.click();
-        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 5, history: [{ num: 0, type: "N" }, { num: 2, type: "E" }] } });
+        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 5, history: [{ num: 0, type: "N" }, { num: 2, type: "E" }] } }, CODES);
         expect(mustQuery(card, "button.history-entry-num")).toBe(pill);
         expect(mustQuery(card, ".code-description").textContent).toBe("2: the sensor did not answer");
 
-        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 6, history: [{ num: 2, type: "E" }, { num: 2, type: "E" }] } });
+        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 6, history: [{ num: 2, type: "E" }, { num: 2, type: "E" }] } }, CODES);
         expect(card.querySelector(".code-description")).toBeNull();
         expect(card.querySelectorAll("button.history-entry-num")).toHaveLength(2);
         expect(card.contains(pill)).toBe(false);
@@ -1266,8 +1315,8 @@ describe("XSS safety (standing guideline: textContent only, never innerHTML)", (
         mustQuery(el, "button.code-value").click();
         expectLiteral(el);
         /** @type {ErrcountGroup} */
-        const group = { key: "errcount", label: "Errors", kind: "errcount", modules: [{ key: "SCD30", label: "SCD30" }], codes: { E: { 1: HOSTILE }, W: {} } };
-        const card = mount(buildErrcountGroup(group, { SCD30: { counter: 1, history: [{ num: 1, type: "E" }] } }));
+        const group = { key: "errcount", label: "Errors", kind: "errcount", modules: [{ key: "SCD30", label: "SCD30" }] };
+        const card = mount(buildErrcountGroup(group, { SCD30: { counter: 1, history: [{ num: 1, type: "E" }] } }, { E: { 1: HOSTILE }, W: {} }));
         mustQuery(card, "button.history-entry-num").click();
         expectLiteral(card);
     });

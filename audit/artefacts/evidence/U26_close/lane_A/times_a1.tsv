@@ -1,0 +1,11 @@
+tests_scripts/test_bench_device.py	0.506	6 passed in 0.15s
+tests_scripts/test_bench_harness_helpers.py	5.401	8 failed, 132 passed in 4.70s
+tests_scripts/test_harness_mpremote_retry.py	0.357	9 passed in 0.09s
+tests_scripts/test_bench_control_restore.py	0.522	58 passed in 0.26s
+tests_scripts/test_evidence_snapshot.py	0.346	6 passed in 0.07s
+tests_scripts/test_resolve_board_device.py	0.461	8 passed in 0.18s
+tests_scripts/test_device_tomls.py	1.389	37 passed in 0.85s
+tests_scripts/test_toml_schema_contract.py	0.683	1 failed, 2 passed in 0.34s
+tests_scripts/test_memory_error_gate_agreement.py	4.414	13 passed in 4.17s
+tests_scripts/test_buildgen_generate.py	15.039	351 passed in 12.81s
+tests_scripts/test_buildgen_validate.py	25.948	403 passed in 17.11s

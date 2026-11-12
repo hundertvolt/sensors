@@ -1,0 +1,40 @@
+        # scripts/test.sh's per-file timeout interrupts first: the file must end, naming the test and where it hung.
+        code, lines = _interrupted(micropython_bin, tmp_path, source)
+>       assert code == 1, lines
+E       AssertionError: ['PASS test_a_pass']
+E       assert None == 1
+
+tests_scripts/test_microtest.py:162: AssertionError
+_ test_an_interrupt_aborts_the_hung_test_by_name_and_ends_the_file[in_the_drain] _
+
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8252/test_an_interrupt_aborts_the_h1')
+source = "import asyncio\n\n\nasync def _stubborn():\n    open({marker!r}, 'w').close()\n    while True:\n        try:\n       ...eate_task(_stubborn())\n        await asyncio.sleep(0)\n\n    asyncio.run(main())\n\n\ndef test_c_later():\n    pass\n"
+
+    @pytest.mark.parametrize("source", [_HUNG_IN_A_RUN, _HUNG_IN_THE_DRAIN], ids=["in_a_run", "in_the_drain"])
+    def test_an_interrupt_aborts_the_hung_test_by_name_and_ends_the_file(micropython_bin: Path, tmp_path: Path, source: str) -> None:
+        # scripts/test.sh's per-file timeout interrupts first: the file must end, naming the test and where it hung.
+        code, lines = _interrupted(micropython_bin, tmp_path, source)
+>       assert code == 1, lines
+E       AssertionError: ['PASS test_a_pass', 'Traceback (most recent call last):', '  File "/tmp/pytest-of-root/pytest-8252/test_an_interrupt_...5d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/w1tree/tests/microtest.py", line 80, in _drain_scheduler', ...]
+E       assert 130 == 1
+
+tests_scripts/test_microtest.py:162: AssertionError
+______________ test_an_interrupted_run_names_the_line_it_hung_on _______________
+
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8252/test_an_interrupted_run_names_0')
+
+    def test_an_interrupted_run_names_the_line_it_hung_on(micropython_bin: Path, tmp_path: Path) -> None:
+        _, lines = _interrupted(micropython_bin, tmp_path, _HUNG_IN_A_RUN)
+>       assert any(line.startswith('  File "') and line.endswith(", in spins") for line in lines), lines
+E       AssertionError: ['PASS test_a_pass']
+E       assert False
+E        +  where False = any(<generator object test_an_interrupted_run_names_the_line_it_hung_on.<locals>.<genexpr> at 0x7f563d2833e0>)
+
+tests_scripts/test_microtest.py:171: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_microtest.py::test_an_interrupt_aborts_the_hung_test_by_name_and_ends_the_file[in_a_run]
+FAILED tests_scripts/test_microtest.py::test_an_interrupt_aborts_the_hung_test_by_name_and_ends_the_file[in_the_drain]
+FAILED tests_scripts/test_microtest.py::test_an_interrupted_run_names_the_line_it_hung_on
+3 failed, 21 deselected in 20.29s

@@ -1,6 +1,6 @@
-"""MQTT 3.1.1 packets for asy_mqtt_client.py: encoders that write into a caller's buffer and return the length (-1 when it
-does not fit), the remaining-length decoder, topic-filter matching and the configuration shape checks. Pure: no I/O, no
-logging, nothing raised on wire input (SPECIFICATION.md Part A.11)."""
+"""MQTT 3.1.1 packets for asy_mqtt_client.py: encoders that write into a caller's buffer and return the length (-1
+when it does not fit), the remaining-length decoder, topic-filter matching and the configuration shape checks. Pure: no
+I/O, no logging, nothing raised on wire input (SPECIFICATION.md Part A.12)."""
 
 from micropython import const
 
@@ -111,8 +111,9 @@ def decode_remaining_length(buf: "Bytes", start: int, end: int) -> int:
 
 
 def encode_connect(buf: "Buf", client_id: "Bytes", keepalive_s: int, will: "Will | None", user: "Bytes", password: "Bytes", *, clean: bool) -> int:
-    # Section 3.1: `will` is (topic, message, QoS, retain), None for none, whose QoS and retain flags are then 0 ([MQTT-3.1.2-11],
-    # -13); user and password only when non-empty, a password never without a user (3.1.2.9). The length, or -1 if it does not fit.
+    # Section 3.1: `will` is (topic, message, QoS, retain), None for none, whose QoS and retain flags are then 0
+    # ([MQTT-3.1.2-11], -13); user and password only when non-empty, a password never without a user (3.1.2.9). The
+    # length, or -1 if it does not fit.
     flags = _FLAG_CLEAN if clean else 0
     remaining = 10 + 2 + len(client_id)
     if will is not None:

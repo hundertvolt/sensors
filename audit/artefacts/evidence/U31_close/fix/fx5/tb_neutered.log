@@ -1,0 +1,150 @@
+........FF.F......FF..                                                   [100%]
+=================================== FAILURES ===================================
+_ test_each_failure_class_bites[50,000 \xb5s (`_DEFAULT_TIMEOUT_US`-the rp2 default (`_DEFAULT_TIMEOUT_US`-50000 \xb5s is a term of its derivation] _
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+old = '50,000 µs (`_DEFAULT_TIMEOUT_US`'
+new = 'the rp2 default (`_DEFAULT_TIMEOUT_US`'
+expected = '50000 µs is a term of its derivation'
+
+    @pytest.mark.parametrize(
+        ("old", "new", "expected"),
+        [
+            ("| 50 ms per session", "| 60 ms per session", "the code gives 50000 µs"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frame`", "past it, and not marked crossed"),
+            ("`con.uart_reply` (its floor holds it)", "`con.uart_reply` (crossed: its floor holds it)", "a stale crossing"),
+            ("`scd30.cmd_response_wait_ms` |", "`scd30.cmd_wait_ms` |", "`scd30.cmd_wait_ms`, which is not a Part N row"),
+            ("| `hold.i2c_probe` |", "| `hold.i2c_probe_settle` |", "no `hold.i2c_probe` row"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frames` (crossed: a stutter)", "which the consumer table lacks"),
+            ("4 task ends", "5 task ends", "makes 4 task ends"),
+            ("50,000 µs (`_DEFAULT_TIMEOUT_US`", "the rp2 default (`_DEFAULT_TIMEOUT_US`", "50000 µs is a term of its derivation"),
+            ("| `hold.scd30_snapshot` |", "| `hold.scd30_command` |", "is unnamed or named twice"),
+            ("| `rate.trigger_spacing` |", "| rate.trigger_spacing |", "is unnamed or named twice"),
+            ("| Consumer | Tolerance |", "| Item | Tolerance |", "needs both its consumer table and its budget table"),
+            ("| 500 ms per server", "| 900 ms per server", "`con.dns_query`: its value opens"),
+            ("| 5 s per stream call", "| 7 s per stream call", "`con.http_call`: its value opens"),
+            ("| 1,533 µs:", "| 9,533 µs:", "`stall.uart_call`: its value opens"),
+            ("| 5 µs per wait", "| 50 µs per wait", "`stall.sync_wait`: its value opens"),
+            ("| 10 s, the longest hold", "| 20 s, the longest hold", "`hold.wifi_lock`: its value opens"),
+            ("| 2129 ms", "| 400 ms", "`stall.flash_program`: its value opens"),
+        ],
+    )
+    def test_each_failure_class_bites(spec_text: str, repo_root: Path, old: str, new: str, expected: str) -> None:
+        problems = check_table(_bitten(spec_text, old, new), repo_root / "src")
+>       assert any(expected in p for p in problems), problems
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object test_each_failure_class_bites.<locals>.<genexpr> at 0x7f4288118660>)
+
+tests_scripts/test_zz_fx5_bite_tb.py:229: AssertionError
+_ test_each_failure_class_bites[| `hold.scd30_snapshot` |-| `hold.scd30_command` |-is unnamed or named twice] _
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+old = '| `hold.scd30_snapshot` |', new = '| `hold.scd30_command` |'
+expected = 'is unnamed or named twice'
+
+    @pytest.mark.parametrize(
+        ("old", "new", "expected"),
+        [
+            ("| 50 ms per session", "| 60 ms per session", "the code gives 50000 µs"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frame`", "past it, and not marked crossed"),
+            ("`con.uart_reply` (its floor holds it)", "`con.uart_reply` (crossed: its floor holds it)", "a stale crossing"),
+            ("`scd30.cmd_response_wait_ms` |", "`scd30.cmd_wait_ms` |", "`scd30.cmd_wait_ms`, which is not a Part N row"),
+            ("| `hold.i2c_probe` |", "| `hold.i2c_probe_settle` |", "no `hold.i2c_probe` row"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frames` (crossed: a stutter)", "which the consumer table lacks"),
+            ("4 task ends", "5 task ends", "makes 4 task ends"),
+            ("50,000 µs (`_DEFAULT_TIMEOUT_US`", "the rp2 default (`_DEFAULT_TIMEOUT_US`", "50000 µs is a term of its derivation"),
+            ("| `hold.scd30_snapshot` |", "| `hold.scd30_command` |", "is unnamed or named twice"),
+            ("| `rate.trigger_spacing` |", "| rate.trigger_spacing |", "is unnamed or named twice"),
+            ("| Consumer | Tolerance |", "| Item | Tolerance |", "needs both its consumer table and its budget table"),
+            ("| 500 ms per server", "| 900 ms per server", "`con.dns_query`: its value opens"),
+            ("| 5 s per stream call", "| 7 s per stream call", "`con.http_call`: its value opens"),
+            ("| 1,533 µs:", "| 9,533 µs:", "`stall.uart_call`: its value opens"),
+            ("| 5 µs per wait", "| 50 µs per wait", "`stall.sync_wait`: its value opens"),
+            ("| 10 s, the longest hold", "| 20 s, the longest hold", "`hold.wifi_lock`: its value opens"),
+            ("| 2129 ms", "| 400 ms", "`stall.flash_program`: its value opens"),
+        ],
+    )
+    def test_each_failure_class_bites(spec_text: str, repo_root: Path, old: str, new: str, expected: str) -> None:
+        problems = check_table(_bitten(spec_text, old, new), repo_root / "src")
+>       assert any(expected in p for p in problems), problems
+E       AssertionError: ["F.3 `hold.scd30_command`: its value opens '300 ms: six reads of 50 ms each, plus th', the code gives 50000 µs", 'F.3 has no `hold.scd30_snapshot` row, which the code derives']
+E       assert False
+E        +  where False = any(<generator object test_each_failure_class_bites.<locals>.<genexpr> at 0x7f428819b5a0>)
+
+tests_scripts/test_zz_fx5_bite_tb.py:229: AssertionError
+_ test_each_failure_class_bites[| Consumer | Tolerance |-| Item | Tolerance |-needs both its consumer table and its budget table] _
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+old = '| Consumer | Tolerance |', new = '| Item | Tolerance |'
+expected = 'needs both its consumer table and its budget table'
+
+    @pytest.mark.parametrize(
+        ("old", "new", "expected"),
+        [
+            ("| 50 ms per session", "| 60 ms per session", "the code gives 50000 µs"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frame`", "past it, and not marked crossed"),
+            ("`con.uart_reply` (its floor holds it)", "`con.uart_reply` (crossed: its floor holds it)", "a stale crossing"),
+            ("`scd30.cmd_response_wait_ms` |", "`scd30.cmd_wait_ms` |", "`scd30.cmd_wait_ms`, which is not a Part N row"),
+            ("| `hold.i2c_probe` |", "| `hold.i2c_probe_settle` |", "no `hold.i2c_probe` row"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frames` (crossed: a stutter)", "which the consumer table lacks"),
+            ("4 task ends", "5 task ends", "makes 4 task ends"),
+            ("50,000 µs (`_DEFAULT_TIMEOUT_US`", "the rp2 default (`_DEFAULT_TIMEOUT_US`", "50000 µs is a term of its derivation"),
+            ("| `hold.scd30_snapshot` |", "| `hold.scd30_command` |", "is unnamed or named twice"),
+            ("| `rate.trigger_spacing` |", "| rate.trigger_spacing |", "is unnamed or named twice"),
+            ("| Consumer | Tolerance |", "| Item | Tolerance |", "needs both its consumer table and its budget table"),
+            ("| 500 ms per server", "| 900 ms per server", "`con.dns_query`: its value opens"),
+            ("| 5 s per stream call", "| 7 s per stream call", "`con.http_call`: its value opens"),
+            ("| 1,533 µs:", "| 9,533 µs:", "`stall.uart_call`: its value opens"),
+            ("| 5 µs per wait", "| 50 µs per wait", "`stall.sync_wait`: its value opens"),
+            ("| 10 s, the longest hold", "| 20 s, the longest hold", "`hold.wifi_lock`: its value opens"),
+            ("| 2129 ms", "| 400 ms", "`stall.flash_program`: its value opens"),
+        ],
+    )
+    def test_each_failure_class_bites(spec_text: str, repo_root: Path, old: str, new: str, expected: str) -> None:
+        problems = check_table(_bitten(spec_text, old, new), repo_root / "src")
+>       assert any(expected in p for p in problems), problems
+E       AssertionError: ['F.3 has no `con.watchdog` row, which the code derives', 'F.3 has no `con.led_frame` row, which the code derives', 'F....3 has no `con.http_call` row, which the code derives', 'F.3 has no `con.uart_reply` row, which the code derives', ...]
+E       assert False
+E        +  where False = any(<generator object test_each_failure_class_bites.<locals>.<genexpr> at 0x7f428811a340>)
+
+tests_scripts/test_zz_fx5_bite_tb.py:229: AssertionError
+______________ test_an_i2c_timeout_above_its_register_bound_bites ______________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+
+    def test_an_i2c_timeout_above_its_register_bound_bites(spec_text: str, repo_root: Path) -> None:
+        # Part N's bound, not F.3's table, moves: a copy of the register row, never an edit of Part N.
+        row = next(line for line in spec_text.splitlines() if line.startswith("| `i2c.timeout_max_us` | "))
+        problems = check_table(spec_text.replace(row, row.replace("| 200000 µs |", "| 100000 µs |", 1)), repo_root / "src")
+>       assert any("is above Part N `i2c.timeout_max_us` (100000 µs)" in p for p in problems), problems
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object test_an_i2c_timeout_above_its_register_bound_bites.<locals>.<genexpr> at 0x7f428726fe00>)
+
+tests_scripts/test_zz_fx5_bite_tb.py:236: AssertionError
+______________ test_reply_slacks_that_differ_across_devices_bite _______________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f42871b9d50>
+
+    def test_reply_slacks_that_differ_across_devices_bite(spec_text: str, repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        timeout_us, slacks, bauds = _device_terms(repo_root / "src")
+        monkeypatch.setattr(sys.modules[__name__], "_device_terms", lambda _src: (timeout_us, {*slacks, max(slacks) + 5}, bauds))
+>       assert any("the uart_link reply slacks differ across devices" in p for p in check_table(spec_text, repo_root / "src"))
+E       assert False
+E        +  where False = any(<generator object test_reply_slacks_that_differ_across_devices_bite.<locals>.<genexpr> at 0x7f428726e8e0>)
+
+tests_scripts/test_zz_fx5_bite_tb.py:242: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_zz_fx5_bite_tb.py::test_each_failure_class_bites[50,000 \xb5s (`_DEFAULT_TIMEOUT_US`-the rp2 default (`_DEFAULT_TIMEOUT_US`-50000 \xb5s is a term of its derivation]
+FAILED tests_scripts/test_zz_fx5_bite_tb.py::test_each_failure_class_bites[| `hold.scd30_snapshot` |-| `hold.scd30_command` |-is unnamed or named twice]
+FAILED tests_scripts/test_zz_fx5_bite_tb.py::test_each_failure_class_bites[| Consumer | Tolerance |-| Item | Tolerance |-needs both its consumer table and its budget table]
+FAILED tests_scripts/test_zz_fx5_bite_tb.py::test_an_i2c_timeout_above_its_register_bound_bites
+FAILED tests_scripts/test_zz_fx5_bite_tb.py::test_reply_slacks_that_differ_across_devices_bite
+5 failed, 17 passed in 1.11s

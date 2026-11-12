@@ -1,0 +1,224 @@
+..............FFFFFF                                                     [100%]
+=================================== FAILURES ===================================
+_ test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installer _
+
+    def test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installer() -> None:
+>       verdict = _engine_verdict(_ENGINES_WEBKIT_MISSING, _CHROMIUM_PASSED, require_all_engines=True)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_cross_browser_smoke_probe.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+available = [{'name': 'WebKit', 'missing': ['/usr/bin/WebKitWebDriver']}, {'name': 'Chromium', 'missing': []}]
+results = [{'label': 'fixture-device Chromium (desktop)', 'ok': True}, {'label': 'fixture-device Chromium (mobile)', 'ok': True}]
+require_all_engines = True
+
+    def _engine_verdict(available: "list[dict[str, Any]]", results: "list[dict[str, Any]]", *, require_all_engines: bool) -> "dict[str, Any]":
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH"
+        options = json.dumps({"requireAllEngines": require_all_engines})
+        script = (
+            f"import {{ engineVerdict }} from {json.dumps(_MODULE_URL)};\n"
+            f"console.log(JSON.stringify(engineVerdict({json.dumps(available)}, {json.dumps(results)}, {options})));"
+        )
+        done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/[eval1]:1
+E         import { engineVerdict } from "file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs";
+E                  ^^^^^^^^^^^^^
+E         SyntaxError: The requested module 'file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs' does not provide an export named 'engineVerdict'
+E             at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+E             at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+E             at async node:internal/modules/esm/loader:223:26
+E             at async ModuleLoader.executeModuleJob (node:internal/modules/esm/loader:220:20)
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         
+E         Node.js v24.21.0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', '--input-type=module', '-e', 'imp...er:220:20)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n').returncode
+
+tests_scripts/test_cross_browser_smoke_probe.py:130: AssertionError
+________ test_without_the_flag_a_missing_engine_is_skipped_and_counted _________
+
+    def test_without_the_flag_a_missing_engine_is_skipped_and_counted() -> None:
+>       verdict = _engine_verdict(_ENGINES_WEBKIT_MISSING, _CHROMIUM_PASSED, require_all_engines=False)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_cross_browser_smoke_probe.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+available = [{'name': 'WebKit', 'missing': ['/usr/bin/WebKitWebDriver']}, {'name': 'Chromium', 'missing': []}]
+results = [{'label': 'fixture-device Chromium (desktop)', 'ok': True}, {'label': 'fixture-device Chromium (mobile)', 'ok': True}]
+require_all_engines = False
+
+    def _engine_verdict(available: "list[dict[str, Any]]", results: "list[dict[str, Any]]", *, require_all_engines: bool) -> "dict[str, Any]":
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH"
+        options = json.dumps({"requireAllEngines": require_all_engines})
+        script = (
+            f"import {{ engineVerdict }} from {json.dumps(_MODULE_URL)};\n"
+            f"console.log(JSON.stringify(engineVerdict({json.dumps(available)}, {json.dumps(results)}, {options})));"
+        )
+        done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/[eval1]:1
+E         import { engineVerdict } from "file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs";
+E                  ^^^^^^^^^^^^^
+E         SyntaxError: The requested module 'file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs' does not provide an export named 'engineVerdict'
+E             at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+E             at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+E             at async node:internal/modules/esm/loader:223:26
+E             at async ModuleLoader.executeModuleJob (node:internal/modules/esm/loader:220:20)
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         
+E         Node.js v24.21.0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', '--input-type=module', '-e', 'imp...er:220:20)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n').returncode
+
+tests_scripts/test_cross_browser_smoke_probe.py:130: AssertionError
+________________ test_an_engine_missing_two_binaries_names_both ________________
+
+    def test_an_engine_missing_two_binaries_names_both() -> None:
+        firefox = ["/fixture/ff/bin/firefox", "/fixture/ff/bin/geckodriver"]
+>       verdict = _engine_verdict([{"name": "Firefox", "missing": firefox}], [], require_all_engines=True)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_cross_browser_smoke_probe.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+available = [{'name': 'Firefox', 'missing': ['/fixture/ff/bin/firefox', '/fixture/ff/bin/geckodriver']}]
+results = [], require_all_engines = True
+
+    def _engine_verdict(available: "list[dict[str, Any]]", results: "list[dict[str, Any]]", *, require_all_engines: bool) -> "dict[str, Any]":
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH"
+        options = json.dumps({"requireAllEngines": require_all_engines})
+        script = (
+            f"import {{ engineVerdict }} from {json.dumps(_MODULE_URL)};\n"
+            f"console.log(JSON.stringify(engineVerdict({json.dumps(available)}, {json.dumps(results)}, {options})));"
+        )
+        done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/[eval1]:1
+E         import { engineVerdict } from "file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs";
+E                  ^^^^^^^^^^^^^
+E         SyntaxError: The requested module 'file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs' does not provide an export named 'engineVerdict'
+E             at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+E             at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+E             at async node:internal/modules/esm/loader:223:26
+E             at async ModuleLoader.executeModuleJob (node:internal/modules/esm/loader:220:20)
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         
+E         Node.js v24.21.0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', '--input-type=module', '-e', 'imp...er:220:20)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n').returncode
+
+tests_scripts/test_cross_browser_smoke_probe.py:130: AssertionError
+_________ test_with_every_engine_present_only_the_checks_decide[True] __________
+
+require_all_engines = True
+
+    @pytest.mark.parametrize("require_all_engines", [True, False])
+    def test_with_every_engine_present_only_the_checks_decide(require_all_engines: bool) -> None:
+        present = [{"name": "WebKit", "missing": []}, {"name": "Chromium", "missing": []}]
+        results = [*_CHROMIUM_PASSED, {"label": "fixture-device WebKit (desktop)", "ok": False, "detail": "x"}]
+>       verdict = _engine_verdict(present, results, require_all_engines=require_all_engines)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_cross_browser_smoke_probe.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+available = [{'name': 'WebKit', 'missing': []}, {'name': 'Chromium', 'missing': []}]
+results = [{'label': 'fixture-device Chromium (desktop)', 'ok': True}, {'label': 'fixture-device Chromium (mobile)', 'ok': True}, {'label': 'fixture-device WebKit (desktop)', 'ok': False, 'detail': 'x'}]
+require_all_engines = True
+
+    def _engine_verdict(available: "list[dict[str, Any]]", results: "list[dict[str, Any]]", *, require_all_engines: bool) -> "dict[str, Any]":
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH"
+        options = json.dumps({"requireAllEngines": require_all_engines})
+        script = (
+            f"import {{ engineVerdict }} from {json.dumps(_MODULE_URL)};\n"
+            f"console.log(JSON.stringify(engineVerdict({json.dumps(available)}, {json.dumps(results)}, {options})));"
+        )
+        done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/[eval1]:1
+E         import { engineVerdict } from "file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs";
+E                  ^^^^^^^^^^^^^
+E         SyntaxError: The requested module 'file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs' does not provide an export named 'engineVerdict'
+E             at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+E             at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+E             at async node:internal/modules/esm/loader:223:26
+E             at async ModuleLoader.executeModuleJob (node:internal/modules/esm/loader:220:20)
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         
+E         Node.js v24.21.0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', '--input-type=module', '-e', 'imp...er:220:20)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n').returncode
+
+tests_scripts/test_cross_browser_smoke_probe.py:130: AssertionError
+_________ test_with_every_engine_present_only_the_checks_decide[False] _________
+
+require_all_engines = False
+
+    @pytest.mark.parametrize("require_all_engines", [True, False])
+    def test_with_every_engine_present_only_the_checks_decide(require_all_engines: bool) -> None:
+        present = [{"name": "WebKit", "missing": []}, {"name": "Chromium", "missing": []}]
+        results = [*_CHROMIUM_PASSED, {"label": "fixture-device WebKit (desktop)", "ok": False, "detail": "x"}]
+>       verdict = _engine_verdict(present, results, require_all_engines=require_all_engines)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_cross_browser_smoke_probe.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+available = [{'name': 'WebKit', 'missing': []}, {'name': 'Chromium', 'missing': []}]
+results = [{'label': 'fixture-device Chromium (desktop)', 'ok': True}, {'label': 'fixture-device Chromium (mobile)', 'ok': True}, {'label': 'fixture-device WebKit (desktop)', 'ok': False, 'detail': 'x'}]
+require_all_engines = False
+
+    def _engine_verdict(available: "list[dict[str, Any]]", results: "list[dict[str, Any]]", *, require_all_engines: bool) -> "dict[str, Any]":
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH"
+        options = json.dumps({"requireAllEngines": require_all_engines})
+        script = (
+            f"import {{ engineVerdict }} from {json.dumps(_MODULE_URL)};\n"
+            f"console.log(JSON.stringify(engineVerdict({json.dumps(available)}, {json.dumps(results)}, {options})));"
+        )
+        done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/[eval1]:1
+E         import { engineVerdict } from "file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs";
+E                  ^^^^^^^^^^^^^
+E         SyntaxError: The requested module 'file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/_cross_browser_probe.mjs' does not provide an export named 'engineVerdict'
+E             at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+E             at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+E             at async node:internal/modules/esm/loader:223:26
+E             at async ModuleLoader.executeModuleJob (node:internal/modules/esm/loader:220:20)
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         
+E         Node.js v24.21.0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', '--input-type=module', '-e', 'imp...er:220:20)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n').returncode
+
+tests_scripts/test_cross_browser_smoke_probe.py:130: AssertionError
+_____ test_the_smoke_takes_the_engine_flag_and_rejects_any_other_argument ______
+
+    def test_the_smoke_takes_the_engine_flag_and_rejects_any_other_argument() -> None:
+>       assert "--require-all-engines" in _smoke("--help").stdout
+E       assert '--require-all-engines' in 'Usage: node scripts/cross_browser_smoke.mjs [-h | --help]\nBoots the twin of every device of devices/*.toml in turn a..., a twin logged an allocation failure, nothing ran, the Unix port is\nnot built or port 53 is held; 2 a usage error.\n'
+E        +  where 'Usage: node scripts/cross_browser_smoke.mjs [-h | --help]\nBoots the twin of every device of devices/*.toml in turn a..., a twin logged an allocation failure, nothing ran, the Unix port is\nnot built or port 53 is held; 2 a usage error.\n' = CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', 'scripts/cross_browser_smoke.mjs'...ged an allocation failure, nothing ran, the Unix port is\nnot built or port 53 is held; 2 a usage error.\n", stderr='').stdout
+E        +    where CompletedProcess(args=['/root/pico-toolchain/node/node-v24.21.0-linux-x64/bin/node', 'scripts/cross_browser_smoke.mjs'...ged an allocation failure, nothing ran, the Unix port is\nnot built or port 53 is held; 2 a usage error.\n", stderr='') = _smoke('--help')
+
+tests_scripts/test_cross_browser_smoke_probe.py:182: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_cross_browser_smoke_probe.py::test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installer
+FAILED tests_scripts/test_cross_browser_smoke_probe.py::test_without_the_flag_a_missing_engine_is_skipped_and_counted
+FAILED tests_scripts/test_cross_browser_smoke_probe.py::test_an_engine_missing_two_binaries_names_both
+FAILED tests_scripts/test_cross_browser_smoke_probe.py::test_with_every_engine_present_only_the_checks_decide[True]
+FAILED tests_scripts/test_cross_browser_smoke_probe.py::test_with_every_engine_present_only_the_checks_decide[False]
+FAILED tests_scripts/test_cross_browser_smoke_probe.py::test_the_smoke_takes_the_engine_flag_and_rejects_any_other_argument
+6 failed, 14 passed in 1.46s

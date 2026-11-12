@@ -1,0 +1,3 @@
+FAILED tests_scripts/test_twin_board.py::test_a_missing_unix_port_names_the_build
+FAILED tests_scripts/test_twin_board.py::test_a_binary_of_another_build_flavour_is_refused_naming_it
+2 failed, 1 passed, 14 deselected in 0.76s

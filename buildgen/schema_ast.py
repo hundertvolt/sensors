@@ -20,6 +20,32 @@ _FIELD_TYPES = ("int", "float", "str", "bool")  # asy_config_manager.py's type_o
 _SCHEMA_ANNOTATIONS = ("ConfigSchema", "FieldSchema")  # the last dotted part of a schema constant's annotation
 
 
+def _is_schema_annotation(annotation: "ast.expr") -> bool:
+    # `ConfigSchema`, `cm.FieldSchema`, `tuple[cm.FieldSchema, ...]` or the string form of any: the last
+    # dotted part of the name, or of a tuple's element type, names it.
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        try:
+            annotation = ast.parse(annotation.value, mode="eval").body
+        except SyntaxError:
+            return False
+    if isinstance(annotation, ast.Subscript) and isinstance(annotation.value, ast.Name) and annotation.value.id == "tuple":
+        element = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts else annotation.slice
+        return _is_schema_annotation(element)
+    if isinstance(annotation, (ast.Name, ast.Attribute)):
+        return ast.unparse(annotation).rsplit(".", 1)[-1] in _SCHEMA_ANNOTATIONS
+    return False
+
+
+def _checked_schema(value_node: "ast.expr", consts: "dict[str, ast.expr]") -> "list[tuple[str, FieldSchema]] | tuple[str, str]":
+    # A schema constant's fields, or (rule, detail) for why it cannot be one.
+    try:
+        literal = _eval_literal(value_node, consts)
+    except (TypeError, ValueError) as e:
+        return "schema.unreadable", str(e)
+    fields = _schema_fields(literal)
+    return ("schema.malformed", fields) if isinstance(fields, str) else fields
+
+
 def _eval_literal(node: "ast.expr", consts: "dict[str, ast.expr]", resolving: "frozenset[str]" = frozenset()) -> object:
     # `resolving` holds the names being resolved, so `_A = _B; _B = _A` reads as unresolvable
     # instead of recursing until Python's own limit.
@@ -56,22 +82,6 @@ def _field_schema_from_tuple(tup: "tuple[object, ...]") -> "tuple[str, FieldSche
     return None
 
 
-def _is_schema_annotation(annotation: "ast.expr") -> bool:
-    # `ConfigSchema`, `cm.FieldSchema`, `tuple[cm.FieldSchema, ...]` or the string form of any: the last
-    # dotted part of the name, or of a tuple's element type, names it.
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        try:
-            annotation = ast.parse(annotation.value, mode="eval").body
-        except SyntaxError:
-            return False
-    if isinstance(annotation, ast.Subscript) and isinstance(annotation.value, ast.Name) and annotation.value.id == "tuple":
-        element = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts else annotation.slice
-        return _is_schema_annotation(element)
-    if isinstance(annotation, (ast.Name, ast.Attribute)):
-        return ast.unparse(annotation).rsplit(".", 1)[-1] in _SCHEMA_ANNOTATIONS
-    return False
-
-
 def _record_problem(record: "tuple[object, ...]") -> str:
     # Why a record _field_schema_from_tuple() refused is not (name, type, default, min, max, special).
     if len(record) != _FIELD_SCHEMA_LEN:
@@ -79,50 +89,6 @@ def _record_problem(record: "tuple[object, ...]") -> str:
     if not isinstance(record[0], str):
         return f"record {record!r} has a non-str name"
     return f"record {record!r} has type {record[1]!r}, none of {list(_FIELD_TYPES)}"
-
-
-def _schema_fields(literal: object) -> "list[tuple[str, FieldSchema]] | str":
-    # A schema constant's fields - one bare FieldSchema or a tuple of them - or why it is neither.
-    if not isinstance(literal, tuple):
-        return f"its value {literal!r} is not a tuple"
-    records = (literal,) if literal and not isinstance(literal[0], tuple) else literal
-    fields = []
-    for record in records:
-        if not isinstance(record, tuple):
-            return f"record {record!r} is not a tuple"
-        field = _field_schema_from_tuple(record)
-        if field is None:
-            return _record_problem(record)
-        fields.append(field)
-    return fields
-
-
-def extract_field_schemas(source_path: Path, *, device: str = "<src>", instance_label: "str | None" = None, field: "str | None" = None) -> "dict[str, FieldSchema]":
-    # Every field of every schema constant in `source_path` (named _VAL_* or annotated ConfigSchema/
-    # FieldSchema), keyed by field name. A schema constant that cannot be read fails the build; any
-    # other constant counts only as a one-field schema, best-effort, and is skipped otherwise.
-    text, _tree = parse_source_file(source_path, device, instance_label, field=field)
-    fields, problem = _scan_schemas(text, str(source_path))
-    if problem is None:
-        return dict(fields)  # a fresh dict: the cached scan stays as it was
-    rule, name, lineno, detail = problem
-    if rule == "schema.unreadable":
-        raise BuildError(
-            device,
-            f"{source_path}:{lineno}: schema constant {name} cannot be read at build time: {detail}",
-            rule="schema.unreadable",
-            fix="keep schema constants literal (numbers, strings, tuples, const(), names of other literal constants)",
-            instance=instance_label,
-            field=field,
-        )
-    raise BuildError(
-        device,
-        f"{source_path}:{lineno}: schema constant {name} is malformed: {detail}",
-        rule="schema.malformed",
-        fix="write each record as (name, type, default, min, max, special): a str name and one of int, float, str, bool",
-        instance=instance_label,
-        field=field,
-    )
 
 
 @functools.lru_cache(maxsize=256)
@@ -171,11 +137,45 @@ def _scan_schemas(text: str, filename: str) -> "tuple[tuple[tuple[str, FieldSche
     return tuple(fields.items()), None
 
 
-def _checked_schema(value_node: "ast.expr", consts: "dict[str, ast.expr]") -> "list[tuple[str, FieldSchema]] | tuple[str, str]":
-    # A schema constant's fields, or (rule, detail) for why it cannot be one.
-    try:
-        literal = _eval_literal(value_node, consts)
-    except (TypeError, ValueError) as e:
-        return "schema.unreadable", str(e)
-    fields = _schema_fields(literal)
-    return ("schema.malformed", fields) if isinstance(fields, str) else fields
+def _schema_fields(literal: object) -> "list[tuple[str, FieldSchema]] | str":
+    # A schema constant's fields - one bare FieldSchema or a tuple of them - or why it is neither.
+    if not isinstance(literal, tuple):
+        return f"its value {literal!r} is not a tuple"
+    records = (literal,) if literal and not isinstance(literal[0], tuple) else literal
+    fields = []
+    for record in records:
+        if not isinstance(record, tuple):
+            return f"record {record!r} is not a tuple"
+        field = _field_schema_from_tuple(record)
+        if field is None:
+            return _record_problem(record)
+        fields.append(field)
+    return fields
+
+
+def extract_field_schemas(source_path: Path, *, device: str = "<src>", instance_label: "str | None" = None, field: "str | None" = None) -> "dict[str, FieldSchema]":
+    # Every field of every schema constant in `source_path` (named _VAL_* or annotated ConfigSchema/
+    # FieldSchema), keyed by field name. A schema constant that cannot be read fails the build; any
+    # other constant counts only as a one-field schema, best-effort, and is skipped otherwise.
+    text, _tree = parse_source_file(source_path, device, instance_label, field=field)
+    fields, problem = _scan_schemas(text, str(source_path))
+    if problem is None:
+        return dict(fields)  # a fresh dict: the cached scan stays as it was
+    rule, name, lineno, detail = problem
+    if rule == "schema.unreadable":
+        raise BuildError(
+            device,
+            f"{source_path}:{lineno}: schema constant {name} cannot be read at build time: {detail}",
+            rule="schema.unreadable",
+            fix="keep schema constants literal (numbers, strings, tuples, const(), names of other literal constants)",
+            instance=instance_label,
+            field=field,
+        )
+    raise BuildError(
+        device,
+        f"{source_path}:{lineno}: schema constant {name} is malformed: {detail}",
+        rule="schema.malformed",
+        fix="write each record as (name, type, default, min, max, special): a str name and one of int, float, str, bool",
+        instance=instance_label,
+        field=field,
+    )

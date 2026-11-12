@@ -1,0 +1,14 @@
+udp recv empty: ['EAGAIN']
+udp recvfrom empty: ['EAGAIN']
+open missing: ['ENOENT']
+second listener: ['EADDRINUSE']
+closed port: ('write/read', ['ECONNREFUSED'])
+closed port: ('write/read', ['ECONNREFUSED'])
+closed port: ('write/read', ['ECONNREFUSED'])
+closed port: ('write/read', ['ECONNREFUSED'])
+closed port: ('write/read', ['ECONNREFUSED'])
+listener closed, backlog: ('write/read', ['ECONNRESET'])
+listener closed, backlog: ('write/read', ['ECONNRESET'])
+listener closed, backlog: ('write/read', ['ECONNRESET'])
+listener closed, backlog: ('write/read', ['ECONNRESET'])
+listener closed, backlog: ('write/read', ['ECONNRESET'])

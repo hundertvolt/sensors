@@ -1,0 +1,20 @@
+................                                                         [100%]
+============================== slowest durations ===============================
+0.09s call     tests_scripts/test_run_unix_port_integration_sh.py::test_the_named_device_is_built_generated_and_booted_with_the_other_flags_forwarded
+0.09s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_at_the_limit_or_one_the_interpreter_expands_still_boots
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[multibyte forwarded value---fault's value (256 bytes)]
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[long device---wiring-plan's value (278 bytes)]
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[home-relative entry without HOME-MICROPYPATH entry 1 (258 bytes)]
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[runner's directory-the runner's directory]
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[micropypath entry-MICROPYPATH entry 1 (256 bytes)]
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[forwarded value---fault's value (256 bytes)]
+0.02s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs[forwarded argument-argument 7 (256 bytes)]
+0.01s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[empty-value]
+0.01s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[reserved-fixture]
+0.01s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[none]
+0.01s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[only-forwarded-flags]
+0.01s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[unknown]
+0.01s call     tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[flag-without-value]
+
+(33 durations < 0.005s hidden.  Use -vv to show these durations.)
+16 passed in 0.49s

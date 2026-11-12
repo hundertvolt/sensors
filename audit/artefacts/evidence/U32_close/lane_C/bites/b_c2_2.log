@@ -1,0 +1,100 @@
+FFFFFF                                                                   [100%]
+=================================== FAILURES ===================================
+_ test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[arzi] _
+
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+        # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+        source = _real(device).module_source
+>       assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+E       AssertionError: assert ['conn', 'ntp... 'scd30', ...] == ['conn', 'ntp... 'scd30', ...]
+E         
+E         Right contains one more item: 'webserver'
+E         Use -v to get more diff
+
+../../../../wt-u32c/tests_scripts/test_buildgen_generate.py:990: AssertionError
+_ test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[dev] _
+
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+        # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+        source = _real(device).module_source
+>       assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+E       AssertionError: assert ['conn', 'ntp... 'scd30', ...] == ['conn', 'ntp... 'scd30', ...]
+E         
+E         Right contains one more item: 'webserver'
+E         Use -v to get more diff
+
+../../../../wt-u32c/tests_scripts/test_buildgen_generate.py:990: AssertionError
+_ test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[grkizi] _
+
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+        # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+        source = _real(device).module_source
+>       assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+E       AssertionError: assert ['conn', 'ntp... 'scd30', ...] == ['conn', 'ntp... 'scd30', ...]
+E         
+E         Right contains one more item: 'webserver'
+E         Use -v to get more diff
+
+../../../../wt-u32c/tests_scripts/test_buildgen_generate.py:990: AssertionError
+_ test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[klkizi] _
+
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+        # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+        source = _real(device).module_source
+>       assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+E       AssertionError: assert ['conn', 'ntp... 'scd30', ...] == ['conn', 'ntp... 'scd30', ...]
+E         
+E         Right contains one more item: 'webserver'
+E         Use -v to get more diff
+
+../../../../wt-u32c/tests_scripts/test_buildgen_generate.py:990: AssertionError
+_ test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[schlafzi] _
+
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+        # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+        source = _real(device).module_source
+>       assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+E       AssertionError: assert ['conn', 'ntp... 'scd30', ...] == ['conn', 'ntp... 'scd30', ...]
+E         
+E         Right contains one more item: 'webserver'
+E         Use -v to get more diff
+
+../../../../wt-u32c/tests_scripts/test_buildgen_generate.py:990: AssertionError
+_ test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[wozi] _
+
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+        # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+        source = _real(device).module_source
+>       assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+E       AssertionError: assert ['conn', 'ntp... 'scd30', ...] == ['conn', 'ntp... 'scd30', ...]
+E         
+E         Right contains one more item: 'webserver'
+E         Use -v to get more diff
+
+../../../../wt-u32c/tests_scripts/test_buildgen_generate.py:990: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple[wozi]
+6 failed, 374 deselected in 1.01s

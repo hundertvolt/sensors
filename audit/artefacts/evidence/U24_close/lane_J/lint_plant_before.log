@@ -1,0 +1,14 @@
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/js/zz-scratch-disable.js
+  6:1  warning  Unused eslint-disable directive (no problems were reported)
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/scripts/zz-scratch-disable.mjs
+  3:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  6:1  warning  Unused eslint-disable directive (no problems were reported)
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/tests_js/zz-scratch-disable.js
+  6:1  warning  Unused eslint-disable directive (no problems were reported)
+
+✖ 4 problems (0 errors, 4 warnings)
+  0 errors and 4 warnings potentially fixable with the `--fix` option.
+

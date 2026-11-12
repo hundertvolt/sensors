@@ -1,0 +1,52 @@
+consent3 hand-back, written by the agent (Mon Nov  9 23:02 UTC 2026)
+Pass 3 of BRIEF_CONSENT.md (tests and twin), read only: tree `S/wt-u35int` 6aec784f against 25caf528. C = confirmed (git, code, record), I = inferred. Ledger `S/u35r/r5/CONSENT_3_ledger.tsv` (75 rows); derivation in `S/u35r/r5/ftmp_consent3/` (`items.tsv`, `rules.tsv`, `selfbite.txt`, `mapped.tsv`, `remap.sh`, `rebuild.sh`).
+
+## Enumeration (completeness)
+- Scope `tests/ digital_twin/ tests_hardware/ tests_scripts/ tests_js/`: `git diff --name-status -M 25caf528 6aec784f -- <scope>` = 647 paths (345 A, 259 M, 2 R, 41 D), +158,057 / -47,496 lines.
+- Items 14,437: 345 added files; 13,620 definitions from `git diff -U0` + lines (`extract.awk`: Python def/class and column-0 upper-case constants; JS function, class, arrow and upper-case const, vitest test/it/describe), counted only when no - line in scope defines the same name (moves and renames drop out): 9,292 def, 562 class, 3,423 const, 343 cases; 53 `@tunable` tags on + lines; 419 document items of the two tier READMEs (49 headings, 370 lines with must/never/always/every). Catalog codes, config and /status keys and CI jobs: none is defined in these trees (buildgen/, src/, .github/: passes 1-2).
+- Mapping by 85 ordered path/name rules (first match) and a 55-name list: 9,715 items to the 75 mechanism rows; 4,722 to NOTMECH (3,177 L1 tests of product modules, 1,216 tests of runners and build tools, 329 website unit tests: each follows its product or tool, passes 1-2). Items 14,437 = items mapped 14,437. Mechanisms 75 = ledger rows 75 = KEEP 43 + ROUTED 17 + REMOVE 10 + SIMPLIFY 4 + ASK 1.
+- Growth per row: union of `git log 25caf528..6aec784f -- <the row's primary files> ':!arduino'`, lines at the adding commit (base for M) against head, origin the earliest such commit (`-S` for rows living inside other files). census.py not used (it walks src/ only).
+
+## Headline
+- The scope's +118.8k net lines sit mostly under owner-asked topics: the 43 KEEP rows (68.3k -> 93.7k lines) each carry an owner quote or a demonstrated incident (L0-L4 ladder OR45.a, generated-code and build-chain tests OR22.a/OR23.a, twin fidelity OR17.a, board tests "I would like all of the tests, except #9" 11-06, wear and evidence rules, decision vocabulary 11-03).
+- What has no consent and kept growing is the tests_scripts tree-check family: agent rules pinned to SPEC tables that every product change must re-edit (C.8 locks, C.9 tasks, I.2 allocations, F.3 rows, G.2 feed and counter sites), and 55 planted self-bite tests that outlived the 11-04 `*_bites` removal (95e4fbde) under other names. Owner, 2026-10-28 06:37: "The audit verification machinery is just a temporary tool."
+
+## REMOVE (ranked by gain against risk; all test-only, none a feature, an owner ruling or driver API; rp2 effect none unless stated)
+1. **X_SELFBITE**, 55 `src_copy`/`tree_copy` planted-violation tests in 7 files (watchdog_feed_sites 18, ticks_wrap_scan 16, setter_contract 7, lock_order 7, task_tops 5, js_api_mirrors 1, counter_steps 1): 475 lines (C). Consent negative: "Planting errors for those straightforward tests would be complete overkill" (owner 10-23 Q2), "the control arms are overkill" (OR21.a). Gap: each check still runs on the real tree; sensitivity was proved once (OR21.a); the owner-kept arms (boot contiguity, persistence-marker completeness) untouched.
+2. **X_DEFSVALID**, the shape corpus and its JS run (87 lines) exist only for the browser's definitions validator. Goes with it if pass 2 takes SCAN2's website row 1 (~135 JS lines in every image: the one rp2-image gain here); kept if the validator stays. Gap: definitions are generated, checked by buildgen and rendered for every device by `generated-definitions-render.test.js` (kept).
+3. **X_TIMING** `test_timing_budget.py` (193; 6 co-changing commits) recomputes F.3's code-derived rows; F.3 restates code (LEVELS_2: 8 rows fail anyway). Gap: timing is pinned by the twin's src-read loop-lag bounds and bench `test_end_to_end_timing.py`; F.3's principle (pre-audit) stays, its restated rows become pointers (pass 4).
+4. **X_MEMCAT** `test_memory_catalog.py` (175) with `_RUN_PHASE_ALLOWED` and I.2's 253-line catalog it forces. Evidence: none. Gap: run-phase growth stays caught by the four memory gates at both GC stages (CLAUDE.md) and twin Run 11's calibrated leak check (owner 10-23 "Question 1: This is okay, go ahead").
+5. **X_TASKINV** `test_task_inventory.py` (139) and C.9's task table restating the starters. Gap: the property that matters, every task ends in a top, stays pinned by `test_task_tops.py` (kept, OF-107 pillar) and the supervisor tests.
+6. **X_READYSHAPE** `tests_scripts/test_readiness_gates.py` (201): flag placement and a teardown bool (SCAN2 pattern 5). Gap: behaviour stays pinned by `tests/test_readiness_gates.py` (kept, OR26.a).
+7. **X_THREAT** `test_threat_model_statement.py` (122) and A.11's write list. Threat model is "trusted home LAN" (PQ5). Gap: the generated REST reference per device names every route and `@web` field (`test_api_reference.py`, kept; SystemCmd words I).
+8. **X_SLEEP** `test_src_sleep_forms.py` (206) and D.4's rule text; the lead settled P-sleep (11-04), the owner was not asked. Gap: a float in `sleep_ms()` raises TypeError at its first run (C: `extmod/modtime.c:133-134`, `py/obj.c:306-313`, v1.29.0); `asyncio.sleep(float)` is valid.
+9. **X_STYLE** `test_suppression_form.py` (160) and D.6's reason rule. Gap: RUF100 and `warn_unused_ignores` keep a stale suppression failing (CLAUDE.md).
+10. **X_LEGACYPATHS** `test_legacy_paths.py` (66): cause gone (the move to legacy/ is done); a dead path in living text fails `test_citations.py` (kept, owner 11-03).
+
+## SIMPLIFY (ranked)
+1. **S_CSTACKSITES**: `test_fatal_report_sites.py` (267) and 7 per-handler L1 tests pin the 123-site form of the owner's c-stack-reboot "ok". Lean: SCAN2's logger-side check, 4 explicit calls and the Microdot hook, each pinned once; the reboot tests stay. rp2: SCAN2's ~118 product lines (pass 1).
+2. **S_FEED** `test_watchdog_feed_sites.py` (402 -> ~40, I): after item 1's 17 planted tests, one rule: `.feed()` only in `asy_system_service.py` (C: its 2 sites are the only ones in src/) and never in a Timer/IRQ callback. Guards the owner's watchdog backstop against a masking feed.
+3. **S_COUNTER** `test_counter_steps.py` (210 -> ~60, I): keep "no cap above COUNTER_CAP"; the per-site listing of every `+=`/`-=` (14 commits of churn) goes. Gap: an uncapped counter allocates only past 2**30 steps.
+4. **X_LOCKORDER** `test_lock_order.py` (367 -> ~150, I): keep the in-function order check; the "every lock is a C.8 row and every row a lock" half and C.8's restated table go; re-derive once fsync and B have shrunk the lock set.
+
+## ASK (one family)
+- **C-stack machinery** (A_AWAIT, 1,227 lines: static await-depth analysis 909, its test 207, bench peak script 111, tunable `mem.max_await_depth` 25; 0c0ad52c/06a8ae5d, 10-15/10-20; no owner words). The owner ruled the reboot on overflow ("ok"), which records and reboots. Keep the build-time prevention, or rely on the silicon peak (`c_stack_budget.py`) plus the recorded reboot (-1,116 host lines and a tunable)? No rp2 effect either way.
+
+## Findings for the lead
+- **BRIEF_B item 7 vs an owner ruling**: B keeps codes 44/45 "reserved in the catalog, never reused"; PLAN decision 6 (owner 2026-10-28 14:23, "third option accepted"): numbers retired before the release leave no placeholder, the rule applies from the release on (C; the catalog holds 0 retired rows). SCAN2 section 8 check 5 ("agent text") predates that ruling. Unit B is writing: flag before its merge.
+- REPORT 9/11 runaway areas in this scope: port isolation and the summary and marker copies are routed (SIMPLER_4 #3/#6/#12); the bench log check is KEEP now (on silicon it caught a flash script's SGP40 W33 in production FRAM, FINDINGS:464, 11-06); test-wait tagging left the register (owner 11-04); the twin record file is gone, its recorder test (101 lines) remains.
+- Inside NOTMECH, L1 implementation pins: 38 allocation, 27 round, 14 yield and 14 lock-hold test names; fsync item 3 turns the lock and round ones into the structural property; not judged one by one.
+- Big KEEP rows that grew (consented topics, size not re-judged beyond the routed rows): board tests 133 commits, generated-code tests 5.2k -> 9.4k, hardware harness 3.1k -> 6.4k, twin runners 1.8k -> 3.7k, bus hazards 1.6k -> 3.2k, tier READMEs +667 lines in 145 commits.
+
+## ROUTED (17)
+GIVEUP_3 REMOVE 1 + D3 (`run(coro, limit)`, reap limit; the nesting refusal stays, CLAUDE.md segfault rule), D2 (bench load numbers); SIMPLER_1 #1 (JS twin launcher), #4 (FRAM rule in the READMEs); SIMPLER_3 #2 (twin's unretrieved copy and its 744-line contract), #3 (paired fakes, unit T), #5 (launch.py demo, owner: goes), #6 (helper copies); SIMPLER_4 #1 (intern guards), #3 (port lock), #6 (summary emitters), #10 (help copies), #12 (marker copies); in B: the timer-arm injection and its pins, the LED deadline pins; in fsync: the held log, the FRAM chunk site pins.
+
+## KEEP and clean (43)
+Ladder and run records, tool help, tunables, retry table, decision vocabulary, fault-or-warning, variant literals, UART bench-only and changelog, vendoring, tool pins and config checks, lint ceilings, conventions and imports, gc sites, comment cap, error catalog, mirrors, setter bools, readiness behaviour, task tops, tick wrap, Q6 proofs, generated code, buildgen, twin runners, fidelity, conformance, NTP responder, virtual time, lwIP rig, test infrastructure, bus and UART hazards, cancel sweep, wear, evidence, kicks, hardware harness, device-script rules, board tests, website tests, tier READMEs.
+
+## Slips
+- One view of tests_js/tests_hardware headers (filtered) overflowed; the harness saved it under `/root/.claude/`; not opened.
+- One PAP grep (threat model) ran without common_r1's filter and printed OR70.a's line, which names the accepted fallback secret as a known limitation (no value). Not repeated.
+- One stray file (`/tmp/x1`, sorted row IDs) was written outside my folder; removed at once by literal path.
+- Besides git and grep: awk, sed, sort, uniq, join, comm, cut, wc, head, tail, tr, paste, date, ls, bash loops; read-only greps of the pinned v1.29.0 source. No project code, gate, test, probe or hardware. My scoped diff copy (`ftmp_consent3/diff.txt`) is deleted; the TSVs hold paths and identifiers only; this file and the ledger count 0 on the filter pattern.
+Nothing of mine is running.

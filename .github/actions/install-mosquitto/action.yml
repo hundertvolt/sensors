@@ -1,9 +1,10 @@
+# Installs mosquitto, the broker the MQTT client's twin run and host-tier tests start on a port of their own (SPECIFICATION.md A.12).
 name: Install mosquitto
 description: >
   Installs the one `mosquitto` entry of toolchain/versions.toml's apt_packages, the broker the MQTT client's
   tests start on a port of their own (owner, 2026-10-07: 'mosquitto in CI', 'apt package (Recommended)').
-  Shared by digital-twin-e2e (Run 12) and the three unit-test jobs (tests_scripts/test_mqtt_probe.py), so no
-  job installs the ARM compiler for it.
+  Shared by digital-twin-e2e (Run 14) and the two jobs running the host tier (tests_scripts/test_mqtt_probe.py),
+  so no job installs the ARM compiler for it.
 
 runs:
   using: composite

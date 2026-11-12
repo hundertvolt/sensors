@@ -1,5 +1,8 @@
+// Tests js/app.js's startApp(), the prototype entry: picking the device from ?device= and the manifest, the landing
+// section, the URL hash following the section, the stop handle, and a banner for each failed or torn load.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApp } from "../js/app.js";
+import { buildElements } from "./_dom_helpers.js";
 
 const DEVICES = ["fixture-a", "fixture-b"];
 const DEFINITIONS_DIR = "../build/generated_src/definitions";
@@ -52,23 +55,6 @@ function buildFetchStub(overrides = {}) {
         }
         return Promise.resolve(new Response("not found", { status: 404 }));
     });
-}
-
-function buildElements() {
-    const appShellEl = document.createElement("div");
-    const mainEl = document.createElement("main");
-    const drawerEl = document.createElement("nav");
-    const hamburgerEl = document.createElement("button");
-    const backdropEl = document.createElement("div");
-    const errorBannerEl = document.createElement("p");
-    errorBannerEl.className = "error-banner";
-    errorBannerEl.dataset.shown = "false";
-    const deviceNameEl = document.createElement("span");
-    const elements = { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl };
-    for (const el of Object.values(elements)) {
-        document.body.appendChild(el);
-    }
-    return elements;
 }
 
 describe("startApp", () => {

@@ -1,0 +1,10 @@
+tests/test_asy_system_service.py: note: In function "_escalate_into_a_full_heap_wait":
+tests/test_asy_system_service.py:3506:27: error: Incompatible types in
+assignment (expression has type
+"Callable[[Coroutine[object, object, object], int], Coroutine[object, object, object]]",
+variable has type
+"Callable[[_Future[_T] | Generator[Any, None, _T] | Awaitable[_T], int], Coroutine[Any, Any, _T]]")
+ [assignment]
+        asyncio.wait_for_ms = full_heap_wait
+                              ^~~~~~~~~~~~~~
+Found 1 error in 1 file (checked 260 source files)

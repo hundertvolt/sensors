@@ -1,6 +1,6 @@
 """What a persistence write lands in, by name: "<section>/<group>" for every settings group a PUT can persist
 on any device, as the device definitions key it, plus HWTEST_FILE. The vocabulary of
-@pytest.mark.persistence_write's arguments and of --allow-persistence-writes-to (tests_hardware/README.md)."""
+@pytest.mark.persistence_write's arguments and of --allow-persistence-write-to (tests_hardware/README.md)."""
 
 import json
 import sys
@@ -15,12 +15,29 @@ from buildgen.definitions import definitions_for_toml
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HWTEST_FILE = "hwtest"  # a config_HWTEST_*.cfg file a device script writes for itself, no settings group
-GLOBAL_FLAG = "--allow-persistence-writes"
-SCOPED_FLAG = "--allow-persistence-writes-to"
+GLOBAL_FLAG = "--allow-persistence-write"
+SCOPED_FLAG = "--allow-persistence-write-to"
+
+
+def deselected_by(groups: "Iterable[str]", *, allow_all: bool, allowed: frozenset[str]) -> str | None:
+    # The flag that would permit a write to these groups, None when one already does. A marker naming no
+    # group needs the global flag; without any scoped flag the advice stays the global one.
+    if allow_all:
+        return None
+    wanted = tuple(groups)
+    missing = sorted(group for group in wanted if group not in allowed)
+    if wanted and not missing:
+        return None
+    if not wanted or not allowed:
+        return GLOBAL_FLAG
+    return f"{SCOPED_FLAG}={','.join(missing)}"
+
+
+def parse_groups(values: "Iterable[str]") -> frozenset[str]:
+    # --allow-persistence-write-to's values, each one group or a comma-separated list.
+    return frozenset(group.strip() for value in values for group in value.split(",") if group.strip())
 
 
 @cache
@@ -38,30 +55,3 @@ def persistence_groups() -> frozenset[str]:
                     found.add(f"{section['key']}/{group['key']}")
     return frozenset(found)
 
-
-def parse_groups(values: "Iterable[str]") -> frozenset[str]:
-    # --allow-persistence-writes-to's values, each one group or a comma-separated list.
-    return frozenset(group.strip() for value in values for group in value.split(",") if group.strip())
-
-
-def allowed_groups(config: "pytest.Config") -> frozenset[str]:
-    return parse_groups(config.getoption(SCOPED_FLAG) or ())
-
-
-def deselected_by(groups: "Iterable[str]", config: "pytest.Config") -> str | None:
-    # The flag that would permit a write to these groups, None when one already does. A marker naming no
-    # group needs the global flag; without any scoped flag the advice stays the global one.
-    if config.getoption(GLOBAL_FLAG):
-        return None
-    wanted = tuple(groups)
-    allowed = allowed_groups(config)
-    missing = sorted(group for group in wanted if group not in allowed)
-    if wanted and not missing:
-        return None
-    if not wanted or not allowed:
-        return GLOBAL_FLAG
-    return f"{SCOPED_FLAG}={','.join(missing)}"
-
-
-def writes_permitted(groups: "Iterable[str]", config: "pytest.Config") -> bool:
-    return deselected_by(groups, config) is None

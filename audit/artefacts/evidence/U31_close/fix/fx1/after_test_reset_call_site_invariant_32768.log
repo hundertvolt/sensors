@@ -1,0 +1,16 @@
+PASS test_a_planted_alias_reset_and_a_generated_watchdog_are_found
+FAIL test_reset_and_bootloader_calls_confined_to_system_service:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/microtest.py", line 39, in _call
+  File "tests/test_reset_call_site_invariant.py", line 90, in test_reset_and_bootloader_calls_confined_to_system_service
+  File "tests/test_reset_call_site_invariant.py", line 53, in _product_files
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/_generated_tree.py", line 80, in require_fresh
+RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py
+FAIL test_the_watchdog_is_armed_once_first_in_each_generated_boot_entry_and_nowhere_else:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/microtest.py", line 39, in _call
+  File "tests/test_reset_call_site_invariant.py", line 105, in test_the_watchdog_is_armed_once_first_in_each_generated_boot_entry_and_nowhere_else
+  File "tests/test_reset_call_site_invariant.py", line 53, in _product_files
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/_generated_tree.py", line 80, in require_fresh
+RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py
+1/3 passed, 2 failed, 0 skipped

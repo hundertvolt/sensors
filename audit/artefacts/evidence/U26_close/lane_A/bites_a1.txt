@@ -1,0 +1,10 @@
+E       Failed: DID NOT RAISE HardwareTestFailureError
+1 failed, 8 deselected in 0.48s
+E       AssertionError: a passive tail reads each line once
+E       assert ['twin-ok -1'] == []
+E         
+E         Left contains one more item: 'twin-ok -1'
+FAILED tests_scripts/test_bench_control_restore.py::test_no_hardware_module_hands_the_hosts_access_path_to_nmcli[bench_control.py]
+1 failed, 45 passed, 12 deselected in 0.26s
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[config is ready]
+1 failed, 2 passed, 137 deselected in 0.53s

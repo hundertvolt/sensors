@@ -1,5 +1,5 @@
-# dev.toml - the bench rig, the only unit ever flashed; always built from this file, never from
-# wozi's pins (CLAUDE.md's WoZi rule). The source of truth buildgen reads (SPECIFICATION.md Part L).
+# dev.toml - the bench rig, the only unit a session flashes; a device's result counts only from its own
+# build on its own hardware (CLAUDE.md). The source of truth buildgen reads (SPECIFICATION.md Part L).
 
 [device]
 name = "Dev"
@@ -11,10 +11,12 @@ hotspot_time_min = 8
 # Simultaneous-connection admission ceiling, kept below the firmware's own lwIP
 # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin - SPECIFICATION.md Part H.7. backlog
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
-# 5, not 6: the MQTT client's held connection takes the sixth (owner, 2026-10-07: 'Web connections 6->5').
-max_connections = 5
+max_connections = 5  # not 6: the MQTT client's held connection takes the sixth (owner, 2026-10-07: 'Web connections 6->5')
+# The board on the bench: flashed and tested by tests_hardware/ (owner, 2026-09-03; the only one
+# flashed).
+bench = true
 
-# Mandatory-infra-to-instance links; each optional, absence disables that link (owner, 2026-09-09).
+# Mandatory-infra-to-instance links; each optional, absence disables that link (agent, 2026-09-09).
 [device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
@@ -43,33 +45,24 @@ miso_pin = 4
 tx_pin = 0
 rx_pin = 1
 baudrate = 115200
-# @tunable dev.uart_rxbuf = 512
 rxbuf = 512
-# @tunable dev.uart_txbuf = 512
 txbuf = 512
-# @tunable dev.uart_poll_wait_ms = 2
 poll_wait_ms = 2
-# @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
 # The receive ring at its driver default, 4 x the 128-byte floor the build derives for this link
-# (Part J.6). A ring for the bench's 400 ms continuous-sender window is sized on the bench, with
-# its heap cost measured.
-# @tunable dev.uart_rx_ring = 512
+# (Part J.6).
 rx_ring = 512
 
 [bus.uart1]
 tx_pin = 8
 rx_pin = 9
 baudrate = 115200
-# @tunable dev.uart_rxbuf = 512
 rxbuf = 512
-# @tunable dev.uart_txbuf = 512
 txbuf = 512
-# @tunable dev.uart_poll_wait_ms = 2
 poll_wait_ms = 2
-# @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
-# @tunable dev.uart_rx_ring = 512
+# The same default: a ring sized for the bench's 400 ms continuous sender costs twice its size in
+# heap, 16 KB at 8,192 B, which dev's serving cannot spare (J.6).
 rx_ring = 512
 
 # --- sensor drivers -------------------------------------------------------------------------------
@@ -136,9 +129,6 @@ max_size = 0x40000
 driver = "neopixel"
 pin = 18
 
-[instance.wiring]
-fram_target = "fram"
-
 [[instance]]
 driver = "notification"
 
@@ -146,7 +136,7 @@ driver = "notification"
 signal_sink = "neopixel"
 fram_target = "fram"
 
-# Per-signal getters - each optional; absence disables that warning signal (owner, 2026-09-09).
+# Per-signal getters - each optional; absence disables that warning signal (agent, 2026-09-09).
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"
@@ -182,8 +172,7 @@ name_ext = "init"
 bus = "uart0"
 role = "initiator"
 # The receive cap: the protocol's own default, its largest train at the default payload size
-# (254 x 48 B), so the generated limits equal DEFAULT_LIMITS (agent, 2026-10-08; Part J.8).
-# @tunable dev.uart_max_transfer_bytes = 12192
+# (254 x 48 B), so the generated limits equal DEFAULT_LIMITS (Part J.8).
 max_transfer_bytes = 12192
 
 [instance.wiring]
@@ -194,7 +183,6 @@ driver = "uart_link"
 name_ext = "resp"
 bus = "uart1"
 role = "responder"
-# @tunable dev.uart_max_transfer_bytes = 12192
 max_transfer_bytes = 12192
 
 [instance.wiring]

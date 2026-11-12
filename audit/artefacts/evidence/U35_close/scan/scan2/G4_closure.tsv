@@ -1,0 +1,1876 @@
+root_id	dependent	file:line	order	kind
+G4R01	report_if_fatal(	src/asy_api_response.py:72	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:132	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:465	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:480	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:511	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:521	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:549	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:575	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:687	1	call site
+G4R01	report_if_fatal(	src/asy_base_classes.py:702	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:215	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:226	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:290	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:314	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:330	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:405	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:413	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:421	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:429	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:438	1	call site
+G4R01	report_if_fatal(	src/asy_bmp3xx_driver.py:447	1	call site
+G4R01	report_if_fatal(	src/asy_captive_dns.py:127	1	call site
+G4R01	report_if_fatal(	src/asy_captive_dns.py:138	1	call site
+G4R01	report_if_fatal(	src/asy_captive_dns.py:190	1	call site
+G4R01	report_if_fatal(	src/asy_config_manager.py:418	1	call site
+G4R01	report_if_fatal(	src/asy_fram_driver.py:174	1	call site
+G4R01	report_if_fatal(	src/asy_fram_manager.py:169	1	call site
+G4R01	report_if_fatal(	src/asy_fram_manager.py:339	1	call site
+G4R01	report_if_fatal(	src/asy_fram_manager.py:434	1	call site
+G4R01	report_if_fatal(	src/asy_fram_manager.py:594	1	call site
+G4R01	report_if_fatal(	src/asy_fram_manager.py:629	1	call site
+G4R01	report_if_fatal(	src/asy_fram_manager.py:830	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:325	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:347	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:383	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:469	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:513	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:672	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:735	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:762	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:781	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:807	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:820	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:829	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:859	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:920	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:936	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:962	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:1095	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:1104	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:1117	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:1137	1	call site
+G4R01	report_if_fatal(	src/asy_isl29125_driver.py:1149	1	call site
+G4R01	report_if_fatal(	src/asy_notification_service.py:228	1	call site
+G4R01	report_if_fatal(	src/asy_notification_service.py:324	1	call site
+G4R01	report_if_fatal(	src/asy_notification_service.py:336	1	call site
+G4R01	report_if_fatal(	src/asy_ntp_client.py:431	1	call site
+G4R01	report_if_fatal(	src/asy_ntp_client.py:464	1	call site
+G4R01	report_if_fatal(	src/asy_print_log.py:482	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:343	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:434	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:495	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:515	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:574	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:582	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:608	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:616	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:624	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:632	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:640	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:650	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:660	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:670	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:680	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:690	1	call site
+G4R01	report_if_fatal(	src/asy_scd30_driver.py:706	1	call site
+G4R01	report_if_fatal(	src/asy_sgp40_driver.py:321	1	call site
+G4R01	report_if_fatal(	src/asy_sgp40_driver.py:336	1	call site
+G4R01	report_if_fatal(	src/asy_sgp40_driver.py:467	1	call site
+G4R01	report_if_fatal(	src/asy_sgp40_driver.py:485	1	call site
+G4R01	report_if_fatal(	src/asy_sgp40_driver.py:553	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:284	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:308	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:327	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:339	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:430	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:437	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:474	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:500	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:507	1	call site
+G4R01	report_if_fatal(	src/asy_system_service.py:619	1	call site
+G4R01	report_if_fatal(	src/asy_uart_comm.py:422	1	call site
+G4R01	report_if_fatal(	src/asy_uart_comm.py:563	1	call site
+G4R01	report_if_fatal(	src/asy_uart_link_driver.py:149	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:203	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:736	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:741	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:760	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:778	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:795	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:807	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:877	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:896	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:909	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:947	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:961	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:1006	1	call site
+G4R01	report_if_fatal(	src/asy_webserver_service.py:1017	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:287	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:310	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:451	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:464	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:536	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:547	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:555	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:608	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:646	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:721	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:803	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:817	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:839	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:848	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:891	1	call site
+G4R01	report_if_fatal(	src/asy_wifi_service.py:901	1	call site
+G4R01	report_if_fatal(	build/generated_src/sensortask_arzi_main.py:42	1	call site
+G4R01	report_if_fatal(	build/generated_src/sensortask_dev_main.py:42	1	call site
+G4R01	report_if_fatal(	build/generated_src/sensortask_grkizi_main.py:42	1	call site
+G4R01	report_if_fatal(	build/generated_src/sensortask_klkizi_main.py:42	1	call site
+G4R01	report_if_fatal(	build/generated_src/sensortask_schlafzi_main.py:42	1	call site
+G4R01	report_if_fatal(	build/generated_src/sensortask_wozi_main.py:42	1	call site
+G4R01	report_if_fatal(	buildgen/codegen.py:871	1	call site
+G4R01	report_if_fatal\(	tests/tooling	1	count tests=4f/9l tests_scripts=3f/15l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	_fatal	src/asy_print_log.py:81	1	flag
+G4R01	fatal_reported	src/asy_print_log.py:466	1	flag
+G4R01	_fatal	src/asy_print_log.py:467	1	flag
+G4R01	_fatal	src/asy_print_log.py:485	1	flag
+G4R01	_fatal	src/asy_print_log.py:487	1	flag
+G4R01	fatal_reported	src/asy_system_service.py:27	1	flag
+G4R01	fatal_reported	src/asy_system_service.py:559	1	flag
+G4R01	\bfatal_reported\b|\b_fatal\b	tests/tooling	1	count tests=11f/48l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	_STACK_EXHAUSTED	src/asy_print_log.py:80	1	const
+G4R01	_STACK_EXHAUSTED	src/asy_print_log.py:486	1	const
+G4R01	\b_STACK_EXHAUSTED\b	tests/tooling	1	count tests=5f/9l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	_RR_STACK_EXHAUSTED	src/asy_system_service.py:96	2	reset code
+G4R01	_RR_STACK_EXHAUSTED	src/asy_system_service.py:559	2	reset code
+G4R01	_RR_STACK_EXHAUSTED	src/asy_system_service.py:585	2	reset code
+G4R01	\b_RR_STACK_EXHAUSTED\b	tests/tooling	2	count tests=1f/7l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=2f/3l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	_ERR_STACK_EXHAUSTED	src/asy_system_service.py:54	2	errno
+G4R01	_ERR_STACK_EXHAUSTED	src/asy_system_service.py:591	2	errno
+G4R01	"STACK_EXHAUSTED"	buildgen/error_catalog.json:49	2	errno
+G4R01	\b_ERR_STACK_EXHAUSTED\b|"STACK_EXHAUSTED"	tests/tooling	2	count tests=1f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=2f/3l toolchain=0f/0l tests_hardware=1f/4l
+G4R01	"supervisor escalation (a handler recorded	buildgen/error_catalog.json:206	2	catalog ResetReason 20
+G4R01	"supervisor escalation \(a handler recorded	tests/tooling	2	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	_ESCALATION_ENTRY_WAIT_MS	src/asy_system_service.py:77	3	bounded wait
+G4R01	_ESCALATION_ENTRY_WAIT_MS	src/asy_system_service.py:595	3	bounded wait
+G4R01	_ESCALATION_ENTRY_WAIT_MS	src/asy_system_service.py:597	3	bounded wait
+G4R01	\b_ESCALATION_ENTRY_WAIT_MS\b|escalation_entry_wait_ms	tests/tooling	3	count tests=1f/2l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=1f/1l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	Reboot entry not written	src/asy_system_service.py:599	3	console arm
+G4R01	Reboot entry not written	tests/tooling	3	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	lines 129-132	src/asy_base_classes.py:129-132	3	release catch
+G4R01	lines 171-174	src/asy_fram_driver.py:171-174	3	release catch
+G4R02	_REC_NO_CONTROLLER	src/asy_i2c_driver.py:33	0	unreachable state
+G4R02	_REC_NO_CONTROLLER	src/asy_i2c_driver.py:395	0	unreachable state
+G4R02	\b_REC_NO_CONTROLLER\b	tests/tooling	0	count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R02	lines 392-395	src/asy_i2c_driver.py:392-395	0	catch
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:494	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:506	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:512	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:524	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:607	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:619	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:682	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:698	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:705	1	raise
+G4R02	"I2C bus not initialized"	src/asy_bmp3xx_driver.py:724	1	raise
+G4R02	"I2C bus not initialized"	src/asy_i2c_driver.py:468	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1225	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1251	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1259	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1290	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1303	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1490	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1508	1	raise
+G4R02	"I2C bus not initialized"	src/asy_isl29125_driver.py:1511	1	raise
+G4R02	"I2C bus not initialized"	src/asy_scd30_driver.py:730	1	raise
+G4R02	"I2C bus not initialized"	src/asy_scd30_driver.py:735	1	raise
+G4R02	"I2C bus not initialized"	src/asy_scd30_driver.py:761	1	raise
+G4R02	"I2C bus not initialized"	src/asy_scd30_driver.py:868	1	raise
+G4R02	"I2C bus not initialized"	src/asy_sgp40_driver.py:698	1	raise
+G4R02	"I2C bus not initialized"	src/asy_sgp40_driver.py:702	1	raise
+G4R02	"I2C bus not initialized"	src/asy_sgp40_driver.py:744	1	raise
+G4R02	"I2C bus not initialized"	src/asy_sgp40_driver.py:824	1	raise
+G4R02	"I2C bus not initialized"	tests/tooling	1	count tests=4f/15l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R02	lines 289-305	src/asy_i2c_driver.py:289-305	1	bool contract (I2C-8)
+G4R02	lines 314-331	src/asy_i2c_driver.py:314-331	1	bool contract (I2C-8)
+G4R02	lines 375-384	src/asy_i2c_driver.py:375-384	1	bool contract (I2C-8)
+G4R02	lines 495-555	src/asy_i2c_driver.py:495-555	1	bool contract (I2C-8)
+G4R02	spi.available	src/asy_fram_driver.py:336	1	SPI no-bus
+G4R02	spi.available	src/asy_fram_driver.py:368	1	SPI no-bus
+G4R02	spi.available	src/asy_fram_driver.py:381	1	SPI no-bus
+G4R02	"SPI bus not initialized"	src/asy_fram_driver.py:387	1	SPI no-bus
+G4R02	"SPI bus not initialized"	src/asy_fram_driver.py:412	1	SPI no-bus
+G4R02	"SPI bus not initialized"	src/asy_fram_driver.py:432	1	SPI no-bus
+G4R02	spi.available	src/asy_fram_driver.py:454	1	SPI no-bus
+G4R02	"SPI bus not initialized"	src/asy_fram_driver.py:455	1	SPI no-bus
+G4R02	spi.available	src/asy_fram_driver.py:498	1	SPI no-bus
+G4R02	"SPI bus not initialized"	src/asy_fram_driver.py:499	1	SPI no-bus
+G4R02	def available	src/asy_spi_driver.py:41	1	SPI no-bus
+G4R02	"SPI bus not initialized"|\bspi\.available\b|def available	tests/tooling	1	count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:103	1	SPI status bit
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:337	1	SPI status bit
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:369	1	SPI status bit
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:381	1	SPI status bit
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:386	1	SPI status bit
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:411	1	SPI status bit
+G4R02	_SV_BUS_DOWN	src/asy_fram_driver.py:431	1	SPI status bit
+G4R02	\b_SV_BUS_DOWN\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R02	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:112	2	errno
+G4R02	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:387	2	errno
+G4R02	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:412	2	errno
+G4R02	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:432	2	errno
+G4R02	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:499	2	errno
+G4R02	"FRAM_BUS_DOWN"	buildgen/error_catalog.json:70	2	errno
+G4R02	\b_ERR_FRAM_BUS_DOWN\b|"FRAM_BUS_DOWN"	tests/tooling	2	count tests=2f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R02	a stale buffer would pass it	tests/tooling	2	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R03	.lost	src/asy_fram_driver.py:151	1	event
+G4R03	.lost	src/asy_fram_driver.py:259	1	event
+G4R03	.lost	src/asy_fram_driver.py:481	1	event
+G4R03	.lost	src/asy_fram_manager.py:152	1	event
+G4R03	.lost	src/asy_fram_manager.py:220	1	event
+G4R03	.lost	src/asy_fram_manager.py:376	1	event
+G4R03	.lost	src/asy_fram_manager.py:448	1	event
+G4R03	.lost	src/asy_fram_manager.py:464	1	event
+G4R03	.lost	src/asy_fram_manager.py:676	1	event
+G4R03	.lost	src/asy_fram_manager.py:680	1	event
+G4R03	.lost	src/asy_fram_manager.py:812	1	event
+G4R03	\.lost\b	tests/tooling	1	count tests=5f/30l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R03	_report_chip_lost	src/asy_fram_driver.py:255	1	reporter
+G4R03	_report_chip_lost	src/asy_fram_driver.py:384	1	reporter
+G4R03	_report_chip_lost	src/asy_fram_driver.py:423	1	reporter
+G4R03	_report_chip_lost	src/asy_fram_driver.py:509	1	reporter
+G4R03	\b_report_chip_lost\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R03	_SV_CHIP_LOST	src/asy_fram_driver.py:104	1	status bit
+G4R03	_SV_CHIP_LOST	src/asy_fram_driver.py:225	1	status bit
+G4R03	_SV_CHIP_LOST	src/asy_fram_driver.py:383	1	status bit
+G4R03	_SV_CHIP_LOST	src/asy_fram_driver.py:422	1	status bit
+G4R03	\b_SV_CHIP_LOST\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R03	_SR_FIXED_ZERO	src/asy_fram_driver.py:64	1	probe
+G4R03	_PROBE_AT	src/asy_fram_driver.py:85	1	probe
+G4R03	_anomalies	src/asy_fram_driver.py:150	1	probe
+G4R03	_check_write_anomaly	src/asy_fram_driver.py:212	1	probe
+G4R03	_anomalies	src/asy_fram_driver.py:217	1	probe
+G4R03	_SR_FIXED_ZERO	src/asy_fram_driver.py:219	1	probe
+G4R03	_anomalies	src/asy_fram_driver.py:220	1	probe
+G4R03	_anomalies	src/asy_fram_driver.py:222	1	probe
+G4R03	_check_write_anomaly	src/asy_fram_driver.py:372	1	probe
+G4R03	_check_write_anomaly	src/asy_fram_driver.py:381	1	probe
+G4R03	_anomalies	src/asy_fram_driver.py:480	1	probe
+G4R03	\b_check_write_anomaly\b|\b_anomalies\b|\b_PROBE_AT\b|\b_...	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+G4R03	_ERR_FRAM_CHIP_LOST	src/asy_fram_driver.py:114	2	errno
+G4R03	_ERR_FRAM_CHIP_LOST	src/asy_fram_driver.py:258	2	errno
+G4R03	"FRAM_CHIP_LOST"	buildgen/error_catalog.json:72	2	errno
+G4R03	\b_ERR_FRAM_CHIP_LOST\b|"FRAM_CHIP_LOST"	tests/tooling	2	count tests=4f/13l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/2l
+G4R03	verify_present(	src/asy_fram_driver.py:485	2	blank probe (A-M4)
+G4R03	verify_present(	src/asy_fram_manager.py:152	2	blank probe (A-M4)
+G4R03	verify_present\(	tests/tooling	2	count tests=4f/27l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=3f/5l
+G4R03	is_ready(	src/asy_fram_driver.py:351	2	readiness (A-D10)
+G4R03	is_ready(	src/asy_fram_manager.py:812	2	readiness (A-D10)
+G4R03	\bis_ready\(	tests/tooling	2	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R03	erase_ready	src/asy_fram_manager.py:783	2	erase readiness (A-M14)
+G4R03	erase_ready	src/asy_fram_manager.py:810	2	erase readiness (A-M14)
+G4R03	erase_ready	src/asy_system_service.py:392	2	erase readiness (A-M14)
+G4R03	\berase_ready\b	tests/tooling	2	count tests=3f/16l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R03	FRAM chip answers again	src/asy_fram_manager.py:679	3	re-setup (A-M6 2nd half)
+G4R03	FRAM chip answers again	tests/tooling	3	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R04	console(	src/asy_base_classes.py:162	1	console line
+G4R04	console(	src/asy_base_classes.py:396	1	console line
+G4R04	console(	src/asy_dns_client.py:154	1	console line
+G4R04	console(	src/asy_fram_manager.py:111	1	console line
+G4R04	console(	src/asy_fram_manager.py:198	1	console line
+G4R04	console(	src/asy_fram_manager.py:796	1	console line
+G4R04	console(	src/asy_framing_codecs.py:88	1	console line
+G4R04	console(	src/asy_print_log.py:1	1	console line
+G4R04	console(	src/asy_print_log.py:6	1	console line
+G4R04	console(	src/asy_print_log.py:7	1	console line
+G4R04	console(	src/asy_print_log.py:100	1	console line
+G4R04	console(	src/asy_print_log.py:155	1	console line
+G4R04	console(	src/asy_print_log.py:297	1	console line
+G4R04	console(	src/asy_print_log.py:329	1	console line
+G4R04	console(	src/asy_print_log.py:356	1	console line
+G4R04	console(	src/asy_print_log.py:456	1	console line
+G4R04	console(	src/asy_system_service.py:599	1	console line
+G4R04	console(	src/asy_uart_driver.py:436	1	console line
+G4R04	console(	src/asy_uart_driver.py:468	1	console line
+G4R04	console(	src/asy_uart_driver.py:524	1	console line
+G4R04	console(	src/asy_uart_driver.py:541	1	console line
+G4R04	console(	src/asy_uart_driver.py:550	1	console line
+G4R04	console(	src/asy_uart_driver.py:574	1	console line
+G4R04	console(	src/asy_uart_driver.py:649	1	console line
+G4R04	console(	src/asy_uart_driver.py:663	1	console line
+G4R04	console(	src/asy_uart_driver.py:732	1	console line
+G4R04	console(	src/asy_uart_driver.py:772	1	console line
+G4R04	console(	src/asy_uart_driver.py:792	1	console line
+G4R04	console(	src/asy_udp_socket.py:70	1	console line
+G4R04	console(	src/asy_udp_socket.py:93	1	console line
+G4R04	console(	src/asy_udp_socket.py:99	1	console line
+G4R04	console(	src/asy_udp_socket.py:136	1	console line
+G4R04	console(	src/asy_udp_socket.py:148	1	console line
+G4R04	console(	src/asy_udp_socket.py:162	1	console line
+G4R04	console(	src/asy_udp_socket.py:171	1	console line
+G4R04	console(	src/asy_webserver_service.py:812	1	console line
+G4R04	console(	build/generated_src/sensortask_arzi_main.py:44	1	console line
+G4R04	console(	build/generated_src/sensortask_dev_main.py:44	1	console line
+G4R04	console(	build/generated_src/sensortask_grkizi_main.py:44	1	console line
+G4R04	console(	build/generated_src/sensortask_klkizi_main.py:44	1	console line
+G4R04	console(	build/generated_src/sensortask_schlafzi_main.py:44	1	console line
+G4R04	console(	build/generated_src/sensortask_wozi_main.py:44	1	console line
+G4R04	console(	buildgen/codegen.py:873	1	console line
+G4R04	\bconsole\(	tests/tooling	1	count tests=7f/19l tests_scripts=2f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R04	isinstance(arg, MemoryError)	src/asy_print_log.py:99	1	at-every-level arm
+G4R04	isinstance\(arg, MemoryError\)	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_OVERLAY_REFRESH_MS	src/asy_neopixel_driver.py:39	1	NP-5 overlay rewrite
+G4R05	_OVERLAY_REFRESH_MS	src/asy_neopixel_driver.py:82	1	NP-5 overlay rewrite
+G4R05	\b_OVERLAY_REFRESH_MS\b|overlay_refresh_ms	tests/tooling	1	count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_SIGNAL_WAIT_MS	src/asy_neopixel_driver.py:35	1	NP-2 LED wait deadline
+G4R05	_SIGNAL_WAIT_MS	src/asy_neopixel_driver.py:168	1	NP-2 LED wait deadline
+G4R05	Internal LED command dropped	src/asy_neopixel_driver.py:171	1	NP-2 LED wait deadline
+G4R05	\b_SIGNAL_WAIT_MS\b|signal_wait_ms|Internal LED command d...	tests/tooling	1	count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_WRN_NOTIFY_SIGNAL_DROPPED	src/asy_notification_service.py:58	2	NT-5 drop warning
+G4R05	LED signal dropped	src/asy_notification_service.py:340	2	NT-5 drop warning
+G4R05	"NOTIFY_SIGNAL_DROPPED"	buildgen/error_catalog.json:177	2	NT-5 drop warning
+G4R05	\b_WRN_NOTIFY_SIGNAL_DROPPED\b|"NOTIFY_SIGNAL_DROPPED"|LE...	tests/tooling	2	count tests=2f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_sink_is_default	src/asy_notification_service.py:212	3	NT-5 sink identity
+G4R05	_sink_is_default	src/asy_notification_service.py:339	3	NT-5 sink identity
+G4R05	\b_sink_is_default\b	tests/tooling	3	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_SAMPLE_MAX_AGE_S	src/asy_notification_service.py:71	1	NT-3 sample age
+G4R05	_SAMPLE_MAX_AGE_S	src/asy_notification_service.py:234	1	NT-3 sample age
+G4R05	\b_SAMPLE_MAX_AGE_S\b|sample_max_age_s	tests/tooling	1	count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_COMP_MAX_AGE_S	src/asy_sgp40_driver.py:90	1	SGP-2 sample age
+G4R05	_COMP_MAX_AGE_S	src/asy_sgp40_driver.py:183	1	SGP-2 sample age
+G4R05	\b_COMP_MAX_AGE_S\b|comp_max_age_s	tests/tooling	1	count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_START_RETRIES	src/asy_webserver_service.py:173	1	WS-11 start retries
+G4R05	_START_RETRY_S	src/asy_webserver_service.py:175	1	WS-11 start retries
+G4R05	_START_RETRIES	src/asy_webserver_service.py:982	1	WS-11 start retries
+G4R05	_START_RETRY_S	src/asy_webserver_service.py:991	1	WS-11 start retries
+G4R05	\b_START_RETRIES\b|\b_START_RETRY_S\b|start_retries	tests/tooling	1	count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_WRN_HTTP_START_FAILED	src/asy_webserver_service.py:116	2	WS-11 warning
+G4R05	_WRN_HTTP_START_FAILED	src/asy_webserver_service.py:983	2	WS-11 warning
+G4R05	_WRN_HTTP_START_FAILED	src/asy_webserver_service.py:986	2	WS-11 warning
+G4R05	"HTTP_START_FAILED"	buildgen/error_catalog.json:174	2	WS-11 warning
+G4R05	\b_WRN_HTTP_START_FAILED\b|"HTTP_START_FAILED"	tests/tooling	2	count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_trace_before_close	src/asy_webserver_service.py:802	1	WS-6 trace bound
+G4R05	_trace_before_close	src/asy_webserver_service.py:942	1	WS-6 trace bound
+G4R05	_trace_before_close	src/asy_webserver_service.py:945	1	WS-6 trace bound
+G4R05	_trace_before_close	src/asy_webserver_service.py:948	1	WS-6 trace bound
+G4R05	_trace_before_close	src/asy_webserver_service.py:994	1	WS-6 trace bound
+G4R05	\b_trace_before_close\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R05	_nearest_tick_s	src/asy_ntp_client.py:157	1	NTP-13 rounding
+G4R05	_nearest_tick_s	src/asy_ntp_client.py:393	1	NTP-13 rounding
+G4R05	_nearest_tick_s	src/asy_ntp_client.py:397	1	NTP-13 rounding
+G4R05	\b_nearest_tick_s\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R06a	_cadence	src/asy_ntp_client.py:199	1	NTP-12 cadence
+G4R06a	_cadence	src/asy_ntp_client.py:369	1	NTP-12 cadence
+G4R06a	_cadence	src/asy_ntp_client.py:387	1	NTP-12 cadence
+G4R06a	_cadence	src/asy_ntp_client.py:395	1	NTP-12 cadence
+G4R06a	_cadence	src/asy_ntp_client.py:404	1	NTP-12 cadence
+G4R06a	\b_cadence\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R06a	_unsynced_wait_s	src/asy_ntp_client.py:196	1	NTP-15 unsynced credit
+G4R06a	_tick_gap	src/asy_ntp_client.py:197	1	NTP-15 unsynced credit
+G4R06a	_tick_gap	src/asy_ntp_client.py:370	1	NTP-15 unsynced credit
+G4R06a	_tick_gap	src/asy_ntp_client.py:373	1	NTP-15 unsynced credit
+G4R06a	_tick_gap	src/asy_ntp_client.py:374	1	NTP-15 unsynced credit
+G4R06a	_unsynced_wait_s	src/asy_ntp_client.py:397	1	NTP-15 unsynced credit
+G4R06a	_unsynced_wait_s	src/asy_ntp_client.py:398	1	NTP-15 unsynced credit
+G4R06a	_unsynced_wait_s	src/asy_ntp_client.py:405	1	NTP-15 unsynced credit
+G4R06a	_unsynced_wait_s	src/asy_ntp_client.py:411	1	NTP-15 unsynced credit
+G4R06a	\b_tick_gap\b|\b_unsynced_wait_s\b	tests/tooling	1	count tests=1f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R06b	lines 103-116	src/asy_udp_socket.py:103-116	1	UDP-4 deadline
+G4R06c	RR_INTERRUPTED	src/asy_system_service.py:97	1	loop-end record
+G4R06c	_RR_LOOP_ENDED	src/asy_system_service.py:98	1	loop-end record
+G4R06c	record_loop_end	src/asy_system_service.py:173	1	loop-end record
+G4R06c	_RR_LOOP_ENDED	src/asy_system_service.py:180	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_arzi_main.py:25	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_arzi_main.py:36	1	loop-end record
+G4R06c	record_loop_end	build/generated_src/sensortask_arzi_main.py:43	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_dev_main.py:25	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_dev_main.py:36	1	loop-end record
+G4R06c	record_loop_end	build/generated_src/sensortask_dev_main.py:43	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_grkizi_main.py:25	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_grkizi_main.py:36	1	loop-end record
+G4R06c	record_loop_end	build/generated_src/sensortask_grkizi_main.py:43	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_klkizi_main.py:25	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_klkizi_main.py:36	1	loop-end record
+G4R06c	record_loop_end	build/generated_src/sensortask_klkizi_main.py:43	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_schlafzi_main.py:25	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_schlafzi_main.py:36	1	loop-end record
+G4R06c	record_loop_end	build/generated_src/sensortask_schlafzi_main.py:43	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_wozi_main.py:25	1	loop-end record
+G4R06c	RR_INTERRUPTED	build/generated_src/sensortask_wozi_main.py:36	1	loop-end record
+G4R06c	record_loop_end	build/generated_src/sensortask_wozi_main.py:43	1	loop-end record
+G4R06c	RR_INTERRUPTED	buildgen/codegen.py:856	1	loop-end record
+G4R06c	RR_INTERRUPTED	buildgen/codegen.py:865	1	loop-end record
+G4R06c	record_loop_end	buildgen/codegen.py:872	1	loop-end record
+G4R06c	\bRR_INTERRUPTED\b|\brecord_loop_end\b|\b_RR_LOOP_ENDED\b	tests/tooling	1	count tests=3f/17l tests_scripts=1f/5l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/2l
+G4R06c	"interrupted: Ctrl-C	buildgen/error_catalog.json:207	1	loop-end codes
+G4R06c	"the event loop ended with an exception	buildgen/error_catalog.json:208	1	loop-end codes
+G4R06c	"interrupted: Ctrl-C|"the event loop ended with an except...	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R06c	ended: BaseException	build/generated_src/sensortask_arzi_main.py:30	2	pre-bound name (B7)
+G4R06c	ended: BaseException	build/generated_src/sensortask_dev_main.py:30	2	pre-bound name (B7)
+G4R06c	ended: BaseException	build/generated_src/sensortask_grkizi_main.py:30	2	pre-bound name (B7)
+G4R06c	ended: BaseException	build/generated_src/sensortask_klkizi_main.py:30	2	pre-bound name (B7)
+G4R06c	ended: BaseException	build/generated_src/sensortask_schlafzi_main.py:30	2	pre-bound name (B7)
+G4R06c	ended: BaseException	build/generated_src/sensortask_wozi_main.py:30	2	pre-bound name (B7)
+G4R06c	^ended: BaseException	tests/tooling	2	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R06d	lines 892-899	src/asy_uart_comm.py:892-899	1	UC-5 send-side pieces
+G4R06d	lines 372-372	src/asy_uart_comm.py:372-372	1	UC-5 send-side pieces
+G4R06d	lines 97-113	src/asy_uart_link_driver.py:97-113	1	UL-5 banner scratch and echo
+G4R06d	lines 137-137	src/asy_uart_link_driver.py:137-137	1	UL-5 banner scratch and echo
+G4R06d	read_at(	src/asy_base_classes.py:204	2	PieceBuffer echo-only methods
+G4R06d	def trim	src/asy_base_classes.py:219	2	PieceBuffer echo-only methods
+G4R06d	.trim(	src/asy_uart_comm.py:323	2	PieceBuffer echo-only methods
+G4R06d	read_at(	src/asy_uart_comm.py:896	2	PieceBuffer echo-only methods
+G4R06d	.trim(	src/asy_uart_comm.py:1119	2	PieceBuffer echo-only methods
+G4R06d	.trim(	src/asy_uart_driver.py:695	2	PieceBuffer echo-only methods
+G4R06d	\bread_at\(|\.trim\(|def trim\b	tests/tooling	2	count tests=1f/11l tests_scripts=0f/0l tests_js=6f/17l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	_read_failing	src/asy_config_manager.py:330	1	config store
+G4R07	_read_failing	src/asy_config_manager.py:360	1	config store
+G4R07	_read_failing	src/asy_config_manager.py:425	1	config store
+G4R07	_read_failing	src/asy_config_manager.py:426	1	config store
+G4R07	_read_failing	src/asy_config_manager.py:455	1	config store
+G4R07	_read_failing	src/asy_config_manager.py:511	1	config store
+G4R07	\b_read_failing\b	tests/tooling	1	count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	_comp_unreadable	src/asy_bmp3xx_driver.py:180	1	BMP3XX compensation
+G4R07	_comp_unreadable	src/asy_bmp3xx_driver.py:222	1	BMP3XX compensation
+G4R07	_comp_unreadable	src/asy_bmp3xx_driver.py:267	1	BMP3XX compensation
+G4R07	_comp_unreadable	src/asy_bmp3xx_driver.py:268	1	BMP3XX compensation
+G4R07	_comp_unreadable	src/asy_bmp3xx_driver.py:271	1	BMP3XX compensation
+G4R07	\b_comp_unreadable\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	cfg_unreadable	src/asy_notification_service.py:255	1	notification config
+G4R07	cfg_unreadable	src/asy_notification_service.py:270	1	notification config
+G4R07	cfg_unreadable	src/asy_notification_service.py:271	1	notification config
+G4R07	cfg_unreadable	src/asy_notification_service.py:275	1	notification config
+G4R07	\bcfg_unreadable\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	quiet: bool	src/asy_base_classes.py:390	1	tick re-arm
+G4R07	quiet=True	src/asy_system_service.py:522	1	tick re-arm
+G4R07	quiet=True	src/asy_wifi_service.py:414	1	tick re-arm
+G4R07	quiet=True|\bquiet: bool	tests/tooling	1	count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	_timer_reported	src/asy_base_classes.py:444	1	timer persisted once
+G4R07	_timer_reported	src/asy_base_classes.py:720	1	timer persisted once
+G4R07	_timer_reported	src/asy_base_classes.py:729	1	timer persisted once
+G4R07	_timer_reported	src/asy_base_classes.py:730	1	timer persisted once
+G4R07	\b_timer_reported\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	_no_check_logged	src/asy_fram_manager.py:114	1	FRAM check buffer
+G4R07	_no_check_logged	src/asy_fram_manager.py:176	1	FRAM check buffer
+G4R07	_no_check_logged	src/asy_fram_manager.py:177	1	FRAM check buffer
+G4R07	\b_no_check_logged\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R07	lines 513-519	src/asy_system_service.py:513-519	1	system uptime episode
+G4R08a	_as_bool	src/asy_config_manager.py:74	1	typed getters (A-C7)
+G4R08a	_as_str	src/asy_config_manager.py:78	1	typed getters (A-C7)
+G4R08a	_stored_float	src/asy_config_manager.py:128	1	typed getters (A-C7)
+G4R08a	_get_typed_values	src/asy_config_manager.py:345	1	typed getters (A-C7)
+G4R08a	_get_typed_values	src/asy_config_manager.py:437	1	typed getters (A-C7)
+G4R08a	_get_typed_values	src/asy_config_manager.py:462	1	typed getters (A-C7)
+G4R08a	_get_typed_values	src/asy_config_manager.py:465	1	typed getters (A-C7)
+G4R08a	_get_typed_values	src/asy_config_manager.py:468	1	typed getters (A-C7)
+G4R08a	_stored_float	src/asy_config_manager.py:624	1	typed getters (A-C7)
+G4R08a	_stored_float	src/asy_config_manager.py:655	1	typed getters (A-C7)
+G4R08a	\b_get_typed_values\b|\b_as_bool\b|\b_as_str\b|\b_stored_...	tests/tooling	1	count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/2l
+G4R08b	_signal_values	src/asy_neopixel_driver.py:48	1	NP-3 sanitiser
+G4R08b	_signal_values	src/asy_neopixel_driver.py:149	1	NP-3 sanitiser
+G4R08b	_signal_values	src/asy_neopixel_driver.py:167	1	NP-3 sanitiser
+G4R08b	\b_signal_values\b	tests/tooling	1	count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R08b	period is None	src/asy_isl29125_driver.py:1154	1	ISL-17 guard
+G4R08b	period is None	tests/tooling	1	count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R08b	raw signal not measured	src/asy_sgp40_driver.py:447	1	SGP-18 raise
+G4R08b	raw signal not measured	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R08c	_compiled	buildgen/generate.py:45	1	compile check (H3)
+G4R08c	_compiled	buildgen/generate.py:157	1	compile check (H3)
+G4R08c	_compiled	buildgen/generate.py:161	1	compile check (H3)
+G4R08c	_compiled	buildgen/generate.py:162	1	compile check (H3)
+G4R08c	\b_compiled\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R08d	HardConsumer	buildgen/validate.py:128	1	build checks
+G4R08d	i2c-timeout-max	buildgen/validate.py:609	1	build checks
+G4R08d	smallest_hard_consumer	buildgen/validate.py:622	1	build checks
+G4R08d	i2c-timeout-consumer	buildgen/validate.py:631	1	build checks
+G4R08d	uart-baud-mismatch	buildgen/validate.py:1153	1	build checks
+G4R08d	smallest_hard_consumer	buildgen/validate.py:1564	1	build checks
+G4R08d	HardConsumer	buildgen/validate.py:1569	1	build checks
+G4R08d	HardConsumer	buildgen/validate.py:1576	1	build checks
+G4R08d	uart-baud-mismatch|i2c-timeout-consumer|i2c-timeout-max|\...	tests/tooling	1	count tests=0f/0l tests_scripts=4f/21l tests_js=0f/0l digital_twin=0f/0l scripts=1f/2l toolchain=0f/0l tests_hardware=2f/4l
+G4R08d	class_has_read_triggers	buildgen/codegen.py:14	2	registry helpers (H32)
+G4R08d	class_has_read_triggers	buildgen/codegen.py:457	2	registry helpers (H32)
+G4R08d	class_has_read_triggers	buildgen/driver_registry.py:88	2	registry helpers (H32)
+G4R08d	data_fields	buildgen/driver_registry.py:193	2	registry helpers (H32)
+G4R08d	data_fields	buildgen/validate.py:24	2	registry helpers (H32)
+G4R08d	data_fields	buildgen/validate.py:969	2	registry helpers (H32)
+G4R08d	\bdata_fields\b|\bclass_has_read_triggers\b	tests/tooling	2	count tests=0f/0l tests_scripts=1f/14l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/2l
+G4R09	lines 150-175	src/math_helpers.py:150-175	1	refusal
+G4F01	_timer_error	src/asy_base_classes.py:443	1	reader trio
+G4F01	_rearm_timer	src/asy_base_classes.py:630	1	reader trio
+G4F01	_timer_error	src/asy_base_classes.py:634	1	reader trio
+G4F01	_timer_fault	src/asy_base_classes.py:636	1	reader trio
+G4F01	_timer_error	src/asy_base_classes.py:637	1	reader trio
+G4F01	_timer_failed	src/asy_base_classes.py:717	1	reader trio
+G4F01	_timer_error	src/asy_base_classes.py:719	1	reader trio
+G4F01	_timer_fault	src/asy_base_classes.py:724	1	reader trio
+G4F01	_timer_error	src/asy_base_classes.py:727	1	reader trio
+G4F01	_timer_error	src/asy_base_classes.py:731	1	reader trio
+G4F01	_rearm_timer	src/asy_base_classes.py:737	1	reader trio
+G4F01	_timer_fault	src/asy_base_classes.py:741	1	reader trio
+G4F01	_timer_failed	src/asy_bmp3xx_driver.py:378	1	reader trio
+G4F01	_timer_failed	src/asy_isl29125_driver.py:995	1	reader trio
+G4F01	_rearm_timer	src/asy_scd30_driver.py:448	1	reader trio
+G4F01	_timer_fault	src/asy_scd30_driver.py:451	1	reader trio
+G4F01	_timer_failed	src/asy_scd30_driver.py:561	1	reader trio
+G4F01	_rearm_timer	src/asy_sgp40_driver.py:327	1	reader trio
+G4F01	_timer_fault	src/asy_sgp40_driver.py:379	1	reader trio
+G4F01	_timer_failed	src/asy_sgp40_driver.py:631	1	reader trio
+G4F01	\b_timer_failed\b|\b_timer_fault\b|\b_rearm_timer\b|\b_ti...	tests/tooling	1	count tests=2f/12l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F01	arm_tick_timer	src/asy_base_classes.py:390	1	tick helper
+G4F01	arm_tick_timer	src/asy_ntp_client.py:20	1	tick helper
+G4F01	arm_tick_timer	src/asy_ntp_client.py:361	1	tick helper
+G4F01	arm_tick_timer	src/asy_ntp_client.py:516	1	tick helper
+G4F01	arm_tick_timer	src/asy_system_service.py:25	1	tick helper
+G4F01	arm_tick_timer	src/asy_system_service.py:522	1	tick helper
+G4F01	arm_tick_timer	src/asy_system_service.py:635	1	tick helper
+G4F01	arm_tick_timer	src/asy_wifi_service.py:15	1	tick helper
+G4F01	arm_tick_timer	src/asy_wifi_service.py:414	1	tick helper
+G4F01	arm_tick_timer	src/asy_wifi_service.py:925	1	tick helper
+G4F01	\barm_tick_timer\b	tests/tooling	1	count tests=1f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+G4F01	_check_armed	src/asy_ntp_client.py:209	1	tick state
+G4F01	_tick_armed	src/asy_ntp_client.py:210	1	tick state
+G4F01	_arm_check_timer	src/asy_ntp_client.py:251	1	tick state
+G4F01	_rearm_failed_timers	src/asy_ntp_client.py:352	1	tick state
+G4F01	_check_armed	src/asy_ntp_client.py:355	1	tick state
+G4F01	_check_armed	src/asy_ntp_client.py:356	1	tick state
+G4F01	_check_armed	src/asy_ntp_client.py:357	1	tick state
+G4F01	_tick_armed	src/asy_ntp_client.py:360	1	tick state
+G4F01	_tick_armed	src/asy_ntp_client.py:361	1	tick state
+G4F01	_tick_armed	src/asy_ntp_client.py:362	1	tick state
+G4F01	_rearm_failed_timers	src/asy_ntp_client.py:479	1	tick state
+G4F01	_rearm_failed_timers	src/asy_ntp_client.py:483	1	tick state
+G4F01	_check_armed	src/asy_ntp_client.py:513	1	tick state
+G4F01	_tick_armed	src/asy_ntp_client.py:516	1	tick state
+G4F01	_tick_failed	src/asy_system_service.py:259	1	tick state
+G4F01	_tick_failed	src/asy_system_service.py:516	1	tick state
+G4F01	_tick_failed	src/asy_system_service.py:522	1	tick state
+G4F01	_tick_failed	src/asy_system_service.py:635	1	tick state
+G4F01	_tick_failed	src/asy_system_service.py:636	1	tick state
+G4F01	_tick_armed	src/asy_wifi_service.py:271	1	tick state
+G4F01	_tick_armed	src/asy_wifi_service.py:412	1	tick state
+G4F01	_tick_armed	src/asy_wifi_service.py:414	1	tick state
+G4F01	_tick_armed	src/asy_wifi_service.py:415	1	tick state
+G4F01	_tick_armed	src/asy_wifi_service.py:925	1	tick state
+G4F01	\b_tick_failed\b|\b_tick_armed\b|\b_check_armed\b|\b_rear...	tests/tooling	1	count tests=4f/31l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F01	_ERR_TIMER	src/asy_base_classes.py:94	2	errno
+G4F01	_ERR_TIMER	src/asy_base_classes.py:731	2	errno
+G4F01	_ERR_TIMER	src/asy_ntp_client.py:41	2	errno
+G4F01	_ERR_TIMER	src/asy_ntp_client.py:298	2	errno
+G4F01	_ERR_TIMER	src/asy_ntp_client.py:358	2	errno
+G4F01	_ERR_TIMER	src/asy_ntp_client.py:363	2	errno
+G4F01	_ERR_TIMER	src/asy_system_service.py:52	2	errno
+G4F01	_ERR_TIMER	src/asy_system_service.py:518	2	errno
+G4F01	_ERR_TIMER	src/asy_system_service.py:799	2	errno
+G4F01	_ERR_TIMER	src/asy_wifi_service.py:41	2	errno
+G4F01	_ERR_TIMER	src/asy_wifi_service.py:334	2	errno
+G4F01	_ERR_TIMER	src/asy_wifi_service.py:416	2	errno
+G4F01	"TIMER"	buildgen/error_catalog.json:41	2	errno
+G4F01	\b_ERR_TIMER\b|"TIMER"	tests/tooling	2	count tests=10f/33l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F01	Could not arm the stagger timer	src/asy_system_service.py:799	1	stagger fallback
+G4F01	Could not arm the stagger timer	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F02	UNAVAILABLE	src/asy_base_classes.py:78	1	marker
+G4F02	UNAVAILABLE	src/asy_base_classes.py:467	1	marker
+G4F02	UNAVAILABLE	src/asy_base_classes.py:469	1	marker
+G4F02	UNAVAILABLE	src/asy_base_classes.py:475	1	marker
+G4F02	UNAVAILABLE	src/asy_base_classes.py:482	1	marker
+G4F02	UNAVAILABLE	src/asy_system_service.py:25	1	marker
+G4F02	UNAVAILABLE	src/asy_system_service.py:658	1	marker
+G4F02	UNAVAILABLE	src/asy_webserver_service.py:18	1	marker
+G4F02	_UNAVAILABLE_TEXT	src/asy_webserver_service.py:147	1	marker
+G4F02	UNAVAILABLE	src/asy_webserver_service.py:658	1	marker
+G4F02	_UNAVAILABLE_TEXT	src/asy_webserver_service.py:1008	1	marker
+G4F02	_UNAVAILABLE_TEXT	src/asy_webserver_service.py:1019	1	marker
+G4F02	UNAVAILABLE	buildgen/api_reference.py:202	1	marker
+G4F02	_UNAVAILABLE_TEXT	js/templates.js:26	1	marker
+G4F02	_UNAVAILABLE_TEXT	js/templates.js:391	1	marker
+G4F02	_UNAVAILABLE_TEXT	js/templates.js:422	1	marker
+G4F02	_UNAVAILABLE_TEXT	js/templates.js:514	1	marker
+G4F02	_UNAVAILABLE_TEXT	js/templates.js:605	1	marker
+G4F02	_UNAVAILABLE_TEXT	js/templates.js:653	1	marker
+G4F02	\bUNAVAILABLE\b|_UNAVAILABLE_TEXT	tests/tooling	1	count tests=3f/11l tests_scripts=3f/10l tests_js=0f/0l digital_twin=0f/0l scripts=1f/1l toolchain=0f/0l tests_hardware=0f/0l
+G4F02	isUnavailable	js/api-contract.js:23	2	JS consumer
+G4F02	=== "unavailable"	js/api-contract.js:28	2	JS consumer
+G4F02	isUnavailable	js/mock-server.js:7	2	JS consumer
+G4F02	isUnavailable	js/mock-server.js:693	2	JS consumer
+G4F02	isUnavailable	js/mock-server.js:696	2	JS consumer
+G4F02	isUnavailable	js/render.js:6	2	JS consumer
+G4F02	isUnavailable	js/render.js:381	2	JS consumer
+G4F02	isUnavailable	js/render.js:688	2	JS consumer
+G4F02	isUnavailable	js/render.js:693	2	JS consumer
+G4F02	sourceState = "unavailable"	js/render.js:710	2	JS consumer
+G4F02	isUnavailable	js/templates.js:8	2	JS consumer
+G4F02	SOURCE_UNAVAILABLE_TEXT	js/templates.js:26	2	JS consumer
+G4F02	SOURCE_UNAVAILABLE_TEXT	js/templates.js:391	2	JS consumer
+G4F02	isUnavailable	js/templates.js:421	2	JS consumer
+G4F02	SOURCE_UNAVAILABLE_TEXT	js/templates.js:422	2	JS consumer
+G4F02	isUnavailable	js/templates.js:461	2	JS consumer
+G4F02	SOURCE_UNAVAILABLE_TEXT	js/templates.js:514	2	JS consumer
+G4F02	SOURCE_UNAVAILABLE_TEXT	js/templates.js:605	2	JS consumer
+G4F02	SOURCE_UNAVAILABLE_TEXT	js/templates.js:653	2	JS consumer
+G4F02	isUnavailable|SOURCE_UNAVAILABLE_TEXT|sourceState = "unav...	tests/tooling	2	count tests=0f/0l tests_scripts=1f/5l tests_js=2f/5l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F03	_commit_mgr_cfg	src/asy_base_classes.py:556	1	defer/commit
+G4F03	_commit_mgr_cfg	src/asy_base_classes.py:585	1	defer/commit
+G4F03	defer=	src/asy_base_classes.py:824	1	defer/commit
+G4F03	_commit_mgr_cfg	src/asy_base_classes.py:826	1	defer/commit
+G4F03	cfgmgr.commit()	src/asy_base_classes.py:827	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:342	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:343	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:394	1	defer/commit
+G4F03	def commit	src/asy_config_manager.py:475	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:477	1	defer/commit
+G4F03	flush_pending	src/asy_config_manager.py:498	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:501	1	defer/commit
+G4F03	defer: bool	src/asy_config_manager.py:605	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:663	1	defer/commit
+G4F03	_commit_ready	src/asy_config_manager.py:665	1	defer/commit
+G4F03	flush_pending	src/asy_system_service.py:303	1	defer/commit
+G4F03	flush_pending	src/asy_system_service.py:306	1	defer/commit
+G4F03	defer=|defer: bool|\b_commit_ready\b|\bflush_pending\b|\b...	tests/tooling	1	count tests=13f/58l tests_scripts=2f/6l tests_js=0f/0l digital_twin=1f/1l scripts=0f/0l toolchain=0f/0l tests_hardware=6f/8l
+G4F04	absent_at_boot	src/asy_config_manager.py:328	1	flag
+G4F04	absent_at_boot	src/asy_config_manager.py:541	1	flag
+G4F04	self.restored	src/asy_print_log.py:160	1	flag
+G4F04	self.restored	src/asy_print_log.py:416	1	flag
+G4F04	absent_at_boot	src/asy_system_service.py:757	1	flag
+G4F04	\babsent_at_boot\b|\.restored\b|self\.restored	tests/tooling	1	count tests=3f/20l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F04	_WRN_CONFIG_LOST	src/asy_system_service.py:61	2	warning
+G4F04	_WRN_CONFIG_LOST	src/asy_system_service.py:760	2	warning
+G4F04	"CONFIG_LOST"	buildgen/error_catalog.json:178	2	warning
+G4F04	\b_WRN_CONFIG_LOST\b|"CONFIG_LOST"	tests/tooling	2	count tests=1f/3l tests_scripts=1f/3l tests_js=0f/0l digital_twin=0f/0l scripts=1f/1l toolchain=0f/0l tests_hardware=3f/5l
+G4F05	_REASON_BITS	src/asy_system_service.py:103	1	reset bits
+G4F05	_CHIP_RESET_BITS	src/asy_system_service.py:104	1	reset bits
+G4F05	_reset_bits	src/asy_system_service.py:145	1	reset bits
+G4F05	_reset_bits	src/asy_system_service.py:151	1	reset bits
+G4F05	_reset_bits	src/asy_system_service.py:152	1	reset bits
+G4F05	_reset_bits	src/asy_system_service.py:679	1	reset bits
+G4F05	ResetBits	build/generated_src/sensortask_arzi.py:107	1	reset bits
+G4F05	ResetBits	build/generated_src/sensortask_dev.py:118	1	reset bits
+G4F05	ResetBits	build/generated_src/sensortask_grkizi.py:107	1	reset bits
+G4F05	ResetBits	build/generated_src/sensortask_klkizi.py:107	1	reset bits
+G4F05	ResetBits	build/generated_src/sensortask_schlafzi.py:107	1	reset bits
+G4F05	ResetBits	build/generated_src/sensortask_wozi.py:109	1	reset bits
+G4F05	ResetBits	buildgen/codegen.py:293	1	reset bits
+G4F05	ResetBits	buildgen/definitions.py:636	1	reset bits
+G4F05	\b_reset_bits\b|ResetBits|_REASON_BITS|_CHIP_RESET_BITS	tests/tooling	1	count tests=2f/5l tests_scripts=2f/5l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=4f/23l
+G4M13	codeTones	buildgen/api_reference.py:29	1	code tones
+G4M13	"tone"	buildgen/definitions.py:601	1	code tones
+G4M13	codeTones	buildgen/definitions.py:603	1	code tones
+G4M13	CODE_TONES	js/definitions.js:84	1	code tones
+G4M13	codeTones	js/definitions.js:157	1	code tones
+G4M13	codeTones	js/definitions.js:159	1	code tones
+G4M13	CODE_TONES	js/definitions.js:160	1	code tones
+G4M13	codeTones	js/definitions.js:161	1	code tones
+G4M13	codeTones	js/templates.js:250	1	code tones
+G4M13	codeTones	js/templates.js:597	1	code tones
+G4M13	codeTone	js/templates.js:654	1	code tones
+G4M13	codeTones	js/templates.js:662	1	code tones
+G4M13	codeTone	js/templates.js:664	1	code tones
+G4M13	codeTone	js/templates.js:666	1	code tones
+G4M13	data-code-tone	html/style.css:308	1	code tones
+G4M13	data-code-tone	html/style.css:312	1	code tones
+G4M13	data-code-tone	html/style.css:316	1	code tones
+G4M13	"tone"	buildgen/error_catalog.json:224	1	code tones
+G4M13	"tone"	buildgen/error_catalog.json:225	1	code tones
+G4M13	"tone"	buildgen/error_catalog.json:226	1	code tones
+G4M13	"tone"	buildgen/error_catalog.json:227	1	code tones
+G4M13	codeTones|CODE_TONES|codeTone|data-code-tone|"tone"	tests/tooling	1	count tests=0f/0l tests_scripts=4f/23l tests_js=1f/6l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_arzi_main.py:42	2	dead flag write (boot entry)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_dev_main.py:42	2	dead flag write (boot entry)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_grkizi_main.py:42	2	dead flag write (boot entry)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_klkizi_main.py:42	2	dead flag write (boot entry)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_schlafzi_main.py:42	2	dead flag write (boot entry)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_wozi_main.py:42	2	dead flag write (boot entry)
+G4R01	report_if_fatal(ended)	buildgen/codegen.py:871	2	dead flag write (boot entry)
+G4R01	report_if_fatal\(ended\)	tests/tooling	2	count tests=0f/0l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_arzi_main.py:42	2	dead flag write (emitter)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_dev_main.py:42	2	dead flag write (emitter)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_grkizi_main.py:42	2	dead flag write (emitter)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_klkizi_main.py:42	2	dead flag write (emitter)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_schlafzi_main.py:42	2	dead flag write (emitter)
+G4R01	report_if_fatal(ended)	build/generated_src/sensortask_wozi_main.py:42	2	dead flag write (emitter)
+G4R01	"    report_if_fatal	buildgen/codegen.py:871	2	dead flag write (emitter)
+G4R01	report_if_fatal\(ended\)|"    report_if_fatal	tests/tooling	2	count tests=0f/0l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4R04	Microdot caught	src/asy_webserver_service.py:812	2	MemoryError branch (WS-9)
+G4R04	Microdot caught	src/asy_webserver_service.py:814	2	MemoryError branch (WS-9)
+G4R04	Microdot caught	tests/tooling	2	count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4M10	(agent, 2026-09-09	buildgen/buildspec.py:3	1	agent decision tag
+G4M10	(agent, 2026-09-12	buildgen/version.py:2	1	agent decision tag
+G4M10	\(agent, 20[0-9-]+	tests/tooling	1	count tests=21f/36l tests_scripts=15f/17l tests_js=3f/7l digital_twin=1f/1l scripts=5f/14l toolchain=2f/5l tests_hardware=6f/6l
+G4F06	_utc_valid	src/asy_base_classes.py:381	1	one-way flag
+G4F06	set_utc_valid	src/asy_base_classes.py:384	1	one-way flag
+G4F06	_utc_valid	src/asy_base_classes.py:386	1	one-way flag
+G4F06	_utc_valid	src/asy_base_classes.py:387	1	one-way flag
+G4F06	_utc_valid	src/asy_base_classes.py:787	1	one-way flag
+G4F06	set_utc_valid	src/asy_ntp_client.py:20	1	one-way flag
+G4F06	set_utc_valid	src/asy_ntp_client.py:305	1	one-way flag
+G4F06	\b_utc_valid\b|\bset_utc_valid\b	tests/tooling	1	count tests=12f/75l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/4l
+G4F06	_clock_valid	src/asy_ntp_client.py:202	1	settings-reset flag
+G4F06	_clock_valid	src/asy_ntp_client.py:306	1	settings-reset flag
+G4F06	ntp_clock_valid	src/asy_ntp_client.py:570	1	settings-reset flag
+G4F06	_clock_valid	src/asy_ntp_client.py:573	1	settings-reset flag
+G4F06	_clock_valid	src/asy_ntp_client.py:579	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_arzi.py:104	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_arzi.py:138	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_dev.py:115	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_dev.py:151	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_grkizi.py:104	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_grkizi.py:138	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_klkizi.py:104	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_klkizi.py:138	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_schlafzi.py:104	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_schlafzi.py:138	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_wozi.py:106	1	settings-reset flag
+G4F06	ntp_clock_valid	build/generated_src/sensortask_wozi.py:140	1	settings-reset flag
+G4F06	ntp_clock_valid	buildgen/codegen.py:290	1	settings-reset flag
+G4F06	ntp_clock_valid	buildgen/codegen.py:492	1	settings-reset flag
+G4F06	\b_clock_valid\b|\bntp_clock_valid\b	tests/tooling	1	count tests=4f/11l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F07	"range": [	buildgen/error_catalog.json:3	1	catalog metadata
+G4F07	"owners"	buildgen/error_catalog.json:4	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:5	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:6	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:7	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:8	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:9	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:10	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:11	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:12	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:13	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:14	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:15	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:16	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:17	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:18	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:19	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:20	1	catalog metadata
+G4F07	"bands"	buildgen/error_catalog.json:21	1	catalog metadata
+G4F07	"owners"|"bands"|"range": \[	tests/tooling	1	count tests=0f/0l tests_scripts=1f/11l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F08	#\s*[Uu]nreachable	tests/tooling	1	count tests=3f/5l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=1f/1l toolchain=0f/0l tests_hardware=1f/1l
+G4F08	Unreachable	src/asy_fram_manager.py:495	1	self-declared unreachable
+G4F08	Unreachable	src/asy_fram_manager.py:565	1	self-declared unreachable
+G4F08	Unreachable	src/asy_fram_manager.py:582	1	self-declared unreachable
+G4F08	Unreachable	src/asy_fram_manager.py:649	1	self-declared unreachable
+G4F08	Unreachable	src/asy_isl29125_driver.py:1483	1	self-declared unreachable
+G4F08	Unreachable	src/asy_scd30_driver.py:279	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:576	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:601	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:713	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:759	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:784	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:896	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:908	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:1014	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_comm.py:1117	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_driver.py:182	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_driver.py:289	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_driver.py:356	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_driver.py:368	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_driver.py:812	1	self-declared unreachable
+G4F08	Unreachable	src/asy_uart_link_driver.py:183	1	self-declared unreachable
+G4F08	Unreachable	src/asy_webserver_service.py:212	1	self-declared unreachable
+G4F08	Unreachable	buildgen/twin_wiring.py:114	1	self-declared unreachable
+A-B2	\b_max_val\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B6	arm_tick_timer	src/asy_ntp_client.py:20	1	auto def
+A-B6	arm_tick_timer	src/asy_ntp_client.py:361	1	auto def
+A-B6	arm_tick_timer	src/asy_ntp_client.py:516	1	auto def
+A-B6	arm_tick_timer	src/asy_system_service.py:25	1	auto def
+A-B6	arm_tick_timer	src/asy_system_service.py:522	1	auto def
+A-B6	arm_tick_timer	src/asy_system_service.py:635	1	auto def
+A-B6	arm_tick_timer	src/asy_wifi_service.py:15	1	auto def
+A-B6	arm_tick_timer	src/asy_wifi_service.py:414	1	auto def
+A-B6	arm_tick_timer	src/asy_wifi_service.py:925	1	auto def
+A-B6	\barm_tick_timer\b	tests/tooling	1	auto count tests=1f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+A-B10	\b_commit_mgr_cfg\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_data_lock	src/asy_base_classes.py:487	1	auto attr
+A-B14	_data_lock	src/asy_base_classes.py:560	1	auto attr
+A-B14	_data_lock	src/asy_base_classes.py:712	1	auto attr
+A-B14	_data_lock	src/asy_scd30_driver.py:531	1	auto attr
+A-B14	\b_data_lock\b	tests/tooling	1	auto count tests=2f/2l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_max_module_error	src/asy_base_classes.py:597	1	auto attr
+A-B14	\b_max_module_error\b	tests/tooling	1	auto count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_set_lock	src/asy_base_classes.py:455	1	auto attr
+A-B14	_set_lock	src/asy_base_classes.py:497	1	auto attr
+A-B14	_set_lock	src/asy_base_classes.py:812	1	auto attr
+A-B14	_set_lock	src/asy_bmp3xx_driver.py:279	1	auto attr
+A-B14	_set_lock	src/asy_bmp3xx_driver.py:326	1	auto attr
+A-B14	_set_lock	src/asy_scd30_driver.py:511	1	auto attr
+A-B14	\b_set_lock\b	tests/tooling	1	auto count tests=2f/8l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_rungs	src/asy_base_classes.py:570	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:571	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:580	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:606	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:612	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:627	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:644	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:646	1	auto attr
+A-B14	_rungs	src/asy_base_classes.py:776	1	auto attr
+A-B14	\b_rungs\b	tests/tooling	1	auto count tests=2f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_bus_mark	src/asy_base_classes.py:594	1	auto attr
+A-B14	_bus_mark	src/asy_base_classes.py:626	1	auto attr
+A-B14	_bus_mark	src/asy_base_classes.py:647	1	auto attr
+A-B14	_bus_mark	src/asy_base_classes.py:655	1	auto attr
+A-B14	\b_bus_mark\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_recovery_bus	src/asy_base_classes.py:593	1	auto attr
+A-B14	_recovery_bus	src/asy_base_classes.py:594	1	auto attr
+A-B14	_recovery_bus	src/asy_base_classes.py:613	1	auto attr
+A-B14	_recovery_bus	src/asy_base_classes.py:623	1	auto attr
+A-B14	_recovery_bus	src/asy_base_classes.py:643	1	auto attr
+A-B14	_recovery_bus	src/asy_bmp3xx_driver.py:178	1	auto attr
+A-B14	_recovery_bus	src/asy_isl29125_driver.py:247	1	auto attr
+A-B14	_recovery_bus	src/asy_scd30_driver.py:217	1	auto attr
+A-B14	_recovery_bus	src/asy_sgp40_driver.py:217	1	auto attr
+A-B14	\b_recovery_bus\b	tests/tooling	1	auto count tests=3f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	\b_timer_error\b	tests/tooling	1	auto count tests=2f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	\b_timer_reported\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_rearm_timer	src/asy_scd30_driver.py:448	1	auto def
+A-B14	_rearm_timer	src/asy_sgp40_driver.py:327	1	auto def
+A-B14	\b_rearm_timer\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_timer_failed	src/asy_bmp3xx_driver.py:378	1	auto def
+A-B14	_timer_failed	src/asy_isl29125_driver.py:995	1	auto def
+A-B14	_timer_failed	src/asy_scd30_driver.py:561	1	auto def
+A-B14	_timer_failed	src/asy_sgp40_driver.py:631	1	auto def
+A-B14	\b_timer_failed\b	tests/tooling	1	auto count tests=2f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_timer_fault	src/asy_scd30_driver.py:451	1	auto def
+A-B14	_timer_fault	src/asy_sgp40_driver.py:379	1	auto def
+A-B14	\b_timer_fault\b	tests/tooling	1	auto count tests=1f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B14	_trigger_loop	src/asy_bmp3xx_driver.py:367	1	auto def
+A-B14	_trigger_loop	src/asy_isl29125_driver.py:984	1	auto def
+A-B14	\b_trigger_loop\b	tests/tooling	1	auto count tests=3f/10l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+A-B14	_trigger_counter	src/asy_base_classes.py:409	1	auto attr
+A-B14	_trigger_counter	src/asy_bmp3xx_driver.py:186	1	auto attr
+A-B14	_trigger_counter	src/asy_isl29125_driver.py:260	1	auto attr
+A-B14	\b_trigger_counter\b	tests/tooling	1	auto count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B15	_republish	src/asy_scd30_driver.py:388	1	auto def
+A-B15	\b_republish\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B18	RegionBuffer	src/asy_base_classes.py:1	1	auto class
+A-B18	RegionBuffer	src/asy_fram_manager.py:13	1	auto class
+A-B18	RegionBuffer	src/asy_fram_manager.py:480	1	auto class
+A-B18	RegionBuffer	src/asy_fram_manager.py:500	1	auto class
+A-B18	RegionBuffer	src/asy_fram_manager.py:520	1	auto class
+A-B18	RegionBuffer	src/asy_fram_manager.py:528	1	auto class
+A-B18	RegionBuffer	src/asy_print_log.py:37	1	auto class
+A-B18	RegionBuffer	src/asy_print_log.py:44	1	auto class
+A-B18	RegionBuffer	src/asy_print_log.py:46	1	auto class
+A-B18	RegionBuffer	src/asy_print_log.py:48	1	auto class
+A-B18	RegionBuffer	src/asy_uart_comm.py:14	1	auto class
+A-B18	RegionBuffer	src/asy_uart_comm.py:331	1	auto class
+A-B18	RegionBuffer	src/asy_uart_comm.py:341	1	auto class
+A-B18	RegionBuffer	src/asy_uart_comm.py:342	1	auto class
+A-B18	\bRegionBuffer\b	tests/tooling	1	auto count tests=10f/69l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-B18	_buf	src/asy_fram_manager.py:533	1	auto attr
+A-B18	_buf	src/asy_fram_manager.py:535	1	auto attr
+A-B18	\b_buf\b	tests/tooling	1	auto count tests=7f/23l tests_scripts=0f/0l tests_js=0f/0l digital_twin=1f/1l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S4	_WATCHDOG_REASON	src/asy_system_service.py:152	1	auto const
+A-S4	\b_WATCHDOG_REASON\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=1f/2l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S4	_CHIP_RESET	src/asy_system_service.py:152	1	auto const
+A-S4	\b_CHIP_RESET\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/3l tests_js=0f/0l digital_twin=1f/2l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S4	_REASON_BITS	src/asy_system_service.py:152	1	auto const
+A-S4	\b_REASON_BITS\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S4	_CHIP_RESET_BITS	src/asy_system_service.py:152	1	auto const
+A-S4	\b_CHIP_RESET_BITS\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+A-S4	get_reset_bits	build/generated_src/sensortask_arzi.py:107	1	auto def
+A-S4	get_reset_bits	build/generated_src/sensortask_dev.py:118	1	auto def
+A-S4	get_reset_bits	build/generated_src/sensortask_grkizi.py:107	1	auto def
+A-S4	get_reset_bits	build/generated_src/sensortask_klkizi.py:107	1	auto def
+A-S4	get_reset_bits	build/generated_src/sensortask_schlafzi.py:107	1	auto def
+A-S4	get_reset_bits	build/generated_src/sensortask_wozi.py:109	1	auto def
+A-S4	get_reset_bits	buildgen/codegen.py:293	1	auto def
+A-S4	\bget_reset_bits\b	tests/tooling	1	auto count tests=1f/5l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_arzi_main.py:25	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_arzi_main.py:36	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_dev_main.py:25	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_dev_main.py:36	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_grkizi_main.py:25	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_grkizi_main.py:36	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_klkizi_main.py:25	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_klkizi_main.py:36	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_schlafzi_main.py:25	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_schlafzi_main.py:36	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_wozi_main.py:25	1	auto const
+A-S5	RR_INTERRUPTED	build/generated_src/sensortask_wozi_main.py:36	1	auto const
+A-S5	RR_INTERRUPTED	buildgen/codegen.py:856	1	auto const
+A-S5	RR_INTERRUPTED	buildgen/codegen.py:865	1	auto const
+A-S5	\bRR_INTERRUPTED\b	tests/tooling	1	auto count tests=3f/8l tests_scripts=1f/4l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/2l
+A-S5	\b_RR_LOOP_ENDED\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S5	record_loop_end	build/generated_src/sensortask_arzi_main.py:25	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_arzi_main.py:43	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_dev_main.py:25	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_dev_main.py:43	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_grkizi_main.py:25	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_grkizi_main.py:43	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_klkizi_main.py:25	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_klkizi_main.py:43	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_schlafzi_main.py:25	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_schlafzi_main.py:43	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_wozi_main.py:25	1	auto def
+A-S5	record_loop_end	build/generated_src/sensortask_wozi_main.py:43	1	auto def
+A-S5	record_loop_end	buildgen/codegen.py:856	1	auto def
+A-S5	record_loop_end	buildgen/codegen.py:872	1	auto def
+A-S5	\brecord_loop_end\b	tests/tooling	1	auto count tests=2f/7l tests_scripts=1f/3l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S14	\b_ESCALATION_ENTRY_WAIT_MS\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=1f/1l toolchain=0f/0l tests_hardware=0f/0l
+A-S15	_RR_STACK_EXHAUSTED	src/asy_system_service.py:559	1	auto const
+A-S15	_RR_STACK_EXHAUSTED	src/asy_system_service.py:585	1	auto const
+A-S15	\b_RR_STACK_EXHAUSTED\b	tests/tooling	1	auto count tests=1f/7l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=2f/3l toolchain=0f/0l tests_hardware=0f/0l
+A-S18	_last_end_name	src/asy_system_service.py:253	1	auto attr
+A-S18	_last_end_name	src/asy_system_service.py:671	1	auto attr
+A-S18	_last_end_name	src/asy_system_service.py:673	1	auto attr
+A-S18	\b_last_end_name\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S18	_last_end_uptime	src/asy_system_service.py:254	1	auto attr
+A-S18	_last_end_uptime	src/asy_system_service.py:673	1	auto attr
+A-S18	\b_last_end_uptime\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S18	_reset_decided	src/asy_system_service.py:225	1	auto attr
+A-S18	_reset_decided	src/asy_system_service.py:410	1	auto attr
+A-S18	_reset_decided	src/asy_system_service.py:620	1	auto attr
+A-S18	_reset_decided	src/asy_system_service.py:688	1	auto attr
+A-S18	_reset_decided	src/asy_system_service.py:731	1	auto attr
+A-S18	\b_reset_decided\b	tests/tooling	1	auto count tests=2f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S20	_tick_failed	src/asy_system_service.py:259	1	auto attr
+A-S20	\b_tick_failed\b	tests/tooling	1	auto count tests=2f/7l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S21	_unpause_at	src/asy_system_service.py:257	1	auto attr
+A-S21	_unpause_at	src/asy_system_service.py:532	1	auto attr
+A-S21	\b_unpause_at\b	tests/tooling	1	auto count tests=2f/11l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S22	_start_time_set	src/asy_system_service.py:215	1	auto attr
+A-S22	_start_time_set	src/asy_system_service.py:533	1	auto attr
+A-S22	\b_start_time_set\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S27	_run_timer_starter	src/asy_system_service.py:790	1	auto def
+A-S27	_run_timer_starter	src/asy_system_service.py:803	1	auto def
+A-S27	\b_run_timer_starter\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-S29	_config_stores	src/asy_system_service.py:236	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:297	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:300	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:390	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:416	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:479	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:652	1	auto attr
+A-S29	_config_stores	src/asy_system_service.py:746	1	auto attr
+A-S29	\b_config_stores\b	tests/tooling	1	auto count tests=3f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=1f/2l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+A-C4	module_name	src/asy_system_service.py:652	1	auto attr
+A-C4	module_name	src/asy_system_service.py:746	1	auto attr
+A-C4	module_name	buildgen/generate.py:156	1	auto attr
+A-C4	module_name	buildgen/generate.py:157	1	auto attr
+A-C4	\bmodule_name\b	tests/tooling	1	auto count tests=2f/13l tests_scripts=2f/5l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/12l
+A-C6	_get_typed_values	src/asy_config_manager.py:437	1	auto def
+A-C6	_get_typed_values	src/asy_config_manager.py:462	1	auto def
+A-C6	_get_typed_values	src/asy_config_manager.py:465	1	auto def
+A-C6	_get_typed_values	src/asy_config_manager.py:468	1	auto def
+A-C6	\b_get_typed_values\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C6	_read_failing	src/asy_config_manager.py:330	1	auto attr
+A-C6	\b_read_failing\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C6	\b_read_run_starts\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C7	\b_as_bool\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C7	\b_as_str\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C7	_coerce_float	src/asy_config_manager.py:157	1	auto def
+A-C7	\b_coerce_float\b	tests/tooling	1	auto count tests=1f/10l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/3l
+A-C7	_coerce_int	src/asy_config_manager.py:171	1	auto def
+A-C7	\b_coerce_int\b	tests/tooling	1	auto count tests=1f/11l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C7	\b_get_typed_values\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C7	_read_failing	src/asy_config_manager.py:330	1	auto attr
+A-C7	_read_failing	src/asy_config_manager.py:425	1	auto attr
+A-C7	_read_failing	src/asy_config_manager.py:426	1	auto attr
+A-C7	_read_failing	src/asy_config_manager.py:511	1	auto attr
+A-C7	\b_read_failing\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C8	_stored_float	src/asy_config_manager.py:624	1	auto def
+A-C8	_stored_float	src/asy_config_manager.py:655	1	auto def
+A-C8	\b_stored_float\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/2l
+A-C9	_write_file	src/asy_config_manager.py:594	1	auto def
+A-C9	\b_write_file\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C11	_commit_ready	src/asy_config_manager.py:501	1	auto attr
+A-C11	\b_commit_ready\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C11	commit	src/asy_base_classes.py:827	1	auto def
+A-C11	\bcommit\b	tests/tooling	1	auto count tests=7f/11l tests_scripts=10f/29l tests_js=1f/9l digital_twin=0f/0l scripts=4f/8l toolchain=1f/6l tests_hardware=1f/1l
+A-C14	_closed_for_reset	src/asy_config_manager.py:609	1	auto def
+A-C14	_closed_for_reset	src/asy_config_manager.py:618	1	auto def
+A-C14	\b_closed_for_reset\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C14	close_writes	src/asy_config_manager.py:482	1	auto def
+A-C14	close_writes	src/asy_system_service.py:298	1	auto def
+A-C14	close_writes	src/asy_system_service.py:417	1	auto def
+A-C14	\bclose_writes\b	tests/tooling	1	auto count tests=3f/12l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C14	_closed	src/asy_config_manager.py:332	1	auto attr
+A-C14	\b_closed\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=1f/3l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-C14	writes_closed	src/asy_base_classes.py:831	1	auto def
+A-C14	\bwrites_closed\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P2	_keep	src/asy_print_log.py:219	1	auto def
+A-P2	_keep	src/asy_print_log.py:239	1	auto def
+A-P2	\b_keep\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P2	_kept	src/asy_print_log.py:161	1	auto attr
+A-P2	_kept	src/asy_print_log.py:207	1	auto attr
+A-P2	_kept	src/asy_print_log.py:266	1	auto attr
+A-P2	_kept	src/asy_print_log.py:374	1	auto attr
+A-P2	\b_kept\b	tests/tooling	1	auto count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/3l
+A-P2	_resets_fresh	src/asy_print_log.py:164	1	auto attr
+A-P2	_resets_fresh	src/asy_print_log.py:378	1	auto attr
+A-P2	_resets_fresh	src/asy_print_log.py:387	1	auto attr
+A-P2	\b_resets_fresh\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P2	restored	src/asy_print_log.py:160	1	auto attr
+A-P2	restored	src/asy_sgp40_driver.py:464	1	auto attr
+A-P2	restored	src/asy_sgp40_driver.py:596	1	auto attr
+A-P2	restored	src/asy_sgp40_driver.py:598	1	auto attr
+A-P2	restored	src/asy_sgp40_driver.py:600	1	auto attr
+A-P2	restored	src/asy_system_service.py:757	1	auto attr
+A-P2	restored	buildgen/error_catalog.json:147	1	auto attr
+A-P2	restored	buildgen/error_catalog.json:214	1	auto attr
+A-P2	\brestored\b	tests/tooling	1	auto count tests=37f/154l tests_scripts=6f/14l tests_js=2f/2l digital_twin=0f/0l scripts=3f/12l toolchain=0f/0l tests_hardware=23f/67l
+A-P2	_err_count	src/asy_print_log.py:156	1	auto attr
+A-P2	_err_count	src/asy_print_log.py:172	1	auto attr
+A-P2	_err_count	src/asy_print_log.py:177	1	auto attr
+A-P2	_err_count	src/asy_print_log.py:178	1	auto attr
+A-P2	_err_count	src/asy_print_log.py:203	1	auto attr
+A-P2	_err_count	src/asy_print_log.py:259	1	auto attr
+A-P2	_err_count	src/asy_print_log.py:350	1	auto attr
+A-P2	\b_err_count\b	tests/tooling	1	auto count tests=18f/214l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P2	_pre_setup_slots	src/asy_print_log.py:157	1	auto attr
+A-P2	_pre_setup_slots	src/asy_print_log.py:173	1	auto attr
+A-P2	\b_pre_setup_slots\b	tests/tooling	1	auto count tests=1f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P3	\b_ERR_LOG_RAM_ONLY\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P3	_write_through	src/asy_print_log.py:224	1	auto def
+A-P3	\b_write_through\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P3	_write_failing	src/asy_print_log.py:158	1	auto attr
+A-P3	_write_failing	src/asy_print_log.py:267	1	auto attr
+A-P3	_write_failing	src/asy_print_log.py:376	1	auto attr
+A-P3	_write_failing	src/asy_print_log.py:391	1	auto attr
+A-P3	_write_failing	src/asy_print_log.py:394	1	auto attr
+A-P3	\b_write_failing\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P3	restored	src/asy_print_log.py:160	1	auto attr
+A-P3	restored	src/asy_sgp40_driver.py:464	1	auto attr
+A-P3	restored	src/asy_sgp40_driver.py:596	1	auto attr
+A-P3	restored	src/asy_sgp40_driver.py:598	1	auto attr
+A-P3	restored	src/asy_sgp40_driver.py:600	1	auto attr
+A-P3	restored	src/asy_system_service.py:757	1	auto attr
+A-P3	restored	buildgen/error_catalog.json:147	1	auto attr
+A-P3	restored	buildgen/error_catalog.json:214	1	auto attr
+A-P3	\brestored\b	tests/tooling	1	auto count tests=37f/154l tests_scripts=6f/14l tests_js=2f/2l digital_twin=0f/0l scripts=3f/12l toolchain=0f/0l tests_hardware=23f/67l
+A-P3	_err_count	src/asy_print_log.py:156	1	auto attr
+A-P3	_err_count	src/asy_print_log.py:172	1	auto attr
+A-P3	_err_count	src/asy_print_log.py:177	1	auto attr
+A-P3	_err_count	src/asy_print_log.py:178	1	auto attr
+A-P3	_err_count	src/asy_print_log.py:203	1	auto attr
+A-P3	_err_count	src/asy_print_log.py:259	1	auto attr
+A-P3	_err_count	src/asy_print_log.py:350	1	auto attr
+A-P3	\b_err_count\b	tests/tooling	1	auto count tests=18f/214l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P3	_pre_setup_slots	src/asy_print_log.py:157	1	auto attr
+A-P3	_pre_setup_slots	src/asy_print_log.py:173	1	auto attr
+A-P3	_pre_setup_slots	src/asy_print_log.py:194	1	auto attr
+A-P3	_pre_setup_slots	src/asy_print_log.py:195	1	auto attr
+A-P3	\b_pre_setup_slots\b	tests/tooling	1	auto count tests=1f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P4	restored	src/asy_print_log.py:160	1	auto attr
+A-P4	restored	src/asy_sgp40_driver.py:464	1	auto attr
+A-P4	restored	src/asy_sgp40_driver.py:596	1	auto attr
+A-P4	restored	src/asy_sgp40_driver.py:598	1	auto attr
+A-P4	restored	src/asy_sgp40_driver.py:600	1	auto attr
+A-P4	restored	src/asy_system_service.py:757	1	auto attr
+A-P4	restored	buildgen/error_catalog.json:147	1	auto attr
+A-P4	restored	buildgen/error_catalog.json:214	1	auto attr
+A-P4	\brestored\b	tests/tooling	1	auto count tests=37f/154l tests_scripts=6f/14l tests_js=2f/2l digital_twin=0f/0l scripts=3f/12l toolchain=0f/0l tests_hardware=23f/67l
+A-P5	restored	src/asy_print_log.py:160	1	auto attr
+A-P5	restored	src/asy_sgp40_driver.py:464	1	auto attr
+A-P5	restored	src/asy_sgp40_driver.py:596	1	auto attr
+A-P5	restored	src/asy_sgp40_driver.py:598	1	auto attr
+A-P5	restored	src/asy_sgp40_driver.py:600	1	auto attr
+A-P5	restored	src/asy_system_service.py:757	1	auto attr
+A-P5	restored	buildgen/error_catalog.json:147	1	auto attr
+A-P5	restored	buildgen/error_catalog.json:214	1	auto attr
+A-P5	\brestored\b	tests/tooling	1	auto count tests=37f/154l tests_scripts=6f/14l tests_js=2f/2l digital_twin=0f/0l scripts=3f/12l toolchain=0f/0l tests_hardware=23f/67l
+A-P5	_err_count	src/asy_print_log.py:156	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:172	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:177	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:178	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:203	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:259	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:350	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:425	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:427	1	auto attr
+A-P5	_err_count	src/asy_print_log.py:430	1	auto attr
+A-P5	\b_err_count\b	tests/tooling	1	auto count tests=18f/214l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_WRAP_MAX	src/asy_print_log.py:339	1	auto const
+A-P7	\b_WRAP_MAX\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	\b_RESETS_ALL\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_pre_setup_slots	src/asy_print_log.py:417	1	auto attr
+A-P7	_pre_setup_slots	src/asy_print_log.py:422	1	auto attr
+A-P7	_pre_setup_slots	src/asy_print_log.py:426	1	auto attr
+A-P7	_pre_setup_slots	src/asy_print_log.py:430	1	auto attr
+A-P7	_pre_setup_slots	src/asy_print_log.py:431	1	auto attr
+A-P7	\b_pre_setup_slots\b	tests/tooling	1	auto count tests=1f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_write_failing	src/asy_print_log.py:233	1	auto attr
+A-P7	_write_failing	src/asy_print_log.py:236	1	auto attr
+A-P7	_write_failing	src/asy_print_log.py:237	1	auto attr
+A-P7	_write_failing	src/asy_print_log.py:267	1	auto attr
+A-P7	\b_write_failing\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	restored	src/asy_print_log.py:416	1	auto attr
+A-P7	restored	src/asy_sgp40_driver.py:464	1	auto attr
+A-P7	restored	src/asy_sgp40_driver.py:596	1	auto attr
+A-P7	restored	src/asy_sgp40_driver.py:598	1	auto attr
+A-P7	restored	src/asy_sgp40_driver.py:600	1	auto attr
+A-P7	restored	src/asy_system_service.py:757	1	auto attr
+A-P7	restored	buildgen/error_catalog.json:147	1	auto attr
+A-P7	restored	buildgen/error_catalog.json:214	1	auto attr
+A-P7	\brestored\b	tests/tooling	1	auto count tests=37f/154l tests_scripts=6f/14l tests_js=2f/2l digital_twin=0f/0l scripts=3f/12l toolchain=0f/0l tests_hardware=23f/67l
+A-P7	_kept	src/asy_print_log.py:266	1	auto attr
+A-P7	\b_kept\b	tests/tooling	1	auto count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/3l
+A-P7	_counted	src/asy_print_log.py:266	1	auto attr
+A-P7	\b_counted\b	tests/tooling	1	auto count tests=2f/7l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	\b_resets\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	\b_resets_fresh\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	\b_resets_repeat\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_clear	src/asy_print_log.py:266	1	auto def
+A-P7	\b_clear\b	tests/tooling	1	auto count tests=1f/12l tests_scripts=1f/8l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_err_count	src/asy_print_log.py:156	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:259	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:350	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:417	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:419	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:425	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:427	1	auto attr
+A-P7	_err_count	src/asy_print_log.py:430	1	auto attr
+A-P7	\b_err_count\b	tests/tooling	1	auto count tests=18f/214l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_count	src/asy_print_log.py:212	1	auto def
+A-P7	_count	src/asy_print_log.py:238	1	auto def
+A-P7	\b_count\b	tests/tooling	1	auto count tests=6f/44l tests_scripts=0f/0l tests_js=0f/0l digital_twin=2f/11l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/23l
+A-P7	_keep	src/asy_print_log.py:219	1	auto def
+A-P7	_keep	src/asy_print_log.py:239	1	auto def
+A-P7	\b_keep\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_since_counted	src/asy_print_log.py:307	1	auto def
+A-P7	\b_since_counted\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P7	_since_kept	src/asy_print_log.py:308	1	auto def
+A-P7	\b_since_kept\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P8	\b_write_lock\b	tests/tooling	1	auto count tests=2f/7l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P8	\b_write_gen\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P8	\b_written_gen\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P10	_line	src/asy_print_log.py:113	1	auto def
+A-P10	_line	src/asy_print_log.py:116	1	auto def
+A-P10	_line	src/asy_print_log.py:119	1	auto def
+A-P10	_line	src/asy_print_log.py:122	1	auto def
+A-P10	_line	src/asy_print_log.py:140	1	auto def
+A-P10	_line	src/asy_print_log.py:263	1	auto def
+A-P10	_line	src/asy_print_log.py:277	1	auto def
+A-P10	\b_line\b	tests/tooling	1	auto count tests=3f/14l tests_scripts=5f/15l tests_js=0f/0l digital_twin=1f/4l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P11	_line	src/asy_print_log.py:113	1	auto def
+A-P11	_line	src/asy_print_log.py:116	1	auto def
+A-P11	_line	src/asy_print_log.py:119	1	auto def
+A-P11	_line	src/asy_print_log.py:122	1	auto def
+A-P11	_line	src/asy_print_log.py:140	1	auto def
+A-P11	_line	src/asy_print_log.py:263	1	auto def
+A-P11	_line	src/asy_print_log.py:277	1	auto def
+A-P11	\b_line\b	tests/tooling	1	auto count tests=3f/14l tests_scripts=5f/15l tests_js=0f/0l digital_twin=1f/4l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P11	_paused	src/asy_print_log.py:366	1	auto attr
+A-P11	_paused	src/asy_print_log.py:381	1	auto attr
+A-P11	\b_paused\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P11	_heap_failed	src/asy_print_log.py:290	1	auto attr
+A-P11	_heap_failed	src/asy_print_log.py:404	1	auto attr
+A-P11	\b_heap_failed\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P12	report_unretrieved	src/asy_system_service.py:779	1	auto def
+A-P12	\breport_unretrieved\b	tests/tooling	1	auto count tests=3f/24l tests_scripts=3f/13l tests_js=0f/0l digital_twin=1f/3l scripts=0f/0l toolchain=0f/0l tests_hardware=7f/11l
+A-P13	\b_STACK_EXHAUSTED\b	tests/tooling	1	auto count tests=5f/9l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P13	fatal_reported	src/asy_system_service.py:27	1	auto def
+A-P13	fatal_reported	src/asy_system_service.py:559	1	auto def
+A-P13	\bfatal_reported\b	tests/tooling	1	auto count tests=10f/27l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-P13	report_if_fatal	src/asy_api_response.py:9	1	auto def
+A-P13	report_if_fatal	src/asy_api_response.py:72	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:20	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:132	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:465	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:480	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:511	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:521	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:549	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:575	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:687	1	auto def
+A-P13	report_if_fatal	src/asy_base_classes.py:702	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:24	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:215	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:226	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:290	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:314	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:330	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:405	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:413	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:421	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:429	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:438	1	auto def
+A-P13	report_if_fatal	src/asy_bmp3xx_driver.py:447	1	auto def
+A-P13	report_if_fatal	src/asy_captive_dns.py:15	1	auto def
+A-P13	report_if_fatal	src/asy_captive_dns.py:127	1	auto def
+A-P13	report_if_fatal	src/asy_captive_dns.py:138	1	auto def
+A-P13	report_if_fatal	src/asy_captive_dns.py:190	1	auto def
+A-P13	report_if_fatal	src/asy_config_manager.py:55	1	auto def
+A-P13	report_if_fatal	src/asy_config_manager.py:418	1	auto def
+A-P13	report_if_fatal	src/asy_fram_driver.py:22	1	auto def
+A-P13	report_if_fatal	src/asy_fram_driver.py:174	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:16	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:169	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:339	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:434	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:594	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:629	1	auto def
+A-P13	report_if_fatal	src/asy_fram_manager.py:830	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:24	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:325	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:347	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:383	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:469	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:513	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:672	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:735	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:762	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:781	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:807	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:820	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:829	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:859	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:920	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:936	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:962	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:1095	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:1104	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:1117	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:1137	1	auto def
+A-P13	report_if_fatal	src/asy_isl29125_driver.py:1149	1	auto def
+A-P13	report_if_fatal	src/asy_notification_service.py:17	1	auto def
+A-P13	report_if_fatal	src/asy_notification_service.py:228	1	auto def
+A-P13	report_if_fatal	src/asy_notification_service.py:324	1	auto def
+A-P13	report_if_fatal	src/asy_notification_service.py:336	1	auto def
+A-P13	report_if_fatal	src/asy_ntp_client.py:23	1	auto def
+A-P13	report_if_fatal	src/asy_ntp_client.py:431	1	auto def
+A-P13	report_if_fatal	src/asy_ntp_client.py:464	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:25	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:343	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:434	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:495	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:515	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:574	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:582	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:608	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:616	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:624	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:632	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:640	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:650	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:660	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:670	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:680	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:690	1	auto def
+A-P13	report_if_fatal	src/asy_scd30_driver.py:706	1	auto def
+A-P13	report_if_fatal	src/asy_sgp40_driver.py:24	1	auto def
+A-P13	report_if_fatal	src/asy_sgp40_driver.py:321	1	auto def
+A-P13	report_if_fatal	src/asy_sgp40_driver.py:336	1	auto def
+A-P13	report_if_fatal	src/asy_sgp40_driver.py:467	1	auto def
+A-P13	report_if_fatal	src/asy_sgp40_driver.py:485	1	auto def
+A-P13	report_if_fatal	src/asy_sgp40_driver.py:553	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:27	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:284	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:308	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:327	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:339	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:430	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:437	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:474	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:500	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:507	1	auto def
+A-P13	report_if_fatal	src/asy_system_service.py:619	1	auto def
+A-P13	report_if_fatal	src/asy_uart_comm.py:15	1	auto def
+A-P13	report_if_fatal	src/asy_uart_comm.py:422	1	auto def
+A-P13	report_if_fatal	src/asy_uart_comm.py:563	1	auto def
+A-P13	report_if_fatal	src/asy_uart_link_driver.py:13	1	auto def
+A-P13	report_if_fatal	src/asy_uart_link_driver.py:149	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:20	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:203	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:736	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:741	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:760	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:778	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:795	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:807	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:877	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:896	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:909	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:947	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:961	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:1006	1	auto def
+A-P13	report_if_fatal	src/asy_webserver_service.py:1017	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:19	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:287	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:310	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:451	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:464	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:536	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:547	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:555	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:608	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:646	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:721	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:803	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:817	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:839	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:848	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:891	1	auto def
+A-P13	report_if_fatal	src/asy_wifi_service.py:901	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_arzi_main.py:24	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_arzi_main.py:42	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_dev_main.py:24	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_dev_main.py:42	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_grkizi_main.py:24	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_grkizi_main.py:42	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_klkizi_main.py:24	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_klkizi_main.py:42	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_schlafzi_main.py:24	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_schlafzi_main.py:42	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_wozi_main.py:24	1	auto def
+A-P13	report_if_fatal	build/generated_src/sensortask_wozi_main.py:42	1	auto def
+A-P13	report_if_fatal	buildgen/codegen.py:856	1	auto def
+A-P13	report_if_fatal	buildgen/codegen.py:871	1	auto def
+A-P13	\breport_if_fatal\b	tests/tooling	1	auto count tests=4f/10l tests_scripts=4f/22l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M1	\b_owner_seed\b	tests/tooling	1	auto count tests=3f/7l tests_scripts=1f/4l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M3	_read_fault	src/asy_fram_manager.py:119	1	auto attr
+A-M3	_read_fault	src/asy_fram_manager.py:304	1	auto attr
+A-M3	_read_fault	src/asy_fram_manager.py:312	1	auto attr
+A-M3	_read_fault	src/asy_fram_manager.py:317	1	auto attr
+A-M3	_read_fault	src/asy_fram_manager.py:341	1	auto attr
+A-M3	\b_read_fault\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M3	_no_check_logged	src/asy_fram_manager.py:114	1	auto attr
+A-M3	\b_no_check_logged\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M4	_blank_verdict	src/asy_fram_manager.py:246	1	auto def
+A-M4	\b_blank_verdict\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M5	invalidate	src/asy_fram_manager.py:788	1	auto def
+A-M5	\binvalidate\b	tests/tooling	1	auto count tests=5f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M9	_no_check_logged	src/asy_fram_manager.py:114	1	auto attr
+A-M9	\b_no_check_logged\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M10	_copy_out	src/asy_fram_manager.py:498	1	auto def
+A-M10	_copy_out	src/asy_fram_manager.py:568	1	auto def
+A-M10	\b_copy_out\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M13	\bwait_idle\b	tests/tooling	1	auto count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-M14	erase_ready	src/asy_fram_manager.py:783	1	auto def
+A-M14	erase_ready	src/asy_system_service.py:392	1	auto def
+A-M14	\berase_ready\b	tests/tooling	1	auto count tests=3f/16l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D1	\b_SR_FIXED_ZERO\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D1	\b_PROBE_AT\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+A-D1	_SV_CHIP_LOST	src/asy_fram_driver.py:383	1	auto const
+A-D1	_SV_CHIP_LOST	src/asy_fram_driver.py:422	1	auto const
+A-D1	\b_SV_CHIP_LOST\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D1	\b_ERR_FRAM_CHIP_LOST\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/2l
+A-D1	_anomalies	src/asy_fram_driver.py:480	1	auto attr
+A-D1	\b_anomalies\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D1	_check_write_anomaly	src/asy_fram_driver.py:381	1	auto def
+A-D1	\b_check_write_anomaly\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D1	_report_chip_lost	src/asy_fram_driver.py:384	1	auto def
+A-D1	_report_chip_lost	src/asy_fram_driver.py:423	1	auto def
+A-D1	_report_chip_lost	src/asy_fram_driver.py:509	1	auto def
+A-D1	\b_report_chip_lost\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D4	_SR_FIXED_ZERO	src/asy_fram_driver.py:219	1	auto const
+A-D4	\b_SR_FIXED_ZERO\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D4	\b_SR_BP_MASK\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D4	"FRAM\ SPI\ device\ not\ found"	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D5	_SV_BUS_DOWN	src/asy_fram_driver.py:337	1	auto const
+A-D5	_SV_BUS_DOWN	src/asy_fram_driver.py:369	1	auto const
+A-D5	_SV_BUS_DOWN	src/asy_fram_driver.py:381	1	auto const
+A-D5	_SV_BUS_DOWN	src/asy_fram_driver.py:431	1	auto const
+A-D5	\b_SV_BUS_DOWN\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D5	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:412	1	auto const
+A-D5	_ERR_FRAM_BUS_DOWN	src/asy_fram_driver.py:499	1	auto const
+A-D5	\b_ERR_FRAM_BUS_DOWN\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-D10	is_ready	src/asy_fram_manager.py:812	1	auto def
+A-D10	\bis_ready\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K1	\b_crc_wide\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K2	_inc_crc	src/asy_crc_checks.py:31	1	auto attr
+A-K2	_inc_crc	src/asy_crc_checks.py:142	1	auto attr
+A-K2	_inc_crc	src/asy_crc_checks.py:159	1	auto attr
+A-K2	_inc_crc	src/asy_crc_checks.py:163	1	auto attr
+A-K2	\b_inc_crc\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K2	_inc_count	src/asy_crc_checks.py:32	1	auto attr
+A-K2	_inc_count	src/asy_crc_checks.py:165	1	auto attr
+A-K2	\b_inc_count\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_poly	src/asy_crc_checks.py:83	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:88	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:98	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:104	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:110	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:117	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:129	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:135	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:144	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:158	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:162	1	auto attr
+A-K3	_poly	src/asy_crc_checks.py:163	1	auto attr
+A-K3	\b_poly\b	tests/tooling	1	auto count tests=1f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_num_bytes	src/asy_crc_checks.py:38	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:54	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:89	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:96	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:103	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:106	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:115	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:118	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:127	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:136	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:144	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:146	1	auto attr
+A-K3	_num_bytes	src/asy_crc_checks.py:151	1	auto attr
+A-K3	\b_num_bytes\b	tests/tooling	1	auto count tests=1f/14l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_all_set	src/asy_crc_checks.py:47	1	auto attr
+A-K3	_all_set	src/asy_crc_checks.py:78	1	auto attr
+A-K3	_all_set	src/asy_crc_checks.py:79	1	auto attr
+A-K3	\b_all_set\b	tests/tooling	1	auto count tests=1f/10l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_msb_set	src/asy_crc_checks.py:43	1	auto attr
+A-K3	\b_msb_set\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_crc_shift	src/asy_crc_checks.py:41	1	auto attr
+A-K3	\b_crc_shift\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_fmt	src/asy_crc_checks.py:90	1	auto attr
+A-K3	_fmt	src/asy_crc_checks.py:105	1	auto attr
+A-K3	\b_fmt\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_inc_crc	src/asy_crc_checks.py:142	1	auto attr
+A-K3	_inc_crc	src/asy_crc_checks.py:144	1	auto attr
+A-K3	_inc_crc	src/asy_crc_checks.py:145	1	auto attr
+A-K3	_inc_crc	src/asy_crc_checks.py:156	1	auto attr
+A-K3	_inc_crc	src/asy_crc_checks.py:158	1	auto attr
+A-K3	_inc_crc	src/asy_crc_checks.py:159	1	auto attr
+A-K3	_inc_crc	src/asy_crc_checks.py:163	1	auto attr
+A-K3	\b_inc_crc\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-K3	_inc_count	src/asy_crc_checks.py:144	1	auto attr
+A-K3	_inc_count	src/asy_crc_checks.py:146	1	auto attr
+A-K3	_inc_count	src/asy_crc_checks.py:157	1	auto attr
+A-K3	_inc_count	src/asy_crc_checks.py:165	1	auto attr
+A-K3	\b_inc_count\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-F1	\b_checked_encoded\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-H1	\b_WB_CORNER_T0\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-H1	\b_WB_CORNER_RH0\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-H1	\b_WB_CORNER_T1\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-H1	\b_WB_CORNER_RH1\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+A-H4	\b_MAGNUS_RH_ROUNDING\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+DNS-1	"not\ an\ encodable\ DNS\ name"	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+DNS-3	_RCODE_NXDOMAIN	src/asy_dns_client.py:185	1	auto const
+DNS-3	\b_RCODE_NXDOMAIN\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+DNS-3	DNS_RESOLVED	src/asy_dns_client.py:146	1	auto const
+DNS-3	DNS_RESOLVED	src/asy_dns_client.py:190	1	auto const
+DNS-3	\bDNS_RESOLVED\b	tests/tooling	1	auto count tests=3f/15l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+DNS-3	DNS_NOT_SENT	src/asy_dns_client.py:150	1	auto const
+DNS-3	DNS_NOT_SENT	src/asy_dns_client.py:155	1	auto const
+DNS-3	DNS_NOT_SENT	src/asy_dns_client.py:157	1	auto const
+DNS-3	DNS_NOT_SENT	src/asy_dns_client.py:158	1	auto const
+DNS-3	DNS_NOT_SENT	src/asy_dns_client.py:169	1	auto const
+DNS-3	DNS_NOT_SENT	src/asy_ntp_client.py:22	1	auto const
+DNS-3	DNS_NOT_SENT	src/asy_ntp_client.py:419	1	auto const
+DNS-3	\bDNS_NOT_SENT\b	tests/tooling	1	auto count tests=2f/8l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+DNS-3	DNS_NXDOMAIN	src/asy_dns_client.py:186	1	auto const
+DNS-3	DNS_NXDOMAIN	src/asy_ntp_client.py:22	1	auto const
+DNS-3	DNS_NXDOMAIN	src/asy_ntp_client.py:421	1	auto const
+DNS-3	\bDNS_NXDOMAIN\b	tests/tooling	1	auto count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+DNS-3	DNS_FAILED	src/asy_dns_client.py:170	1	auto const
+DNS-3	\bDNS_FAILED\b	tests/tooling	1	auto count tests=4f/14l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+UDP-4	_poll	src/asy_udp_socket.py:133	1	auto def
+UDP-4	\b_poll\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=1f/2l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/7l
+CD-2	"not\ a\ query\ with\ exactly\ one\ question"	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NTP-7	_NTP_PACKET_LEN	src/asy_ntp_client.py:272	1	auto const
+NTP-7	_NTP_PACKET_LEN	src/asy_ntp_client.py:316	1	auto const
+NTP-7	\b_NTP_PACKET_LEN\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+NTP-12	_cadence	src/asy_ntp_client.py:369	1	auto attr
+NTP-12	_cadence	src/asy_ntp_client.py:387	1	auto attr
+NTP-12	_cadence	src/asy_ntp_client.py:395	1	auto attr
+NTP-12	_cadence	src/asy_ntp_client.py:404	1	auto attr
+NTP-12	\b_cadence\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NTP-13	_nearest_tick_s	src/asy_ntp_client.py:393	1	auto def
+NTP-13	_nearest_tick_s	src/asy_ntp_client.py:397	1	auto def
+NTP-13	\b_nearest_tick_s\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NTP-15	_tick_gap	src/asy_ntp_client.py:370	1	auto attr
+NTP-15	_tick_gap	src/asy_ntp_client.py:373	1	auto attr
+NTP-15	_tick_gap	src/asy_ntp_client.py:374	1	auto attr
+NTP-15	\b_tick_gap\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NTP-20	_check_armed	src/asy_ntp_client.py:355	1	auto attr
+NTP-20	_check_armed	src/asy_ntp_client.py:356	1	auto attr
+NTP-20	_check_armed	src/asy_ntp_client.py:357	1	auto attr
+NTP-20	_check_armed	src/asy_ntp_client.py:513	1	auto attr
+NTP-20	\b_check_armed\b	tests/tooling	1	auto count tests=2f/9l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NTP-20	_tick_armed	src/asy_ntp_client.py:360	1	auto attr
+NTP-20	_tick_armed	src/asy_ntp_client.py:361	1	auto attr
+NTP-20	_tick_armed	src/asy_ntp_client.py:362	1	auto attr
+NTP-20	_tick_armed	src/asy_ntp_client.py:516	1	auto attr
+NTP-20	_tick_armed	src/asy_wifi_service.py:271	1	auto attr
+NTP-20	_tick_armed	src/asy_wifi_service.py:412	1	auto attr
+NTP-20	_tick_armed	src/asy_wifi_service.py:414	1	auto attr
+NTP-20	_tick_armed	src/asy_wifi_service.py:415	1	auto attr
+NTP-20	_tick_armed	src/asy_wifi_service.py:925	1	auto attr
+NTP-20	\b_tick_armed\b	tests/tooling	1	auto count tests=3f/17l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:98	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:117	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:236	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:343	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:347	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:359	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:365	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:372	1	auto const
+WF-1	_VAL_COUNTRY	src/asy_wifi_service.py:940	1	auto const
+WF-1	\b_VAL_COUNTRY\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-1	_COUNTRY_CODE_LEN	src/asy_wifi_service.py:103	1	auto const
+WF-1	\b_COUNTRY_CODE_LEN\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-2	_cfg_overlay	src/asy_wifi_service.py:940	1	auto def
+WF-2	\b_cfg_overlay\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-5	_connection_failures	src/asy_wifi_service.py:266	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:477	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:587	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:683	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:684	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:685	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:687	1	auto attr
+WF-5	_connection_failures	src/asy_wifi_service.py:709	1	auto attr
+WF-5	\b_connection_failures\b	tests/tooling	1	auto count tests=4f/35l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/1l
+WF-6	_ap_selected	src/asy_wifi_service.py:731	1	auto attr
+WF-6	_ap_selected	src/asy_wifi_service.py:788	1	auto attr
+WF-6	_ap_selected	src/asy_wifi_service.py:799	1	auto attr
+WF-6	_ap_selected	src/asy_wifi_service.py:844	1	auto attr
+WF-6	\b_ap_selected\b	tests/tooling	1	auto count tests=3f/15l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-8	_tick_armed	src/asy_ntp_client.py:210	1	auto attr
+WF-8	_tick_armed	src/asy_ntp_client.py:360	1	auto attr
+WF-8	_tick_armed	src/asy_ntp_client.py:361	1	auto attr
+WF-8	_tick_armed	src/asy_ntp_client.py:362	1	auto attr
+WF-8	_tick_armed	src/asy_ntp_client.py:516	1	auto attr
+WF-8	_tick_armed	src/asy_wifi_service.py:271	1	auto attr
+WF-8	_tick_armed	src/asy_wifi_service.py:925	1	auto attr
+WF-8	\b_tick_armed\b	tests/tooling	1	auto count tests=3f/17l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-8	_hw_op_failed	src/asy_wifi_service.py:270	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:311	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:411	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:430	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:448	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:452	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:505	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:609	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:755	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:804	1	auto attr
+WF-8	_hw_op_failed	src/asy_wifi_service.py:818	1	auto attr
+WF-8	\b_hw_op_failed\b	tests/tooling	1	auto count tests=2f/31l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-10	_LED_HOTSPOT_CLIENT_ON_MS	src/asy_wifi_service.py:511	1	auto const
+WF-10	\b_LED_HOTSPOT_CLIENT_ON_MS\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-10	_LED_HOTSPOT_CLIENT_OFF_MS	src/asy_wifi_service.py:511	1	auto const
+WF-10	\b_LED_HOTSPOT_CLIENT_OFF_MS\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-11	_flash_led	src/asy_wifi_service.py:747	1	auto def
+WF-11	\b_flash_led\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-15	_dhcp_dns	src/asy_wifi_service.py:827	1	auto attr
+WF-15	_dhcp_dns	src/asy_wifi_service.py:850	1	auto attr
+WF-15	_dhcp_dns	src/asy_wifi_service.py:949	1	auto attr
+WF-15	\b_dhcp_dns\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-17	_wifi_connected	src/asy_wifi_service.py:247	1	auto attr
+WF-17	_wifi_connected	src/asy_wifi_service.py:855	1	auto attr
+WF-17	_wifi_connected	src/asy_wifi_service.py:868	1	auto attr
+WF-17	_wifi_connected	src/asy_wifi_service.py:872	1	auto attr
+WF-17	_wifi_connected	src/asy_wifi_service.py:967	1	auto attr
+WF-17	\b_wifi_connected\b	tests/tooling	1	auto count tests=2f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WF-19	_recover_device	src/asy_base_classes.py:573	1	auto def
+WF-19	_recover_device	src/asy_base_classes.py:657	1	auto def
+WF-19	_recover_device	src/asy_bmp3xx_driver.py:323	1	auto def
+WF-19	_recover_device	src/asy_isl29125_driver.py:840	1	auto def
+WF-19	_recover_device	src/asy_scd30_driver.py:508	1	auto def
+WF-19	_recover_device	src/asy_sgp40_driver.py:479	1	auto def
+WF-19	\b_recover_device\b	tests/tooling	1	auto count tests=5f/8l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/3l
+WS-2	_length_seen	src/asy_webserver_service.py:332	1	auto attr
+WS-2	\b_length_seen\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WS-6	_trace_before_close	src/asy_webserver_service.py:802	1	auto def
+WS-6	_trace_before_close	src/asy_webserver_service.py:942	1	auto def
+WS-6	_trace_before_close	src/asy_webserver_service.py:945	1	auto def
+WS-6	_trace_before_close	src/asy_webserver_service.py:948	1	auto def
+WS-6	\b_trace_before_close\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WS-7	_held	src/asy_webserver_service.py:333	1	auto attr
+WS-7	_held	src/asy_webserver_service.py:462	1	auto attr
+WS-7	\b_held\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/13l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WS-11	_START_RETRIES	src/asy_webserver_service.py:982	1	auto const
+WS-11	\b_START_RETRIES\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+WS-11	_START_RETRY_S	src/asy_webserver_service.py:991	1	auto const
+WS-11	\b_START_RETRY_S\b	tests/tooling	1	auto count tests=1f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+UC-2	_check_cap	src/asy_uart_comm.py:848	1	auto def
+UC-2	_check_cap	src/asy_uart_comm.py:1188	1	auto def
+UC-2	_check_cap	src/asy_uart_comm.py:1208	1	auto def
+UC-2	\b_check_cap\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+UC-8	_max_timeout	src/asy_uart_comm.py:970	1	auto def
+UC-8	\b_max_timeout\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+UC-11	_WRN_UART_RX_OVERRUN	src/asy_uart_comm.py:736	1	auto const
+UC-11	\b_WRN_UART_RX_OVERRUN\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+UL-5	_banner_check	src/asy_uart_link_driver.py:137	1	auto attr
+UL-5	\b_banner_check\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+I2C-2	_clear_bus_awaiting	src/asy_i2c_driver.py:165	1	auto def
+I2C-2	\b_clear_bus_awaiting\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+I2C-2	\b_scl_released\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+I2C-4	recoveries	src/asy_base_classes.py:594	1	auto attr
+I2C-4	recoveries	src/asy_base_classes.py:626	1	auto attr
+I2C-4	recoveries	src/asy_base_classes.py:647	1	auto attr
+I2C-4	recoveries	src/asy_base_classes.py:655	1	auto attr
+I2C-4	recoveries	src/asy_i2c_driver.py:336	1	auto attr
+I2C-4	recoveries	src/asy_i2c_driver.py:389	1	auto attr
+I2C-4	\brecoveries\b	tests/tooling	1	auto count tests=8f/36l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=1f/3l toolchain=0f/0l tests_hardware=0f/0l
+I2C-5	_boot_clear_status	src/asy_i2c_driver.py:406	1	auto attr
+I2C-5	_boot_clear_status	src/asy_i2c_driver.py:407	1	auto attr
+I2C-5	\b_boot_clear_status\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+I2C-6	_MAX_ADDRSIZE	src/asy_i2c_driver.py:175	1	auto const
+I2C-6	\b_MAX_ADDRSIZE\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+I2C-7	_point_at	src/asy_i2c_driver.py:250	1	auto def
+I2C-7	\b_point_at\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+I2C-9	_scratch_view	src/asy_i2c_driver.py:187	1	auto attr
+I2C-9	_scratch_view	src/asy_i2c_driver.py:192	1	auto attr
+I2C-9	_scratch_view	src/asy_i2c_driver.py:216	1	auto attr
+I2C-9	_scratch_view	src/asy_i2c_driver.py:218	1	auto attr
+I2C-9	\b_scratch_view\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NP-3	_MAX_SIGNAL_S	src/asy_neopixel_driver.py:53	1	auto const
+NP-3	_MAX_SIGNAL_S	src/asy_neopixel_driver.py:54	1	auto const
+NP-3	\b_MAX_SIGNAL_S\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NP-5	_OVERLAY_REFRESH_MS	src/asy_neopixel_driver.py:82	1	auto const
+NP-5	\b_OVERLAY_REFRESH_MS\b	tests/tooling	1	auto count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-2	_STATE_EVALUATED	src/asy_notification_service.py:290	1	auto const
+NT-2	\b_STATE_EVALUATED\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-2	_STATE_OFF	src/asy_notification_service.py:280	1	auto const
+NT-2	\b_STATE_OFF\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-2	_STATE_NO_CLOCK	src/asy_notification_service.py:284	1	auto const
+NT-2	\b_STATE_NO_CLOCK\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-2	_STATE_PARTIAL	src/asy_notification_service.py:294	1	auto const
+NT-2	\b_STATE_PARTIAL\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-2	_STATE_CFG_UNREADABLE	src/asy_notification_service.py:273	1	auto const
+NT-2	\b_STATE_CFG_UNREADABLE\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-3	_SAMPLE_MAX_AGE_S	src/asy_notification_service.py:234	1	auto const
+NT-3	\b_SAMPLE_MAX_AGE_S\b	tests/tooling	1	auto count tests=2f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+NT-5	_WRN_NOTIFY_SIGNAL_DROPPED	src/asy_notification_service.py:340	1	auto const
+NT-5	\b_WRN_NOTIFY_SIGNAL_DROPPED\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_10_3972	src/voc_algorithm.py:358	1	auto attr
+VOC-5	\b_f16_10_3972\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_minus_11_7835	src/voc_algorithm.py:360	1	auto attr
+VOC-5	\b_f16_minus_11_7835\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_0	src/voc_algorithm.py:577	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:584	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:590	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:598	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:607	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:682	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:720	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:721	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:784	1	auto attr
+VOC-5	_f16_0	src/voc_algorithm.py:829	1	auto attr
+VOC-5	\b_f16_0\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_0_5	src/voc_algorithm.py:828	1	auto attr
+VOC-5	_f16_0_5	src/voc_algorithm.py:835	1	auto attr
+VOC-5	\b_f16_0_5\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_1	src/voc_algorithm.py:486	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:511	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:520	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:549	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:566	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:608	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:685	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:732	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:745	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:770	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:777	1	auto attr
+VOC-5	_f16_1	src/voc_algorithm.py:793	1	auto attr
+VOC-5	\b_f16_1\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_4	src/voc_algorithm.py:610	1	auto attr
+VOC-5	_f16_4	src/voc_algorithm.py:727	1	auto attr
+VOC-5	\b_f16_4\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_5	src/voc_algorithm.py:725	1	auto attr
+VOC-5	\b_f16_5\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_50	src/voc_algorithm.py:681	1	auto attr
+VOC-5	_f16_50	src/voc_algorithm.py:719	1	auto attr
+VOC-5	\b_f16_50\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_minus_50	src/voc_algorithm.py:679	1	auto attr
+VOC-5	_f16_minus_50	src/voc_algorithm.py:717	1	auto attr
+VOC-5	\b_f16_minus_50\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_100	src/voc_algorithm.py:592	1	auto attr
+VOC-5	\b_f16_100\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_minus_100	src/voc_algorithm.py:593	1	auto attr
+VOC-5	\b_f16_minus_100\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_1440	src/voc_algorithm.py:609	1	auto attr
+VOC-5	\b_f16_1440\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_sampling_interval	src/voc_algorithm.py:477	1	auto attr
+VOC-5	_f16_sampling_interval	src/voc_algorithm.py:482	1	auto attr
+VOC-5	_f16_sampling_interval	src/voc_algorithm.py:789	1	auto attr
+VOC-5	_f16_sampling_interval	src/voc_algorithm.py:790	1	auto attr
+VOC-5	_f16_sampling_interval	src/voc_algorithm.py:817	1	auto attr
+VOC-5	\b_f16_sampling_interval\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_initi_duration_mean	src/voc_algorithm.py:487	1	auto attr
+VOC-5	\b_f16_initi_duration_mean\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_initi_transition_mean	src/voc_algorithm.py:488	1	auto attr
+VOC-5	\b_f16_initi_transition_mean\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_gating_threshold	src/voc_algorithm.py:502	1	auto attr
+VOC-5	_f16_gating_threshold	src/voc_algorithm.py:539	1	auto attr
+VOC-5	\b_f16_gating_threshold\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_gating_threshold_transition	src/voc_algorithm.py:513	1	auto attr
+VOC-5	_f16_gating_threshold_transition	src/voc_algorithm.py:551	1	auto attr
+VOC-5	\b_f16_gating_threshold_transition\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_initi_duration_variance	src/voc_algorithm.py:521	1	auto attr
+VOC-5	\b_f16_initi_duration_variance\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_initi_transition_variance	src/voc_algorithm.py:522	1	auto attr
+VOC-5	\b_f16_initi_transition_variance\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_gating_max_ratio	src/voc_algorithm.py:570	1	auto attr
+VOC-5	\b_f16_gating_max_ratio\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_gamma_scaling	src/voc_algorithm.py:604	1	auto attr
+VOC-5	_f16_gamma_scaling	src/voc_algorithm.py:617	1	auto attr
+VOC-5	_f16_gamma_scaling	src/voc_algorithm.py:633	1	auto attr
+VOC-5	\b_f16_gamma_scaling\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_sraw_std_bonus	src/voc_algorithm.py:700	1	auto attr
+VOC-5	\b_f16_sraw_std_bonus\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_voc_index_gain	src/voc_algorithm.py:703	1	auto attr
+VOC-5	\b_f16_voc_index_gain\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_sigmoid_k	src/voc_algorithm.py:714	1	auto attr
+VOC-5	\b_f16_sigmoid_k\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_sigmoid_x0	src/voc_algorithm.py:715	1	auto attr
+VOC-5	\b_f16_sigmoid_x0\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_sigmoid_l	src/voc_algorithm.py:718	1	auto attr
+VOC-5	_f16_sigmoid_l	src/voc_algorithm.py:724	1	auto attr
+VOC-5	_f16_sigmoid_l	src/voc_algorithm.py:731	1	auto attr
+VOC-5	_f16_sigmoid_l	src/voc_algorithm.py:744	1	auto attr
+VOC-5	\b_f16_sigmoid_l\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_voc_index_offset_default	src/voc_algorithm.py:739	1	auto attr
+VOC-5	\b_f16_voc_index_offset_default\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_lp_alpha	src/voc_algorithm.py:786	1	auto attr
+VOC-5	\b_f16_lp_alpha\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_lp_tau_fast	src/voc_algorithm.py:787	1	auto attr
+VOC-5	\b_f16_lp_tau_fast\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_initial_blackout	src/voc_algorithm.py:816	1	auto attr
+VOC-5	\b_f16_initial_blackout\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_uptime_limit	src/voc_algorithm.py:474	1	auto attr
+VOC-5	\b_f16_uptime_limit\b	tests/tooling	1	auto count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_gating_threshold_initial_delta	src/voc_algorithm.py:504	1	auto attr
+VOC-5	_f16_gating_threshold_initial_delta	src/voc_algorithm.py:541	1	auto attr
+VOC-5	\b_f16_gating_threshold_initial_delta\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_sampling_interval_minutes	src/voc_algorithm.py:562	1	auto attr
+VOC-5	\b_f16_sampling_interval_minutes\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_one_plus_gating_max_ratio	src/voc_algorithm.py:567	1	auto attr
+VOC-5	\b_f16_one_plus_gating_max_ratio\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+VOC-5	_f16_lp_tau_delta	src/voc_algorithm.py:787	1	auto attr
+VOC-5	\b_f16_lp_tau_delta\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+BMP-1	_WRN_BMP_CHIP_RESET	src/asy_bmp3xx_driver.py:278	1	auto const
+BMP-1	\b_WRN_BMP_CHIP_RESET\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+BMP-2	_REG_ERR_FATAL_BIT	src/asy_bmp3xx_driver.py:525	1	auto const
+BMP-2	\b_REG_ERR_FATAL_BIT\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+BMP-9	_comp_unreadable	src/asy_bmp3xx_driver.py:222	1	auto attr
+BMP-9	_comp_unreadable	src/asy_bmp3xx_driver.py:267	1	auto attr
+BMP-9	_comp_unreadable	src/asy_bmp3xx_driver.py:268	1	auto attr
+BMP-9	_comp_unreadable	src/asy_bmp3xx_driver.py:271	1	auto attr
+BMP-9	\b_comp_unreadable\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+BMP-13	set_trigger_s	src/asy_bmp3xx_driver.py:209	1	auto def
+BMP-13	set_trigger_s	src/asy_bmp3xx_driver.py:259	1	auto def
+BMP-13	set_trigger_s	src/asy_isl29125_driver.py:494	1	auto def
+BMP-13	set_trigger_s	src/asy_isl29125_driver.py:655	1	auto def
+BMP-13	set_trigger_s	src/asy_isl29125_driver.py:1160	1	auto def
+BMP-13	\bset_trigger_s\b	tests/tooling	1	auto count tests=2f/28l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+BMP-16	_pt_burst	src/asy_bmp3xx_driver.py:522	1	auto attr
+BMP-16	\b_pt_burst\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SCD-6	_WRN_SCD_NOT_READY	src/asy_scd30_driver.py:505	1	auto const
+SCD-6	\b_WRN_SCD_NOT_READY\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SCD-6	_NOT_READY_WARN_AT	src/asy_scd30_driver.py:502	1	auto const
+SCD-6	_NOT_READY_WARN_AT	src/asy_scd30_driver.py:504	1	auto const
+SCD-6	\b_NOT_READY_WARN_AT\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SCD-12	_words	src/asy_scd30_driver.py:883	1	auto attr
+SCD-12	\b_words\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=1f/4l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/8l
+SGP-2	_COMP_MAX_AGE_S	src/asy_sgp40_driver.py:183	1	auto const
+SGP-2	\b_COMP_MAX_AGE_S\b	tests/tooling	1	auto count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-11	_restore_waiting	src/asy_sgp40_driver.py:362	1	auto attr
+SGP-11	_restore_waiting	src/asy_sgp40_driver.py:549	1	auto attr
+SGP-11	_restore_waiting	src/asy_sgp40_driver.py:561	1	auto attr
+SGP-11	_restore_waiting	src/asy_sgp40_driver.py:573	1	auto attr
+SGP-11	_restore_waiting	src/asy_sgp40_driver.py:580	1	auto attr
+SGP-11	_restore_waiting	src/asy_sgp40_driver.py:586	1	auto attr
+SGP-11	\b_restore_waiting\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-13	_voc_init	src/asy_sgp40_driver.py:226	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:267	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:280	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:282	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:301	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:330	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:331	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:355	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:359	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:416	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:474	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:549	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:572	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:574	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:579	1	auto attr
+SGP-13	_voc_init	src/asy_sgp40_driver.py:585	1	auto attr
+SGP-13	\b_voc_init\b	tests/tooling	1	auto count tests=3f/30l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-13	_restore_waiting	src/asy_sgp40_driver.py:228	1	auto attr
+SGP-13	_restore_waiting	src/asy_sgp40_driver.py:362	1	auto attr
+SGP-13	_restore_waiting	src/asy_sgp40_driver.py:549	1	auto attr
+SGP-13	_restore_waiting	src/asy_sgp40_driver.py:573	1	auto attr
+SGP-13	_restore_waiting	src/asy_sgp40_driver.py:580	1	auto attr
+SGP-13	_restore_waiting	src/asy_sgp40_driver.py:586	1	auto attr
+SGP-13	\b_restore_waiting\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-14	_backup_buf	src/asy_sgp40_driver.py:296	1	auto attr
+SGP-14	_backup_buf	src/asy_sgp40_driver.py:297	1	auto attr
+SGP-14	_backup_buf	src/asy_sgp40_driver.py:298	1	auto attr
+SGP-14	\b_backup_buf\b	tests/tooling	1	auto count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:239	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:253	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:266	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:297	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:341	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:352	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:404	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:407	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:497	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:502	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:505	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:512	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:545	1	auto attr
+SGP-15	_ts_storage	src/asy_sgp40_driver.py:558	1	auto attr
+SGP-15	\b_ts_storage\b	tests/tooling	1	auto count tests=5f/34l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=1f/4l
+SGP-17	_voc_init	src/asy_sgp40_driver.py:226	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:267	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:280	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:282	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:301	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:330	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:331	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:355	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:359	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:416	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:549	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:560	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:572	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:574	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:579	1	auto attr
+SGP-17	_voc_init	src/asy_sgp40_driver.py:585	1	auto attr
+SGP-17	\b_voc_init\b	tests/tooling	1	auto count tests=3f/30l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:224	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:286	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:287	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:288	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:290	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:292	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:293	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:329	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:399	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:417	1	auto attr
+SGP-17	_backup_counter	src/asy_sgp40_driver.py:516	1	auto attr
+SGP-17	\b_backup_counter\b	tests/tooling	1	auto count tests=4f/19l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+SGP-18	"raw\ signal\ not\ measured"	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+ISL-8	_MAX_DWELL_MS	src/asy_isl29125_driver.py:416	1	auto const
+ISL-8	_MAX_DWELL_MS	src/asy_isl29125_driver.py:418	1	auto const
+ISL-8	\b_MAX_DWELL_MS\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+ISL-9	_WRN_ISL_CAL_TIMEOUT	src/asy_isl29125_driver.py:399	1	auto const
+ISL-9	\b_WRN_ISL_CAL_TIMEOUT\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+ISL-12	_int_held	src/asy_isl29125_driver.py:271	1	auto attr
+ISL-12	_int_held	src/asy_isl29125_driver.py:328	1	auto attr
+ISL-12	_int_held	src/asy_isl29125_driver.py:587	1	auto attr
+ISL-12	_int_held	src/asy_isl29125_driver.py:717	1	auto attr
+ISL-12	_int_held	src/asy_isl29125_driver.py:1132	1	auto attr
+ISL-12	\b_int_held\b	tests/tooling	1	auto count tests=2f/5l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+ISL-12	_int_rearmed	src/asy_isl29125_driver.py:273	1	auto attr
+ISL-12	_int_rearmed	src/asy_isl29125_driver.py:591	1	auto attr
+ISL-12	_int_rearmed	src/asy_isl29125_driver.py:601	1	auto attr
+ISL-12	_int_rearmed	src/asy_isl29125_driver.py:602	1	auto attr
+ISL-12	\b_int_rearmed\b	tests/tooling	1	auto count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H3	_compiled	buildgen/generate.py:157	1	auto def
+H3	_compiled	buildgen/generate.py:161	1	auto def
+H3	_compiled	buildgen/generate.py:162	1	auto def
+H3	\b_compiled\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H13	_check_uart_bus_single_owner	buildgen/validate.py:1476	1	auto def
+H13	\b_check_uart_bus_single_owner\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H14	_check_uart_link_timing	buildgen/validate.py:1043	1	auto def
+H14	\b_check_uart_link_timing\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H15	_check_uart_bus	buildgen/validate.py:279	1	auto def
+H15	\b_check_uart_bus\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H16	_check_i2c_bus	buildgen/validate.py:277	1	auto def
+H16	\b_check_i2c_bus\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H17	_check_i2c_timeout_consumer	buildgen/validate.py:1492	1	auto def
+H17	\b_check_i2c_timeout_consumer\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H19	_check_device_ranges	buildgen/validate.py:493	1	auto def
+H19	\b_check_device_ranges\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H20	_check_device_identity	buildgen/validate.py:484	1	auto def
+H20	\b_check_device_identity\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H22b	_check_instance_field_types	buildgen/validate.py:903	1	auto def
+H22b	\b_check_instance_field_types\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H24	"internal:\ source\.driver_info\ unresolved\ by\ source\-...	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+H25	_check_warn_signals	buildgen/validate.py:752	1	auto def
+H25	\b_check_warn_signals\b	tests/tooling	1	auto count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l

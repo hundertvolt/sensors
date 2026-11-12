@@ -1,4 +1,10 @@
+/**
+ * Vitest in real-browser mode (Playwright + Chromium, not jsdom) - the JS unit-test tier's
+ * "real environment over a shim" equivalent to running Python tests under a real MicroPython
+ * Unix-port interpreter (SPECIFICATION.md Part E.1). See SPECIFICATION.md Part H.8.
+ */
 import { existsSync } from "node:fs";
+import { chromium } from "playwright";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
@@ -14,31 +20,38 @@ import {
     stopLiveMatrix,
 } from "./tests_js/_live_matrix_command.js";
 import { probeLintRule } from "./tests_js/_lint_command.js";
+import { probePortLock } from "./tests_js/_port_lock.js";
 
-// The dev sandbox pre-installs Chromium at this fixed path; CI runners lack it and run
-// `npx playwright install chromium` first (ci.yml's web-unit-tests job), so Playwright
-// resolves its own install there.
+// The lock-pinned Playwright Chromium runs whenever it is installed; a session sandbox that cannot download it
+// pre-installs one here (agent, 2026-08-21). Remove this fallback once the sandbox can run `npx playwright install chromium`.
 const sandboxChromium = "/opt/pw-browsers/chromium";
-const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChromium } : {};
+const launchOptions = !existsSync(chromium.executablePath()) && existsSync(sandboxChromium) ? { executablePath: sandboxChromium } : {};
 
-/**
- * Vitest in real-browser mode (Playwright + Chromium, not jsdom) - the JS unit-test tier's
- * "real environment over a shim" equivalent to running Python tests under a real MicroPython
- * Unix-port interpreter (SPECIFICATION.md Part E.1). See SPECIFICATION.md Part H.8.
- */
 export default defineConfig({
     test: {
         include: ["tests_js/**/*.test.js"],
+        // No spy or fake timer one test set reaches the next, whatever path it ended on: spies are restored
+        // before each test, real timers return after each (tests_js/_test_setup.js; SPECIFICATION.md H.8).
+        restoreMocks: true,
+        setupFiles: ["tests_js/_test_setup.js"],
         // Every run ends with the runner summary block (SPECIFICATION.md E.10), after vitest's own report.
         reporters: ["default", "./tests_js/_summary_reporter.js"],
         // Backstop, not a fix for a known hang (CLAUDE.md "Code quality tooling": hanging tests
         // are never allowed); covers the longest explicit wait (5000ms, render.test.js) with margin.
         // @tunable l0.vitest_test_timeout_ms = 20000
         testTimeout: 20000,
+        // A test that ran into its timeout, its beforeEach/afterEach included, is retried twice, and nothing else; a suite's
+        // beforeAll/afterAll runs once (SPECIFICATION.md E.3.1). The condition is the start of the pinned vitest's own
+        // timeout message ("Test|Hook timed out in <n>ms", makeTimeoutError()).
+        retry: {
+            // @tunable l0.vitest_timeout_retries = 2
+            count: 2,
+            condition: /^(?:Test|Hook) timed out in \d+ms/u,
+        },
         coverage: {
             // A `coverage/` directory at the repo root is importable as a namespace package and
             // shadows the real `coverage` distribution scripts/_render_coverage.py imports, so a
-            // web-coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
+            // JS coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
             reportsDirectory: "htmlcov_js",
             // The v8 provider re-parses every file V8 reported coverage for as JavaScript, so the
             // JSON the site fetches at runtime (the generated definitions and mockdata/) threw a
@@ -65,6 +78,7 @@ export default defineConfig({
                 remountAndReadField,
                 archiveErrcount,
                 probeLintRule,
+                probePortLock,
             },
         },
     },

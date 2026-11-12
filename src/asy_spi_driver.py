@@ -1,24 +1,16 @@
-"""Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
-CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
+"""Wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device CS-pin wrapper, with an async lock-scoped
+session and synchronous ones). Sole consumer: asy_fram_driver.py's FRAM_SPI, through a synchronous operation.
 """
-# RP2040 SPI has no ACK/NAK. An uninitialized bus is a False return from every transfer, configure()
-# and session_begin(), never a raise; a 32+ byte READ can raise OSError(EIO) on an RX overrun and it
-# propagates. Raise sites: SPECIFICATION.md Part F.5.
+# RP2040 SPI has no ACK/NAK, so write() cannot raise; a 32+ byte READ can raise OSError(EIO) on an
+# RX overrun since 1.29. write_readinto() turns machine.SPI's mismatched-length ValueError into
+# None; setup (__init__/init(), configure()) may raise. Raise sites: SPECIFICATION.md Part F.5.
 
 import asyncio
-import time
 
 from machine import SPI as _SPI
 from machine import Pin
-from micropython import const
 
 from asy_base_classes import Lockable
-
-# Blocking CS settle. Both parts specify tCSU/tCSH >= 10 ns and tD >= 40 ns (MB85RS2MTA) / 60 ns
-# (MB85RS64V), so 2 us is orders of magnitude clear of them; rp2's sleep_us() busy-waits on
-# time_us_64(), where sleep_us(1) only promises an elapsed time in (0, 1] us and 2 promises >= 1.
-# @tunable spi.cs_settle_us = 2
-_CS_SETTLE_US = const(2)
 
 try:
     from typing import TYPE_CHECKING
@@ -26,21 +18,21 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Literal
 
     from typing_extensions import Self
+
+    # One synchronous operation's wiring: the CS pin's value(), its active level, and the bus's own write and readinto.
+    Wiring = tuple[Callable[[bool], object], bool, Callable[[bytes | bytearray | memoryview], None], Callable[[bytearray | memoryview], None]]
 
 
 class SPI:
     def __init__(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
         self._spi: _SPI | None = None
-        self.bus_lock = asyncio.Lock()  # serialises the SPI peripheral: every CS session holds it
+        self.configured_for: object | None = None  # the device the bus was last configured for; None: not yet
+        self.bus_lock = asyncio.Lock()  # held by every async session; a synchronous session runs only while it is free
         self.init(port_id, sck_pin, mosi_pin, miso_pin)
-
-    @property
-    def available(self) -> bool:
-        # Read-only: whether a transfer can reach the bus (a deinit() drops it).
-        return self._spi is not None
 
     def configure(
         self,
@@ -49,24 +41,20 @@ class SPI:
         phase: int = 0,
         bits: int = 8,
         firstbit: int = _SPI.MSB,
-    ) -> bool:
-        # Called only from SPIDevice.session_begin() (which __aenter__ also uses), with the bus lock
-        # held by the caller; an uninitialized bus is a False return (see the module comment).
-        if not self.bus_lock.locked():
-            raise RuntimeError("acquire the bus lock first")
+    ) -> None:
+        # Programmer-error guard: only ever called from SPIDevice's session start, on an initialized bus.
         if self._spi is None:
-            return False
+            raise RuntimeError("SPI bus not initialized - call init() first")
         self._spi.init(baudrate=baudrate, polarity=polarity, phase=phase, bits=bits, firstbit=firstbit)
-        return True
 
-    def deinit(self) -> bool:
-        # machine.SPI.deinit() does NOT deactivate the rp2 bus - forwarded for portability, it cannot
-        # fail at the pinned version (Part F.5.1), so this returns True; dropping self._spi is what
-        # makes the wrapper report the bus unavailable.
+    def deinit(self) -> None:
+        # machine.SPI.deinit() does NOT deactivate the rp2 hardware bus - it is forwarded for
+        # portability only, and dropping self._spi is what actually puts this wrapper into its
+        # documented "bus unavailable" state. See SPECIFICATION.md Part F.5.
+        self.configured_for = None
         if self._spi is not None:
             self._spi.deinit()
             self._spi = None
-        return True
 
     def init(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
         # deinit() first so a re-init always goes through the same "bus unavailable" state a
@@ -74,35 +62,38 @@ class SPI:
         self.deinit()
         self._spi = _SPI(port_id, sck=Pin(sck_pin), mosi=Pin(mosi_pin), miso=Pin(miso_pin))
 
-    def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> bool:
+    def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
         # SPI is full-duplex - reading still clocks write_value out on MOSI meanwhile. An
         # OSError(EIO) from a 32+ byte RX overrun propagates uncaught, same as I2C's does.
         if self._spi is None:
-            return False
+            return
         self._spi.readinto(buf, write_value)
-        return True
 
-    def write(self, buf: bytes | bytearray | memoryview) -> bool:
+    def transfers(self) -> "tuple[Callable[[bytes | bytearray | memoryview], None], Callable[[bytearray | memoryview], None]]":
+        # machine.SPI's own write and readinto, for a synchronous operation's commands; an RX overrun propagates as readinto() says.
         if self._spi is None:
-            return False
+            raise RuntimeError("SPI bus not initialized - call init() first")
+        return self._spi.write, self._spi.readinto
+
+    def write(self, buf: bytes | bytearray | memoryview) -> None:
+        if self._spi is None:
+            return
         self._spi.write(buf)  # rp2: always returns None (confirmed against extmod/machine_spi.c)
-        return True
 
     def write_readinto(
         self,
         buffer_out: bytes | bytearray | memoryview,
         buffer_in: bytearray | memoryview,
-    ) -> bool:
+    ) -> None:
         # Full-duplex simultaneous transfer: buffer_out/buffer_in must match length, or
-        # machine.SPI.write_readinto() raises ValueError, caught below and turned into False.
+        # machine.SPI.write_readinto() raises ValueError, caught below and turned into None.
         # OSError(EIO) from a 32+ byte RX overrun is deliberately not caught - it propagates.
         if self._spi is None:
-            return False
+            return
         try:
             self._spi.write_readinto(buffer_out, buffer_in)
         except ValueError:  # length mismatch
-            return False
-        return True
+            return
 
 
 class SPIDevice(Lockable):
@@ -138,10 +129,9 @@ class SPIDevice(Lockable):
         if not self.initialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
         await super().__aenter__()
-        # __aenter__ raising means `async with` never calls __aexit__, so clean up here too. A False
-        # (no bus) still enters: the session holds the lock and every transfer then returns False.
+        # __aenter__ raising means `async with` never calls __aexit__, so clean up here too.
         try:
-            self.session_begin()
+            self._begin()
         except BaseException:
             self.session_lock.release()
             raise
@@ -161,64 +151,84 @@ class SPIDevice(Lockable):
         await asyncio.sleep(0)
         return released
 
-    async def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> bool:
-        return self.readinto_sync(buf, write_value=write_value)
-
-    def readinto_sync(self, buf: bytearray | memoryview, write_value: int = 0x00) -> bool:
-        return self.spi.readinto(buf, write_value=write_value)
-
-    def session_begin(self) -> bool:
-        # What __aenter__ does between the lock operations, for a caller that already holds the bus
-        # lock - configure()'s own guard enforces that. The settle blocks on purpose: an awaited one
-        # would hand the loop to another task with CS asserted and the bus locked.
+    def _begin(self) -> None:
+        # Configures the bus, then asserts CS.
         if not self.initialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
         try:
-            if not self.spi.configure(
+            self._configure()
+            self._cs_pin.value(self._cs_active_value)
+        except BaseException:
+            self._cs_pin.value(not self._cs_active_value)  # deassert if asserted
+            raise
+
+    def _configure(self) -> None:
+        # Configures the bus only when another device (or none) configured it last.
+        spi = self.spi
+        if spi.configured_for is not self:
+            spi.configured_for = None  # until configure() returns: a half-applied init is no device's
+            spi.configure(
                 baudrate=self._baudrate,
                 polarity=self._polarity,
                 phase=self._phase,
                 bits=self._bits,
                 firstbit=self._firstbit,
-            ):
-                return False  # no bus: CS stays inactive
-            self._cs_pin.value(self._cs_active_value)
-            time.sleep_us(_CS_SETTLE_US)
-        except BaseException:
-            self._cs_pin.value(not self._cs_active_value)  # deassert if asserted
-            raise
-        return True
+            )
+            spi.configured_for = self
+
+    def begin_sync(self) -> "Wiring":
+        # One synchronous operation's start, its checks once rather than per command (C.8): refused while an async session
+        # holds the bus, whose CS may stay asserted across a suspension; the bus configured for this device. The operation
+        # then frames each command itself with the returned CS and bus methods, never suspending in between.
+        if self.session_lock.locked():
+            raise RuntimeError("SPI bus held by an async session")
+        if not self.initialized:
+            raise RuntimeError("SPIDevice not set up - call setup() first")
+        self._configure()
+        write, readinto = self.spi.transfers()
+        return self._cs_pin.value, self._cs_active_value, write, readinto
+
+    async def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+        self.readinto_sync(buf, write_value=write_value)
+
+    def readinto_sync(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+        self.spi.readinto(buf, write_value=write_value)
+
+    def session_begin(self) -> None:
+        # The synchronous session, for a caller that runs it whole without suspending (C.8). Refused while an async
+        # session holds the bus, whose CS may stay asserted across a suspension.
+        if self.session_lock.locked():
+            raise RuntimeError("SPI bus held by an async session")
+        self._begin()
 
     def session_end(self) -> None:
         # The caller's own try/finally is what guarantees this runs; __aexit__() is that caller for
         # `async with` users.
         self._cs_pin.value(not self._cs_active_value)
-        time.sleep_us(_CS_SETTLE_US)
 
-    async def setup(self) -> bool:
+    async def setup(self) -> None:
         self._cs_pin.init(self._cs_pin.OUT, value=not self._cs_active_value)  # value= sets the level before the pad becomes an output: no CS glitch.
         self.initialized = True
-        return True
 
     # The async transfers readinto()/write()/write_readinto() stay for `async with` callers (a future SPI sensor
     # driver), each expressed on its *_sync() primitive so the bus sequence has exactly one implementation.
-    async def write(self, buf: bytes | bytearray | memoryview) -> bool:
-        return self.write_sync(buf)
+    async def write(self, buf: bytes | bytearray | memoryview) -> None:
+        self.write_sync(buf)
 
     async def write_readinto(
         self,
         buffer_out: bytes | bytearray | memoryview,
         buffer_in: bytearray | memoryview,
-    ) -> bool:
-        return self.write_readinto_sync(buffer_out, buffer_in)
+    ) -> None:
+        self.write_readinto_sync(buffer_out, buffer_in)
 
     def write_readinto_sync(
         self,
         buffer_out: bytes | bytearray | memoryview,
         buffer_in: bytearray | memoryview,
-    ) -> bool:
+    ) -> None:
         # Full-duplex simultaneous transfer, not write-then-read - see SPI.write_readinto().
-        return self.spi.write_readinto(buffer_out, buffer_in)
+        self.spi.write_readinto(buffer_out, buffer_in)
 
-    def write_sync(self, buf: bytes | bytearray | memoryview) -> bool:
-        return self.spi.write(buf)
+    def write_sync(self, buf: bytes | bytearray | memoryview) -> None:
+        self.spi.write(buf)

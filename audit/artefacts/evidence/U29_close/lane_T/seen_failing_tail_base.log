@@ -1,0 +1,19 @@
+code 1
+== Summary: scripts/test.sh ==
+Commit: unknown
+Levels: L0 FAIL · L1 PASS · L2 PASS (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
+GC stage: -1 (reactive default)
+Counts (files): passed 1 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 3 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_scripts/ (pytest): pytest exited nonzero or timed out
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
+

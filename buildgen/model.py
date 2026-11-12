@@ -2,7 +2,7 @@
 failure wrapped into the same fail-loud `BuildError`), and `InstanceSpec`/`DeviceModel` carry each
 `[[instance]]` entry and its later-resolved facts through validation, sorting and codegen."""
 
-import datetime
+import datetime as dt
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 # One parsed TOML value: every type tomllib.load() returns (its conversion table), arrays and
 # tables nested. TomlDoc is a table: the whole file or any [[instance]]/[bus.*]/[device] in it.
-TomlValue: TypeAlias = str | int | float | bool | datetime.date | datetime.time | datetime.datetime | list["TomlValue"] | dict[str, "TomlValue"]
+TomlValue: TypeAlias = str | int | float | bool | dt.date | dt.time | dt.datetime | list["TomlValue"] | dict[str, "TomlValue"]
 TomlDoc: TypeAlias = dict[str, TomlValue]
 
 # The /status maintenance block's key for a driver publishing one per device (an SGP40 publishes one per
@@ -66,25 +66,10 @@ class DeviceModel:
     device_wiring: "dict[str, dict[str, WiringField]]" = field(default_factory=dict)  # consumer label -> TOML field -> its @wiring tag, filled by validate.py
 
 
-def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
-    # A wiring value is always a plain "driver" or "driver_ext" string, never a pair. Try the
-    # unextended reading first, as every real device's wiring values use it, then fall back to
-    # splitting the last "_"-group off as name_ext - which only a synthetic fixture needs today.
-    key = (value, "")
-    if key in model.instances:
-        return key
-    if "_" in value:
-        driver_part, _, ext_part = value.rpartition("_")
-        alt = (driver_part, ext_part)
-        if alt in model.instances:
-            return alt
-    return key  # unresolved - the caller is responsible for erroring (validate.py already has by the time graph.py/codegen.py ever see this)
-
-
 def load_device(path: Path) -> DeviceModel:
     device = path.stem
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             doc = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise BuildError(device, f"{path} is not valid TOML: {e}", rule="toml.syntax", fix="correct the TOML at the line and column named") from e
@@ -185,4 +170,19 @@ def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
             field="max_connections",
         )
     return dict(table)
+
+
+def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
+    # A wiring value is always a plain "driver" or "driver_ext" string, never a pair. Try the
+    # unextended reading first, as every real device's wiring values use it, then fall back to
+    # splitting the last "_"-group off as name_ext - which only a synthetic fixture needs today.
+    key = (value, "")
+    if key in model.instances:
+        return key
+    if "_" in value:
+        driver_part, _, ext_part = value.rpartition("_")
+        alt = (driver_part, ext_part)
+        if alt in model.instances:
+            return alt
+    return key  # unresolved - the caller is responsible for erroring (validate.py already has by the time graph.py/codegen.py ever see this)
 

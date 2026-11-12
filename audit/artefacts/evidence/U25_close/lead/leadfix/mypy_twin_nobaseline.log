@@ -1,0 +1,35 @@
+digital_twin/machine.py: note: In function "_build_i2c_chip":
+digital_twin/machine.py:134:1: error: Explicit "Any" is not allowed 
+[explicit-any]
+    def _build_i2c_chip(attachment: "_I2CAttachment") -> "Any":
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py: note: In function "_wire_i2c_devices":
+digital_twin/machine.py:422:1: error: Explicit "Any" is not allowed 
+[explicit-any]
+    def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py: note: In member "__init__" of class "I2C":
+digital_twin/machine.py:467:13: error: Explicit "Any" is not allowed 
+[explicit-any]
+                self._unplugged: dict[int, Any] = {}  # chips pulled off t...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "_ladder_run":
+tests/test_digital_twin_bus_hazard_concurrency.py:206:13: error: Explicit "Any"
+is not allowed  [explicit-any]
+                async def counted(real: "Callable[[], Coroutine[Any, Any, ...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "_rung_across_offsets":
+tests/test_digital_twin_bus_hazard_concurrency.py:289:1: error: Explicit "Any"
+is not allowed  [explicit-any]
+    def _rung_across_offsets(device: str, bus_name: str, siblings: "tuple[...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "_sibling_read":
+tests/test_digital_twin_bus_hazard_concurrency.py:331:1: error: Explicit "Any"
+is not allowed  [explicit-any]
+    def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C"...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_bus_hazard_concurrency.py:342:5: error: Explicit "Any"
+is not allowed  [explicit-any]
+        reads: dict[str, Callable[[], Coroutine[Any, Any, object]]] = {
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 7 errors in 2 files (checked 50 source files)

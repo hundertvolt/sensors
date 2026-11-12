@@ -1,0 +1,37 @@
+.FF..........                                                            [100%]
+=================================== FAILURES ===================================
+_____________________ test_every_global_ignore_still_fires _____________________
+
+lifted = [('buildgen/__init__.py', 'D205', '1 blank line required between summary line and description'), ('buildgen/__init__.p...hould be on a separate line'), ('buildgen/api_reference.py', 'CPY001', 'Missing copyright notice at top of file'), ...]
+
+    def test_every_global_ignore_still_fires(lifted: "list[Finding]") -> None:
+        dead = [code for table, _, code in _entries() if table == "ignore" and (table, "", code) not in _POLICY and not _live(table, "", code, lifted)]
+>       assert not dead, "\n".join(f"pyproject.toml [tool.ruff.lint] ignore: {code} has no finding anywhere - remove it, or list it in _POLICY with its reason" for code in dead)
+E       AssertionError: pyproject.toml [tool.ruff.lint] ignore: D100 has no finding anywhere - remove it, or list it in _POLICY with its reason
+E         pyproject.toml [tool.ruff.lint] ignore: D104 has no finding anywhere - remove it, or list it in _POLICY with its reason
+E         pyproject.toml [tool.ruff.lint] ignore: N814 has no finding anywhere - remove it, or list it in _POLICY with its reason
+E       assert not ['D100', 'D104', 'N814']
+
+tests_scripts/test_ruff_exemptions_live.py:110: AssertionError
+_______ test_every_per_file_code_still_fires_in_a_file_its_glob_matches ________
+
+lifted = [('buildgen/__init__.py', 'D205', '1 blank line required between summary line and description'), ('buildgen/__init__.p...hould be on a separate line'), ('buildgen/api_reference.py', 'CPY001', 'Missing copyright notice at top of file'), ...]
+
+    def test_every_per_file_code_still_fires_in_a_file_its_glob_matches(lifted: "list[Finding]") -> None:
+        dead = [(glob, code) for table, glob, code in _entries() if table == "per-file-ignores" and (table, glob, code) not in _POLICY and not _live(table, glob, code, lifted)]
+>       assert not dead, "\n".join(f"pyproject.toml per-file-ignores {glob!r}: {code} has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason" for glob, code in dead)
+E       AssertionError: pyproject.toml per-file-ignores 'tests/**': ARG004 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'tests_scripts/**': ARG004 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'tests_hardware/**': PLC0415 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'tests_hardware/**': ARG004 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'tests_hardware/**': ARG005 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'src/asy_wifi_service.py': S106 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'src/asy_wifi_service.py': FBT001 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E         pyproject.toml per-file-ignores 'tests_hardware/conftest.py': S105 has no finding in a file the glob matches - remove it, or list it in _POLICY with its reason
+E       assert not [('tests/**', 'ARG004'), ('tests_scripts/**', 'ARG004'), ('tests_hardware/**', 'PLC0415'), ('tests_hardware/**', 'ARG004'), ('tests_hardware/**', 'ARG005'), ('src/asy_wifi_service.py', 'S106'), ...]
+
+tests_scripts/test_ruff_exemptions_live.py:115: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_ruff_exemptions_live.py::test_every_global_ignore_still_fires
+FAILED tests_scripts/test_ruff_exemptions_live.py::test_every_per_file_code_still_fires_in_a_file_its_glob_matches
+2 failed, 11 passed in 5.90s

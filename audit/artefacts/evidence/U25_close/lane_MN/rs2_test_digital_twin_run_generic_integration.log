@@ -1,0 +1,101 @@
+PASS test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name
+PASS test_a_hang_naming_a_driver_this_device_does_not_carry_is_refused_the_same_way
+PASS test_a_wlan_fault_still_bypasses_the_wiring_check
+PASS test_collect_chips_includes_fram_from_the_spi_bus
+FAIL test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 254, in test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_collect_chips_keys_a_single_instance_driver_by_its_plain_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 231, in test_collect_chips_keys_a_single_instance_driver_by_its_plain_name
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+PASS test_collect_chips_skips_a_bus_var_the_module_never_constructed
+FAIL test_main_boots_arms_a_fault_and_shuts_down_cleanly:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 315, in test_main_boots_arms_a_fault_and_shuts_down_cleanly
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_device_label_overrides_the_module_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 83, in test_parse_args_device_label_overrides_the_module_name
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_empty_fram_state_path_means_in_memory_only:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 94, in test_parse_args_empty_fram_state_path_means_in_memory_only
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 104, in test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_gc_threshold_defaults_to_matching_real_firmware:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 133, in test_parse_args_gc_threshold_defaults_to_matching_real_firmware
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_gc_threshold_is_overridable:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 142, in test_parse_args_gc_threshold_is_overridable
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_host_and_port:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 88, in test_parse_args_host_and_port
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_mem_sample_interval_ms_defaults_to_disabled:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 150, in test_parse_args_mem_sample_interval_ms_defaults_to_disabled
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_mem_sample_interval_ms_is_settable:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 155, in test_parse_args_mem_sample_interval_ms_is_settable
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_parse_args_minimal_valid_config:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 65, in test_parse_args_minimal_valid_config
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+PASS test_parse_args_missing_value_for_a_flag_raises
+PASS test_parse_args_rejects_an_unrecognized_flag
+PASS test_parse_args_requires_module
+PASS test_parse_args_requires_wiring_plan
+FAIL test_parse_args_stop_file_is_settable_and_empty_means_none:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 160, in test_parse_args_stop_file_is_settable_and_empty_means_none
+  File "digital_twin/run_generic_integration.py", line 450, in parse_args
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+FAIL test_run_config_compares_and_prints_its_grouped_fields:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 75, in test_run_config_compares_and_prints_its_grouped_fields
+  File "digital_twin/run_generic_integration.py", line 85, in __init__
+TypeError: StatePaths() takes 3 positional arguments but 2 were given
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+PASS test_serving_ends_at_once_when_the_stop_file_already_exists
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+PASS test_serving_ends_once_the_stop_file_appears
+PASS test_serving_without_the_stop_file_lasts_the_whole_duration
+12/26 passed, 14 failed, 0 skipped
+RC=1 WALL=1.178170698 FILE=tests/test_digital_twin_run_generic_integration.py STAGE=-1

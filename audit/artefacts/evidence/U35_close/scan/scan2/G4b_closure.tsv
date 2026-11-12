@@ -1,0 +1,255 @@
+root_id	dependent	file:line	order	kind
+S2-G1-4	_init_failed	src/asy_base_classes.py:620	1	chip-setup controller rebuild
+S2-G1-4	_init_failed	src/asy_bmp3xx_driver.py:228	1	chip-setup controller rebuild
+S2-G1-4	_init_failed	src/asy_bmp3xx_driver.py:234	1	chip-setup controller rebuild
+S2-G1-4	_init_failed	src/asy_isl29125_driver.py:471	1	chip-setup controller rebuild
+S2-G1-4	_init_failed	src/asy_isl29125_driver.py:515	1	chip-setup controller rebuild
+S2-G1-4	_init_failed	src/asy_scd30_driver.py:436	1	chip-setup controller rebuild
+S2-G1-4	_init_failed	src/asy_sgp40_driver.py:338	1	chip-setup controller rebuild
+S2-G1-4	\b_init_failed\b	tests/tooling	1	count tests=3f/9l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G1-4	lines 626-627	src/asy_base_classes.py:626-627	2	setup-episode bus mark
+S2-G1-10	def setup(self) -> bool	src/asy_base_classes.py:779	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_base_classes.py:846	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_bmp3xx_driver.py:709	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_config_manager.py:514	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_fram_driver.py:451	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_fram_manager.py:825	1	bool setup/deinit/set_level
+S2-G1-10	def deinit(self) -> bool	src/asy_i2c_driver.py:340	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_i2c_driver.py:535	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_isl29125_driver.py:1529	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_neopixel_driver.py:181	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_notification_service.py:379	1	bool setup/deinit/set_level
+S2-G1-10	def set_level(self, level	src/asy_print_log.py:103	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_print_log.py:271	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_print_log.py:398	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_scd30_driver.py:911	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_sgp40_driver.py:814	1	bool setup/deinit/set_level
+S2-G1-10	def deinit(self) -> bool	src/asy_spi_driver.py:62	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_spi_driver.py:198	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_system_service.py:748	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_uart_comm.py:1081	1	bool setup/deinit/set_level
+S2-G1-10	def deinit(self) -> bool	src/asy_uart_driver.py:418	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_uart_link_driver.py:290	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_webserver_service.py:1071	1	bool setup/deinit/set_level
+S2-G1-10	def setup(self) -> bool	src/asy_wifi_service.py:994	1	bool setup/deinit/set_level
+S2-G1-10	def (setup|deinit)\(self\) -> bool|def set_level\(self, l...	tests/tooling	1	count tests=3f/3l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G1-10	ok = await super().setup()	src/asy_notification_service.py:380	1	bool passed up
+S2-G1-10	ok = await super().setup()	src/asy_wifi_service.py:995	1	bool passed up
+S2-G1-10	ok = await super\(\)\.setup\(\)	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G1-11	lines 776-779	src/asy_system_service.py:776-779	1	keep-installed handler guard
+A-S25	report_unretrieved	src/asy_print_log.py:124	1	unretrieved-exception handler
+A-S25	get_exception_handler	src/asy_system_service.py:778	1	unretrieved-exception handler
+A-S25	set_exception_handler	src/asy_system_service.py:779	1	unretrieved-exception handler
+A-S25	\breport_unretrieved\b|set_exception_handler|get_exceptio...	tests/tooling	1	count tests=5f/36l tests_scripts=3f/31l tests_js=0f/0l digital_twin=1f/3l scripts=0f/0l toolchain=0f/0l tests_hardware=10f/16l
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:157	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:173	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:194	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:195	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:417	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:422	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:426	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:430	1	pre-setup ring slots
+S2-G1-15	_pre_setup_slots	src/asy_print_log.py:431	1	pre-setup ring slots
+S2-G1-15	\b_pre_setup_slots\b	tests/tooling	1	count tests=1f/6l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G1-16	lines 408-409	src/asy_print_log.py:408-409	1	boot-race guard
+S2-G1-16	lines 459-459	src/asy_fram_driver.py:459-459	1	boot-race guard
+S2-G1-16	lines 593-593	src/asy_config_manager.py:593-593	1	boot-race guard
+S2-G1-19	lines 744-745	src/asy_base_classes.py:744-745	1	typing-only guard (period)
+S2-G1-19	lines 236-242	src/asy_notification_service.py:236-242	1	typing-only guard (NT-4)
+S2-G1-22	lines 572-577	src/asy_base_classes.py:572-577	1	second guard on the rung
+S2-G1-22	lines 93-93	src/asy_base_classes.py:93-93	2	base E14 constant
+S2-G1-23	_int_rearmed	src/asy_isl29125_driver.py:273	1	dead-INT re-arm flag
+S2-G1-23	_int_rearmed	src/asy_isl29125_driver.py:465	1	dead-INT re-arm flag
+S2-G1-23	_int_rearmed	src/asy_isl29125_driver.py:591	1	dead-INT re-arm flag
+S2-G1-23	_int_rearmed	src/asy_isl29125_driver.py:601	1	dead-INT re-arm flag
+S2-G1-23	_int_rearmed	src/asy_isl29125_driver.py:602	1	dead-INT re-arm flag
+S2-G1-23	\b_int_rearmed\b	tests/tooling	1	count tests=2f/4l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G1-8	_frc_cfg_ok	src/asy_scd30_driver.py:231	1	SCD30 FRC config episode guard
+S2-G1-8	_frc_cfg_ok	src/asy_scd30_driver.py:328	1	SCD30 FRC config episode guard
+S2-G1-8	_frc_cfg_ok	src/asy_scd30_driver.py:332	1	SCD30 FRC config episode guard
+S2-G1-8	_frc_cfg_ok	src/asy_scd30_driver.py:417	1	SCD30 FRC config episode guard
+S2-G1-8	\b_frc_cfg_ok\b	tests/tooling	1	count tests=1f/2l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G2-5	DNS_NOT_SENT	src/asy_dns_client.py:49	1	resolver cause
+S2-G2-5	DNS_NXDOMAIN	src/asy_dns_client.py:50	1	resolver cause
+S2-G2-5	_reply_rcode	src/asy_dns_client.py:85	1	resolver cause
+S2-G2-5	_reply_rcode	src/asy_dns_client.py:107	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_dns_client.py:150	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_dns_client.py:155	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_dns_client.py:157	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_dns_client.py:158	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_dns_client.py:169	1	resolver cause
+S2-G2-5	_reply_rcode	src/asy_dns_client.py:185	1	resolver cause
+S2-G2-5	DNS_NXDOMAIN	src/asy_dns_client.py:186	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_ntp_client.py:22	1	resolver cause
+S2-G2-5	DNS_NOT_SENT	src/asy_ntp_client.py:419	1	resolver cause
+S2-G2-5	DNS_NXDOMAIN	src/asy_ntp_client.py:421	1	resolver cause
+S2-G2-5	\bDNS_NOT_SENT\b|\bDNS_NXDOMAIN\b|\b_reply_rcode\b	tests/tooling	1	count tests=2f/9l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G2-5	_ERR_NTP_DNS_NOT_SENT	src/asy_ntp_client.py:51	2	NTP cause codes
+S2-G2-5	_ERR_NTP_DNS_NXDOMAIN	src/asy_ntp_client.py:52	2	NTP cause codes
+S2-G2-5	_ERR_NTP_DNS_NOT_SENT	src/asy_ntp_client.py:420	2	NTP cause codes
+S2-G2-5	_ERR_NTP_DNS_NXDOMAIN	src/asy_ntp_client.py:422	2	NTP cause codes
+S2-G2-5	"NTP_DNS_NOT_SENT"	buildgen/error_catalog.json:90	2	NTP cause codes
+S2-G2-5	"NTP_DNS_NXDOMAIN"	buildgen/error_catalog.json:91	2	NTP cause codes
+S2-G2-5	\b_ERR_NTP_DNS_NOT_SENT\b|\b_ERR_NTP_DNS_NXDOMAIN\b|"NTP_...	tests/tooling	2	count tests=2f/3l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=2f/5l
+S2-G2-5	_WRN_DNS_REPLY_TRUNCATED	src/asy_dns_client.py:26	2	truncation warning
+S2-G2-5	_WRN_DNS_REPLY_TRUNCATED	src/asy_dns_client.py:179	2	truncation warning
+S2-G2-5	"DNS_REPLY_TRUNCATED"	buildgen/error_catalog.json:133	2	truncation warning
+S2-G2-5	\b_WRN_DNS_REPLY_TRUNCATED\b|"DNS_REPLY_TRUNCATED"	tests/tooling	2	count tests=1f/1l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G2-6	lines 218-223	src/asy_ntp_client.py:218-223	1	NTP stored-value default (NTP-3)
+S2-G2-6	lines 60-61	src/asy_dns_client.py:60-61	1	resolver name refusal (DNS-1)
+S2-G2-6	lines 53-53	src/asy_ntp_client.py:53-53	2	NTP's W10 constant
+S2-G2-6	DNS_NAME_MAX	src/asy_captive_dns.py:14	2	255-octet constant (with CD-2)
+S2-G2-6	DNS_NAME_MAX	src/asy_captive_dns.py:174	2	255-octet constant (with CD-2)
+S2-G2-6	DNS_NAME_MAX	src/asy_dns_client.py:42	2	255-octet constant (with CD-2)
+S2-G2-6	DNS_NAME_MAX	src/asy_dns_client.py:60	2	255-octet constant (with CD-2)
+S2-G2-6	\bDNS_NAME_MAX\b	tests/tooling	2	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G2-7	lines 914-926	src/asy_webserver_service.py:914-926	1	refusal path order
+S2-G2-8	traced: list	src/asy_webserver_service.py:318	1	head shape refusals, print rebind
+S2-G2-8	_traced	src/asy_webserver_service.py:326	1	head shape refusals, print rebind
+S2-G2-8	_length_seen	src/asy_webserver_service.py:332	1	head shape refusals, print rebind
+S2-G2-8	_traced	src/asy_webserver_service.py:349	1	head shape refusals, print rebind
+S2-G2-8	_length_seen	src/asy_webserver_service.py:390	1	head shape refusals, print rebind
+S2-G2-8	_length_seen	src/asy_webserver_service.py:392	1	head shape refusals, print rebind
+S2-G2-8	_print_exception	src/asy_webserver_service.py:564	1	head shape refusals, print rebind
+S2-G2-8	_read_traced	src/asy_webserver_service.py:593	1	head shape refusals, print rebind
+S2-G2-8	_print_exception	src/asy_webserver_service.py:804	1	head shape refusals, print rebind
+S2-G2-8	_read_traced	src/asy_webserver_service.py:808	1	head shape refusals, print rebind
+S2-G2-8	_read_traced	src/asy_webserver_service.py:809	1	head shape refusals, print rebind
+S2-G2-8	_read_traced	src/asy_webserver_service.py:930	1	head shape refusals, print rebind
+S2-G2-8	\b_length_seen\b|\b_read_traced\b|\b_traced\b|traced: lis...	tests/tooling	1	count tests=1f/2l tests_scripts=1f/4l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G2-9	timed_out	src/asy_webserver_service.py:315	1	W49/W50 split
+S2-G2-9	_timed_out	src/asy_webserver_service.py:324	1	W49/W50 split
+S2-G2-9	_timed_out	src/asy_webserver_service.py:339	1	W49/W50 split
+S2-G2-9	timed_out	src/asy_webserver_service.py:928	1	W49/W50 split
+S2-G2-9	timed_out	src/asy_webserver_service.py:930	1	W49/W50 split
+S2-G2-9	timed_out	src/asy_webserver_service.py:931	1	W49/W50 split
+S2-G2-9	timed_out	src/asy_webserver_service.py:942	1	W49/W50 split
+S2-G2-9	\btimed_out\b|\b_timed_out\b	tests/tooling	1	count tests=2f/5l tests_scripts=2f/3l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G2-9	_WRN_HTTP_REQUEST_CAP	src/asy_webserver_service.py:110	2	request-cap warning
+S2-G2-9	_WRN_HTTP_REQUEST_CAP	src/asy_webserver_service.py:942	2	request-cap warning
+S2-G2-9	"HTTP_REQUEST_CAP"	buildgen/error_catalog.json:164	2	request-cap warning
+S2-G2-9	\b_WRN_HTTP_REQUEST_CAP\b|"HTTP_REQUEST_CAP"	tests/tooling	2	count tests=2f/3l tests_scripts=1f/1l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=4f/8l
+S2-G2-10	lines 341-343	src/asy_ntp_client.py:341-343	1	allocation split (NTP)
+S2-G2-10	lines 185-186	src/asy_captive_dns.py:185-186	1	allocation split (captive DNS)
+S2-G2-10	lines 200-201	src/asy_webserver_service.py:200-201	1	allocation split (webserver)
+S2-G2-11	lines 212-213	src/asy_uart_driver.py:212-213	1	closed-channel guard
+S2-G2-11	lines 262-264	src/asy_uart_driver.py:262-264	1	closed-channel guard
+S2-G2-11	lines 298-299	src/asy_uart_driver.py:298-299	1	closed-channel guard
+S2-G2-11	lines 349-350	src/asy_uart_driver.py:349-350	1	closed-channel guard
+S2-G2-11	lines 739-739	src/asy_uart_driver.py:739-739	1	deinit-mid-read guard
+S2-G2-11	lines 467-468	src/asy_uart_driver.py:467-468	1	re-init teardown line
+S2-G3-1	_I2C_TIMEOUT_MAX_US	buildgen/validate.py:93	1	boot-clear budget and ceiling
+S2-G3-1	_BOOT_CLEAR_BUDGET_MS	buildgen/validate.py:97	1	boot-clear budget and ceiling
+S2-G3-1	_check_boot_clear_budget	buildgen/validate.py:202	1	boot-clear budget and ceiling
+S2-G3-1	_BOOT_CLEAR_BUDGET_MS	buildgen/validate.py:211	1	boot-clear budget and ceiling
+S2-G3-1	_BOOT_CLEAR_BUDGET_MS	buildgen/validate.py:214	1	boot-clear budget and ceiling
+S2-G3-1	boot-clear-budget	buildgen/validate.py:215	1	boot-clear budget and ceiling
+S2-G3-1	_I2C_TIMEOUT_MAX_US	buildgen/validate.py:602	1	boot-clear budget and ceiling
+S2-G3-1	_I2C_TIMEOUT_MAX_US	buildgen/validate.py:605	1	boot-clear budget and ceiling
+S2-G3-1	_I2C_TIMEOUT_MAX_US	buildgen/validate.py:608	1	boot-clear budget and ceiling
+S2-G3-1	i2c-timeout-max	buildgen/validate.py:609	1	boot-clear budget and ceiling
+S2-G3-1	_I2C_TIMEOUT_MAX_US	buildgen/validate.py:610	1	boot-clear budget and ceiling
+S2-G3-1	_check_boot_clear_budget	buildgen/validate.py:1470	1	boot-clear budget and ceiling
+S2-G3-1	_check_boot_clear_budget|_BOOT_CLEAR_BUDGET_MS|boot-clear...	tests/tooling	1	count tests=0f/0l tests_scripts=2f/5l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-3	uart-rxbuf-range	buildgen/validate.py:1002	1	UART checks no TOML can trip
+S2-G3-3	uart-rx-ring	buildgen/validate.py:1093	1	UART checks no TOML can trip
+S2-G3-3	uart-rx-ring	buildgen/validate.py:1098	1	UART checks no TOML can trip
+S2-G3-3	uart-rx-ring	buildgen/validate.py:1110	1	UART checks no TOML can trip
+S2-G3-3	uart-poll-idle-range	buildgen/validate.py:1190	1	UART checks no TOML can trip
+S2-G3-3	uart-timeout-max	buildgen/validate.py:1200	1	UART checks no TOML can trip
+S2-G3-3	uart-timeout-max|uart-poll-idle-range|uart-rxbuf-range|ua...	tests/tooling	1	count tests=0f/0l tests_scripts=2f/11l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-3	lines 1173-1174	buildgen/validate.py:1173-1174	2	src constants read for them
+S2-G3-8	get_config_unpersisted	src/asy_system_service.py:650	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	build/generated_src/sensortask_arzi.py:109	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	build/generated_src/sensortask_dev.py:120	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	build/generated_src/sensortask_grkizi.py:109	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	build/generated_src/sensortask_klkizi.py:109	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	build/generated_src/sensortask_schlafzi.py:109	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	build/generated_src/sensortask_wozi.py:111	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	buildgen/codegen.py:297	1	ConfigUnpersisted key
+S2-G3-8	ConfigUnpersisted	buildgen/definitions.py:649	1	ConfigUnpersisted key
+S2-G3-8	\bget_config_unpersisted\b|ConfigUnpersisted	tests/tooling	1	count tests=2f/9l tests_scripts=2f/5l tests_js=0f/0l digital_twin=0f/0l scripts=1f/5l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-8	_STATE_EVALUATED	src/asy_notification_service.py:73	2	notification state machinery
+S2-G3-8	_STATE_OFF	src/asy_notification_service.py:74	2	notification state machinery
+S2-G3-8	_STATE_NO_CLOCK	src/asy_notification_service.py:75	2	notification state machinery
+S2-G3-8	_STATE_PARTIAL	src/asy_notification_service.py:76	2	notification state machinery
+S2-G3-8	_STATE_CFG_UNREADABLE	src/asy_notification_service.py:77	2	notification state machinery
+S2-G3-8	state=_STATE	src/asy_notification_service.py:273	2	notification state machinery
+S2-G3-8	_STATE_OFF	src/asy_notification_service.py:280	2	notification state machinery
+S2-G3-8	_STATE_NO_CLOCK	src/asy_notification_service.py:284	2	notification state machinery
+S2-G3-8	_STATE_EVALUATED	src/asy_notification_service.py:290	2	notification state machinery
+S2-G3-8	_STATE_PARTIAL	src/asy_notification_service.py:294	2	notification state machinery
+S2-G3-8	, state: int	src/asy_notification_service.py:328	2	notification state machinery
+S2-G3-8	NotifyState	buildgen/definitions.py:702	2	notification state machinery
+S2-G3-8	NotifyState	buildgen/error_catalog.json:229	2	notification state machinery
+S2-G3-8	\b_STATE_[A-Z_]+\b|NotifyState|state=_STATE|, state: int	tests/tooling	2	count tests=6f/25l tests_scripts=2f/4l tests_js=0f/0l digital_twin=1f/2l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F05	_WATCHDOG_REASON	src/asy_system_service.py:101	2	reset-flag registers
+G4F05	_CHIP_RESET	src/asy_system_service.py:102	2	reset-flag registers
+G4F05	_WATCHDOG_REASON	src/asy_system_service.py:152	2	reset-flag registers
+G4F05	\b_WATCHDOG_REASON\b|\b_CHIP_RESET\b	tests/tooling	2	count tests=1f/4l tests_scripts=1f/3l tests_js=0f/0l digital_twin=1f/4l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+G4F05	lines 152-152	src/asy_system_service.py:152-152	2	mem32 read and import name
+G4F05	lines 20-20	src/asy_system_service.py:20-20	2	mem32 read and import name
+S2-G3-9	_errcount_codes	buildgen/definitions.py:298	1	errcount table per group
+S2-G3-9	_errcount_codes	buildgen/definitions.py:340	1	errcount table per group
+S2-G3-9	\b_errcount_codes\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-10	_DEVICE_FRAM_CONSUMERS	buildgen/generate.py:30	1	boot oracle in the image build
+S2-G3-10	expected_facts	buildgen/generate.py:36	1	boot oracle in the image build
+S2-G3-10	expected_facts	buildgen/generate.py:42	1	boot oracle in the image build
+S2-G3-10	_sets_config_log_off	buildgen/generate.py:58	1	boot oracle in the image build
+S2-G3-10	_DEVICE_FRAM_CONSUMERS	buildgen/generate.py:78	1	boot oracle in the image build
+S2-G3-10	expected_facts	buildgen/generate.py:81	1	boot oracle in the image build
+S2-G3-10	_DEVICE_FRAM_CONSUMERS	buildgen/generate.py:99	1	boot oracle in the image build
+S2-G3-10	_sets_config_log_off	buildgen/generate.py:109	1	boot oracle in the image build
+S2-G3-10	expected_facts	buildgen/generate.py:137	1	boot oracle in the image build
+S2-G3-10	expected_facts	buildgen/generate.py:165	1	boot oracle in the image build
+S2-G3-10	\bexpected_facts\b|\b_sets_config_log_off\b|\b_DEVICE_FRA...	tests/tooling	1	count tests=0f/0l tests_scripts=5f/9l tests_js=0f/0l digital_twin=0f/0l scripts=1f/1l toolchain=0f/0l tests_hardware=2f/5l
+S2-G3-11	trigger_spread	buildgen/codegen.py:458	1	exports read by tests only
+S2-G3-11	trigger_spread	buildgen/codegen.py:903	1	exports read by tests only
+S2-G3-11	hardware_family	buildgen/validate.py:79	1	exports read by tests only
+S2-G3-11	hardware_family	buildgen/validate.py:485	1	exports read by tests only
+S2-G3-11	hardware_family	buildgen/validate.py:487	1	exports read by tests only
+S2-G3-11	device_max_connections_by_name	buildgen/validate.py:1505	1	exports read by tests only
+S2-G3-11	hardware_family	devices/grkizi.toml:17	1	exports read by tests only
+S2-G3-11	hardware_family	devices/klkizi.toml:17	1	exports read by tests only
+S2-G3-11	hardware_family	devices/schlafzi.toml:17	1	exports read by tests only
+S2-G3-11	\bdevice_max_connections_by_name\b|\bhardware_family\b|\b...	tests/tooling	1	count tests=0f/0l tests_scripts=3f/18l tests_js=0f/0l digital_twin=0f/0l scripts=1f/2l toolchain=0f/0l tests_hardware=2f/5l
+S2-G3-12	_MANDATORY_ERRCOUNT_FILES	buildgen/definitions.py:137	1	module-file tables
+S2-G3-12	_MANDATORY_ERRCOUNT_FILES	buildgen/definitions.py:320	1	module-file tables
+S2-G3-12	_MANDATORY_ERRCOUNT_FILES	buildgen/definitions.py:415	1	module-file tables
+S2-G3-12	_CONN_DNS_FILE	buildgen/generate.py:32	1	module-file tables
+S2-G3-12	_CONN_DNS_FILE	buildgen/generate.py:88	1	module-file tables
+S2-G3-12	_DEVICE_WIRING_CONSUMERS	buildgen/validate.py:102	1	module-file tables
+S2-G3-12	_MANDATORY_MODULE_FILES	buildgen/validate.py:113	1	module-file tables
+S2-G3-12	_DEVICE_WIRING_CONSUMERS	buildgen/validate.py:511	1	module-file tables
+S2-G3-12	_DEVICE_WIRING_CONSUMERS	buildgen/validate.py:513	1	module-file tables
+S2-G3-12	_DEVICE_WIRING_CONSUMERS	buildgen/validate.py:515	1	module-file tables
+S2-G3-12	_DEVICE_WIRING_CONSUMERS	buildgen/validate.py:533	1	module-file tables
+S2-G3-12	_MANDATORY_MODULE_FILES	buildgen/validate.py:722	1	module-file tables
+S2-G3-12	_MANDATORY_MODULE_FILES|_MANDATORY_ERRCOUNT_FILES|_DEVICE...	tests/tooling	1	count tests=0f/0l tests_scripts=3f/4l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-13	lines 95-400	js/definitions.js:95-400	1	browser definitions validator
+S2-G3-14	buildDateOf	js/app.js:10	1	page build-date stamp
+S2-G3-14	pageBuildDate	js/app.js:94	1	page build-date stamp
+S2-G3-14	buildDateOf	js/main.js:9	1	page build-date stamp
+S2-G3-14	pageBuildDate	js/main.js:41	1	page build-date stamp
+S2-G3-14	buildDateOf	js/shell.js:24	1	page build-date stamp
+S2-G3-14	build-date	js/shell.js:25	1	page build-date stamp
+S2-G3-14	pageBuildDate	js/shell.js:61	1	page build-date stamp
+S2-G3-14	pageStale	js/shell.js:120	1	page build-date stamp
+S2-G3-14	pageStale	js/shell.js:121	1	page build-date stamp
+S2-G3-14	buildDateOf|build-date|pageBuildDate|pageStale	tests/tooling	1	count tests=0f/0l tests_scripts=4f/10l tests_js=1f/14l digital_twin=0f/0l scripts=3f/11l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-15	queueSignal	js/poll-manager.js:37	1	section-switch hand-over
+S2-G3-15	queueSignal	js/poll-manager.js:39	1	section-switch hand-over
+S2-G3-15	leftSections	js/render.js:40	1	section-switch hand-over
+S2-G3-15	leftSections	js/render.js:596	1	section-switch hand-over
+S2-G3-15	leftSections	js/render.js:597	1	section-switch hand-over
+S2-G3-15	takenOver	js/render.js:602	1	section-switch hand-over
+S2-G3-15	takenOver	js/render.js:736	1	section-switch hand-over
+S2-G3-15	leftSections	js/render.js:737	1	section-switch hand-over
+S2-G3-15	leftSections	js/render.js:739	1	section-switch hand-over
+S2-G3-15	leftSections	js/render.js:740	1	section-switch hand-over
+S2-G3-15	takenOver	js/render.js:742	1	section-switch hand-over
+S2-G3-15	\btakenOver\b|\bleftSections\b|\bqueueSignal\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l
+S2-G3-16	lines 105-110	js/shell.js:105-110	1	watch's duplicate /status
+S2-G3-17	_urgency	buildgen/graph.py:19	1	construction urgency
+S2-G3-17	_urgency	buildgen/graph.py:97	1	construction urgency
+S2-G3-17	\b_urgency\b	tests/tooling	1	count tests=0f/0l tests_scripts=0f/0l tests_js=0f/0l digital_twin=0f/0l scripts=0f/0l toolchain=0f/0l tests_hardware=0f/0l

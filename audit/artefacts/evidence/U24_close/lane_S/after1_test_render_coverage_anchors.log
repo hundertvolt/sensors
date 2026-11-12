@@ -1,0 +1,39 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+________ test_a_render_given_no_xml_file_writes_html_and_markdown_only _________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24s')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8071/test_a_render_given_no_xml_fil0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f52621e2310>
+
+    def test_a_render_given_no_xml_file_writes_html_and_markdown_only(repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The generated modules' render, as scripts/test.sh --coverage calls it: one dump line set, no XML.
+        render = load_script_module(repo_root / "scripts" / "_render_coverage.py", "_render_coverage_under_test")
+        module = tmp_path / "build" / "generated_src" / "sensortask_fixture_device.py"
+        module.parent.mkdir(parents=True)
+        module.write_text("x = 1\nif x:\n    y = 2\nelse:\n    y = 3\n", encoding="utf-8")
+        (tmp_path / "raw").mkdir()
+        (tmp_path / "raw" / "test_x.json").write_text(json.dumps({"build/generated_src/sensortask_fixture_device.py": [1, 2, 3]}), encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        argv = ["--raw-dir", "raw", "--src-dir", "build/generated_src", "--html-dir", "htmlcov_generated", "--markdown-file", "coverage_summary_generated.md"]
+        monkeypatch.setattr(sys, "argv", ["_render_coverage.py", *argv])
+        assert render.main() == 0
+        assert sorted(path.name for path in tmp_path.iterdir()) == [".coverage", "build", "coverage_summary_generated.md", "htmlcov_generated", "raw"]
+>       assert "| build/generated_src/sensortask_fixture_device.py |        4 |        1 |     75% |" in (tmp_path / "coverage_summary_generated.md").read_text(encoding="utf-8")
+E       AssertionError: assert '| build/generated_src/sensortask_fixture_device.py |        4 |        1 |     75% |' in '| Name                                                |    Stmts |     Miss |   Cover |\n|---------------------------...   4 |        1 |     75% |\n| **TOTAL**                                           |    **4** |    **1** | **75%** |\n'
+E        +  where '| Name                                                |    Stmts |     Miss |   Cover |\n|---------------------------...   4 |        1 |     75% |\n| **TOTAL**                                           |    **4** |    **1** | **75%** |\n' = read_text(encoding='utf-8')
+E        +    where read_text = (PosixPath('/tmp/pytest-of-root/pytest-8071/test_a_render_given_no_xml_fil0') / 'coverage_summary_generated.md').read_text
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24s/tests_scripts/test_render_coverage_anchors.py:34: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Name                                               Stmts   Miss  Cover
+----------------------------------------------------------------------
+build/generated_src/sensortask_fixture_device.py       4      1    75%
+----------------------------------------------------------------------
+TOTAL                                                  4      1    75%
+
+HTML report:     htmlcov_generated/index.html
+Markdown summary: coverage_summary_generated.md
+=========================== short test summary info ============================
+FAILED tests_scripts/test_render_coverage_anchors.py::test_a_render_given_no_xml_file_writes_html_and_markdown_only
+1 failed, 1 passed in 0.13s

@@ -1,0 +1,28 @@
+........................................................................ [ 42%]
+........................................................................ [ 84%]
+......................F...                                               [100%]
+=================================== FAILURES ===================================
+_____________ test_the_runner_never_writes_the_github_step_summary _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28c')
+
+    def test_the_runner_never_writes_the_github_step_summary(repo_root: Path) -> None:
+        # Its verdict reaches GitHub as ::error annotations and the summary block on stdout, never the step summary: no
+        # file it sources or runs as a helper for its summary names it either, the list read from its own lines.
+        text = _test_sh_text(repo_root)
+        helpers = sorted(set(re.findall(r"^\s*(?:source|\.)\s+(scripts/[\w.]+)", text, re.MULTILINE) + re.findall(r"\buv run (?:--no-sync )?(scripts/[\w.]+)", text)))
+>       assert {"scripts/_summary_block.sh", "scripts/_summary_block.py", "scripts/_archive_evidence.py"} <= set(helpers), helpers
+E       AssertionError: ['scripts/_archive_evidence.py', 'scripts/_devices.sh', 'scripts/_digital_twin_scenarios.py', 'scripts/_generate_sensortask_modules.py', 'scripts/_port_lock.sh', 'scripts/_render_coverage.py', ...]
+E       assert {'scripts/_ar...ary_block.sh'} <= {'scripts/_ar...rage.py', ...}
+E         
+E         Extra items in the left set:
+E         'scripts/_summary_block.py'
+
+tests_scripts/test_test_sh.py:2041: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_the_runner_never_writes_the_github_step_summary
+1 failed, 169 passed in 36.31s
+
+real	0m36.547s
+user	0m9.387s
+sys	0m1.971s

@@ -1,0 +1,158 @@
+.........................FFFFFF................                          [100%]
+=================================== FAILURES ===================================
+___ test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level ____
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11255/test_every_boot_logs_at_error_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7feff2a1ee90>
+
+    def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Built at error level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
+        # caught allocation failure's line reaches the memory gate; the scenario's own arguments follow unchanged.
+        level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+        args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
+>       assert args == ["--debug-level", str(level), "--test-flash-stall-max"], args
+E       AssertionError: ['--test-flash-stall-max']
+E       assert ['--test-flash-stall-max'] == ['--debug-lev...sh-stall-max']
+E         
+E         At index 0 diff: '--test-flash-stall-max' != '--debug-level'
+E         Right contains 2 more items, first extra item: '1'
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:313: AssertionError
+_______ test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing _______
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11255/test_a_stored_level_is_kept_an0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7feff266d510>
+
+    def test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        config = tmp_path / "state_01" / "config"
+        config.mkdir(parents=True)
+        (config / "config_SYSTEM.cfg").write_text('{"DebugLevel": 4}', encoding="utf-8")  # an earlier boot's own
+        assert _spawned_boot(harness, tmp_path, monkeypatch)[1] == '{"DebugLevel": 4}'
+>       args, stored = _spawned_boot(harness, tmp_path / "unlogged", monkeypatch, logged=False)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_scenarios.py:322: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_scenarios.py:291: in _spawned_boot
+    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
+/usr/lib/python3.11/pathlib.py:1078: in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/pytest-of-root/pytest-11255/test_a_stored_level_is_kept_an0/unlogged/twin.log')
+mode = 'w', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-root/pytest-11255/test_a_stored_level_is_kept_an0/unlogged/twin.log'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+______ test_only_the_scenario_reading_the_device_defaults_boots_unlogged _______
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_scenarios.py'>
+
+    def test_only_the_scenario_reading_the_device_defaults_boots_unlogged(harness: ModuleType) -> None:
+        # GET /system's DebugLevel is the device's default only on a boot that planted nothing: that scenario's own boot.
+        unlogged = sorted(item.name for item in harness.SCENARIOS.values() if "logged=False" in inspect.getsource(item.body))
+>       assert unlogged == ["every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly"], unlogged
+E       AssertionError: []
+E       assert [] == ['every_get_e...ed_correctly']
+E         
+E         Right contains one more item: 'every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly'
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:329: AssertionError
+_ test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing[refused, nothing cleared] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_scenarios.py'>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7feff277fc50>
+word = 'Failed', counters = {'SGP40': 2, 'SYSTEM': 0}, expected = None
+
+    @pytest.mark.parametrize(
+        ("word", "counters", "expected"),
+        [("Failed", {"SGP40": 2, "SYSTEM": 0}, None), ("Valid", {"SGP40": 2, "SYSTEM": 0}, "answered 200 'Valid'"), ("Failed", {"SGP40": 0, "SYSTEM": 0}, "'SGP40': (2, 0)")],
+        ids=["refused, nothing cleared", "accepted", "a count lowered"],
+    )
+    def test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing(harness: ModuleType, monkeypatch: pytest.MonkeyPatch, word: str, counters: "dict[str, int]", expected: "str | None") -> None:
+        answer = harness.Answer(200, {}, json.dumps({"result": {"ResetErrors": word}}).encode())
+        monkeypatch.setattr(harness, "_request", lambda *_a, **_kw: answer)
+        monkeypatch.setattr(harness, "_error_table", lambda _port: {name: {"counter": value} for name, value in counters.items()})
+        before = {"SGP40": {"counter": 2}, "SYSTEM": {"counter": 0}}
+        if expected is None:
+>           harness._refused_reset_errors(20000, before, "while held")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: module '_digital_twin_scenarios' has no attribute '_refused_reset_errors'
+
+tests_scripts/test_digital_twin_scenarios.py:344: AttributeError
+_ test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing[accepted] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_scenarios.py'>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7feff2987e10>
+word = 'Valid', counters = {'SGP40': 2, 'SYSTEM': 0}
+expected = "answered 200 'Valid'"
+
+    @pytest.mark.parametrize(
+        ("word", "counters", "expected"),
+        [("Failed", {"SGP40": 2, "SYSTEM": 0}, None), ("Valid", {"SGP40": 2, "SYSTEM": 0}, "answered 200 'Valid'"), ("Failed", {"SGP40": 0, "SYSTEM": 0}, "'SGP40': (2, 0)")],
+        ids=["refused, nothing cleared", "accepted", "a count lowered"],
+    )
+    def test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing(harness: ModuleType, monkeypatch: pytest.MonkeyPatch, word: str, counters: "dict[str, int]", expected: "str | None") -> None:
+        answer = harness.Answer(200, {}, json.dumps({"result": {"ResetErrors": word}}).encode())
+        monkeypatch.setattr(harness, "_request", lambda *_a, **_kw: answer)
+        monkeypatch.setattr(harness, "_error_table", lambda _port: {name: {"counter": value} for name, value in counters.items()})
+        before = {"SGP40": {"counter": 2}, "SYSTEM": {"counter": 0}}
+        if expected is None:
+            harness._refused_reset_errors(20000, before, "while held")
+            return
+        with pytest.raises(AssertionError, match=expected):
+>           harness._refused_reset_errors(20000, before, "while held")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: module '_digital_twin_scenarios' has no attribute '_refused_reset_errors'
+
+tests_scripts/test_digital_twin_scenarios.py:347: AttributeError
+_ test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing[a count lowered] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_scenarios.py'>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7feff27927d0>
+word = 'Failed', counters = {'SGP40': 0, 'SYSTEM': 0}
+expected = "'SGP40': (2, 0)"
+
+    @pytest.mark.parametrize(
+        ("word", "counters", "expected"),
+        [("Failed", {"SGP40": 2, "SYSTEM": 0}, None), ("Valid", {"SGP40": 2, "SYSTEM": 0}, "answered 200 'Valid'"), ("Failed", {"SGP40": 0, "SYSTEM": 0}, "'SGP40': (2, 0)")],
+        ids=["refused, nothing cleared", "accepted", "a count lowered"],
+    )
+    def test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing(harness: ModuleType, monkeypatch: pytest.MonkeyPatch, word: str, counters: "dict[str, int]", expected: "str | None") -> None:
+        answer = harness.Answer(200, {}, json.dumps({"result": {"ResetErrors": word}}).encode())
+        monkeypatch.setattr(harness, "_request", lambda *_a, **_kw: answer)
+        monkeypatch.setattr(harness, "_error_table", lambda _port: {name: {"counter": value} for name, value in counters.items()})
+        before = {"SGP40": {"counter": 2}, "SYSTEM": {"counter": 0}}
+        if expected is None:
+            harness._refused_reset_errors(20000, before, "while held")
+            return
+        with pytest.raises(AssertionError, match=expected):
+>           harness._refused_reset_errors(20000, before, "while held")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: module '_digital_twin_scenarios' has no attribute '_refused_reset_errors'
+
+tests_scripts/test_digital_twin_scenarios.py:347: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_only_the_scenario_reading_the_device_defaults_boots_unlogged
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing[refused, nothing cleared]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing[accepted]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing[a count lowered]
+6 failed, 41 passed in 1.05s

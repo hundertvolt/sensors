@@ -1,0 +1,23 @@
+FAIL test_boot_feeds_the_watchdog_exactly_once_per_setup_call:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneC/guard_real/_sensortask_scenarios.py", line 2934, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneC/guard_real/_sensortask_scenarios.py", line 796, in _scenario_boot_feeds_the_watchdog
+  File "tests/_async_harness.py", line 250, in run
+  File "tests/_async_harness.py", line 97, in _drive
+  File "tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneC/guard_real/_sensortask_scenarios.py", line 197, in _boot
+  File "tests/_generated_module.py", line 108, in boot_generated
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneC/guard_real/_sensortask_scenarios.py", line 766, in run_setups
+  File "src/asy_system_service.py", line 687, in run_setups
+  File "src/asy_uart_link_driver.py", line 152, in setup
+  File "src/asy_uart_comm.py", line 1072, in setup
+  File "src/asy_uart_comm.py", line 500, in _drain
+  File "src/asy_uart_driver.py", line 584, in readinto
+  File "src/asy_uart_driver.py", line 724, in ready
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneC/guard_real/_sensortask_scenarios.py", line 773, in sleep_ms
+RuntimeError: trace
+0/1 passed, 1 failed, 0 skipped

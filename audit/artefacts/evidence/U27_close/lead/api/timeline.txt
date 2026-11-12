@@ -1,0 +1,16 @@
+05:38:17 start
+05:38:23 rebuild rc=0
+05:38:23 ruff rc=0
+05:38:25 shellcheck rc=0
+05:38:34 mypy main rc=0
+05:38:43 mypy main ci-paths rc=0
+05:38:45 mypy twin rc=0
+05:38:55 mypy host rc=0
+05:39:01 test_unix_port_sh rc=0
+05:39:01 test_devices_sh rc=0
+05:39:08 test_port_lock rc=0
+05:39:09 test_shell_conventions rc=1
+05:39:10 test_twin_never_needs_tests_on_its_path rc=1
+05:39:10 test_require_python rc=1
+05:39:22 test_citations rc=1
+05:39:22 done

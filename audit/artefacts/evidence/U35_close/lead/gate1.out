@@ -1,0 +1,35 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8: node_modules vs lock: 0 mismatched []
+start 10:50:18
+generate rc=0 10:50:21
+lint rc=0 10:50:40
+ruff ci rc=0 10:50:40
+typecheck noargs rc=0 10:51:15
+typecheck ci rc=0 10:51:48
+collect-only rc=0 198/229 tests collected (31 deselected) in 1.53s 10:51:53
+gc-1 rc=0 11:14:05
+gc32768 rc=0 11:14:35
+phase A done 11:14:35
+start twin 2 dev 11:14:35
+start twin 1 wozi 11:14:35
+start twin 6 grkizi 11:14:35
+start twin 3 arzi 11:14:35
+wozi rc=0 11:49:32
+start npm_leg 11:49:32
+grkizi rc=0 11:49:50
+start twin 4 klkizi 11:49:50
+arzi rc=0 11:50:15
+start twin 5 schlafzi 11:50:15
+dev rc=1 11:57:53
+npm rc=0 12:02:36
+npm coverage rc=0 12:06:52
+npm lint rc=0 12:06:56
+npm typecheck rc=0 12:07:00
+npm lint:html rc=0 12:07:01
+npm lint:css rc=0 12:07:03
+npm lint:html:built rc=0 12:07:08
+klkizi rc=1 12:24:44
+schlafzi rc=0 12:25:48
+phase B done 12:25:48
+coverage rc=1 12:44:16
+done 12:44:16
+gate exit 0

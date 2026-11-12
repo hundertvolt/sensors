@@ -1,0 +1,34 @@
+F.F.....                                                                 [100%]
+=================================== FAILURES ===================================
+_________ test_every_raw_fram_call_is_addressed_from_a_declared_region _________
+
+    def test_every_raw_fram_call_is_addressed_from_a_declared_region() -> None:
+        found = {path.name: lines for path in sorted(_SCRIPTS.glob("*.py")) if (lines := undeclared_raw_calls(path.read_text(encoding="utf-8")))}
+>       assert not found, f"raw FRAM calls whose address no _SCRATCH_REGIONS/_EVIDENCE_REGIONS declares (script: lines): {found}"
+E       AssertionError: raw FRAM calls whose address no _SCRATCH_REGIONS/_EVIDENCE_REGIONS declares (script: lines): {'fram_cs_hijack_fault_injection_and_recovery.py': [74, 77, 100, 112, 127, 140, 152], 'fram_raw_dump.py': [43], 'fram_reset_race_during_write_seed_and_race.py': [38, 43, 48, 56], 'fram_reset_race_during_write_verify_recovery.py': [38, 45, 53, 66, 69], 'fram_same_device_rw_concurrency.py': [37, 51, 62, 71]}
+E       assert not {'fram_cs_hijack_fault_injection_and_recovery.py': [74, 77, 100, 112, 127, 140, ...], 'fram_raw_dump.py': [43], 'fram_...rite_seed_and_race.py': [38, 43, 48, 56], 'fram_reset_race_during_write_verify_recovery.py': [38, 45, 53, 66, 69], ...}
+
+tests_scripts/test_device_script_fram_regions.py:130: AssertionError
+____________ test_the_session_saves_evidence_before_any_script_runs ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_the_session_saves_evidence_before_any_script_runs(repo_root: Path) -> None:
+        # An _EVIDENCE_REGIONS script reads production FRAM: the autouse session fixture has saved it first.
+        tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text(encoding="utf-8"))
+        fixture = next((fn for fn in tree.body if isinstance(fn, ast.FunctionDef) and fn.name == "fram_evidence_saved"), None)
+        assert fixture is not None, "tests_hardware/conftest.py no longer defines fram_evidence_saved"
+        decorator = ast.unparse(fixture.decorator_list[0]) if fixture.decorator_list else ""
+>       assert 'scope="session"' in decorator and "autouse=True" in decorator, decorator
+E       AssertionError: pytest.fixture(scope='session', autouse=True)
+E       assert ('scope="session"' in "pytest.fixture(scope='session', autouse=True)")
+
+tests_scripts/test_device_script_fram_regions.py:170: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_fram_regions.py::test_every_raw_fram_call_is_addressed_from_a_declared_region
+FAILED tests_scripts/test_device_script_fram_regions.py::test_the_session_saves_evidence_before_any_script_runs
+2 failed, 6 passed in 1.43s
+
+real	0m1.977s
+user	0m1.703s
+sys	0m0.098s

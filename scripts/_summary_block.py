@@ -3,12 +3,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Python emitter of the runner summary block (SPECIFICATION.md E.10), byte-identical to
-scripts/_summary_block.sh, plus the reader of a scripts/_pytest_run_record.py run record."""
+"""The one emitter of the runner summary block (SPECIFICATION.md E.10): the shell and Node runners hand it their items
+(--print), the pytest runners call it in process; plus the reader of a scripts/_pytest_run_record.py run record."""
 
-# Usage: _summary_block.py --from-run-record PATH (--counts-only | --list KIND)
-# --counts-only prints "P F S D" (passed failed skipped deselected) for scripts/test.sh's L0 line;
-# --list prints one "name<TAB>detail" line per item of that kind (or per note, for "notes"). A usage error exits 2.
+# Usage: _summary_block.py --print RUNNER EXIT < records | --from-run-record PATH (--counts-only | --list KIND)
+# --print reads NUL-ended fields (item KIND NAME DETAIL, note NAME TEXT, unit/levels/gc/reason VALUE, counts UNIT P..Z),
+# prints the block, exits with its code; --counts-only prints "P F S D", --list "name<TAB>detail" lines.
 
 import argparse
 import json
@@ -24,7 +24,12 @@ _NO_RECORD = "no verdict (run record missing or unreadable)"
 # pytest's own exit codes for a session that did not run to a verdict (pytest.ExitCode).
 _ABORTED_EXITS = {2: "interrupted", 3: "internal error", 4: "usage error"}
 _NO_TESTS_COLLECTED = 5
-_PASSING_EXITS = (0, 3, 4)  # E.10: pass, pass with the coverage render failed, NOT CLEAN
+# E.10's exit codes beyond pass (0) and fail (1).
+_USAGE_ERROR_EXIT = 2
+_COVERAGE_NOT_RENDERED_EXIT = 3
+_NOT_CLEAN_EXIT = 4
+_PASSING_EXITS = (0, _COVERAGE_NOT_RENDERED_EXIT, _NOT_CLEAN_EXIT)
+_PAIR_LEN = 2  # a user_properties (key, value) pair
 
 
 @dataclass(frozen=True)
@@ -55,8 +60,12 @@ class Summary:
     levels: str | None = None
     gc_stage: str | None = None
     extra_counts: list[tuple[str, Counts]] = field(default_factory=list)
-    not_clean_reason: str | None = None
+    not_clean_reason: str | None = None  # also code 3's reason, which alone has a default (scripts/test.sh's summary_result_reason)
     notes: list[tuple[str, str]] = field(default_factory=list)
+
+    def _items(self, kind: str) -> list[tuple[str, str]]:
+        items: list[tuple[str, str]] = getattr(self, kind)
+        return items
 
     def add(self, kind: str, name: str, detail: str = "") -> None:
         # Files one item; an empty kind is a missing verdict and files it failed (E.10).
@@ -65,14 +74,6 @@ class Summary:
         if kind not in KINDS:
             raise ValueError(f"unknown summary kind {kind!r} (one of: {' '.join(KINDS)})")
         self._items(kind).append((name, detail))
-
-    def note(self, name: str, text: str = "") -> None:
-        # Lists one note under Notes:; a note is never counted and never changes the result.
-        self.notes.append((name, text))
-
-    def _items(self, kind: str) -> list[tuple[str, str]]:
-        items: list[tuple[str, str]] = getattr(self, kind)
-        return items
 
     def counts(self) -> Counts:
         return Counts(*(len(self._items(kind)) for kind in KINDS))
@@ -85,19 +86,15 @@ class Summary:
             return 1
         return given
 
-    def result(self, exit_code: int) -> str:
-        counts = self.counts()
-        if exit_code == 2:  # noqa: PLR2004 - E.10's usage-error code
-            return "USAGE ERROR"
-        if counts.failed or counts.vacuous:
-            return "FAIL"
-        if exit_code == 0:
-            return "PASS"
-        if exit_code == 3:  # noqa: PLR2004 - E.10's coverage-render-only code
-            return "PASS (coverage report not rendered)"
-        if exit_code == 4:  # noqa: PLR2004 - E.10's NOT CLEAN code
-            return f"NOT CLEAN ({self.not_clean_reason})" if self.not_clean_reason else "NOT CLEAN"
-        return "FAIL"
+    def note(self, name: str, text: str = "") -> None:
+        # Lists one note under Notes:; a note is never counted and never changes the result.
+        self.notes.append((name, text))
+
+    def print(self, exit_code: int) -> int:
+        # Prints the block and returns the code it printed; the caller exits with that code.
+        sys.stdout.write(self.render(exit_code))
+        sys.stdout.flush()
+        return self.exit_code(exit_code)
 
     def render(self, exit_code: int) -> str:
         exit_code = self.exit_code(exit_code)
@@ -118,47 +115,31 @@ class Summary:
         lines.extend((f"Result: {self.result(exit_code)}", f"Exit code: {exit_code}"))
         return "\n".join(lines) + "\n"
 
-    def print(self, exit_code: int) -> int:
-        # Prints the block and returns the code it printed; the caller exits with that code.
-        sys.stdout.write(self.render(exit_code))
-        sys.stdout.flush()
-        return self.exit_code(exit_code)
+    def result(self, exit_code: int) -> str:
+        counts = self.counts()
+        if exit_code == _USAGE_ERROR_EXIT:
+            return "USAGE ERROR"
+        if counts.failed or counts.vacuous:
+            return "FAIL"
+        if exit_code == 0:
+            return "PASS"
+        if exit_code == _COVERAGE_NOT_RENDERED_EXIT:
+            return f"PASS ({self.not_clean_reason or 'coverage report not rendered'})"
+        if exit_code == _NOT_CLEAN_EXIT:
+            return f"NOT CLEAN ({self.not_clean_reason})" if self.not_clean_reason else "NOT CLEAN"
+        return "FAIL"
 
 
-def _item_line(kind: str, name: str, detail: str) -> str:
-    if not detail:
-        return f"  - {name}"
-    if kind == "deselected":
-        return f"  - {name}: by {detail}"
-    if kind == "retried":
-        return f"  - {name} (attempt {detail})"
-    return f"  - {name}: {detail}"
-
-
-def _git(*args: str) -> str | None:
-    git = shutil.which("git")
-    if git is None:
-        return None
-    try:
-        done = subprocess.run([git, *args], capture_output=True, text=True, check=False)  # noqa: S603 - fixed git subcommands
-    except OSError:
-        return None
-    return done.stdout if done.returncode == 0 else None
-
-
-def _commit() -> str:
-    sha = (_git("rev-parse", "--short", "HEAD") or "").strip()
-    if not sha:
-        return "unknown"
-    # A status git cannot report reads as dirty: an unknown tree is never presented as the commit.
-    porcelain = _git("status", "--porcelain")
-    return f"{sha} (uncommitted changes)" if porcelain is None or porcelain.strip() else sha
-
-
-def _props(props: object) -> list[tuple[str, str]]:
-    # Every user_properties (key, value) pair, the value as text.
-    pairs = props if isinstance(props, list) else []
-    return [(str(p[0]), str(p[1])) for p in pairs if isinstance(p, list) and len(p) == 2]  # noqa: PLR2004 - a (key, value) pair
+def _add_session_status(summary: Summary, exitstatus: object) -> None:
+    # A session that ended without a verdict, or failed with no failed test recorded, is never clean.
+    if not isinstance(exitstatus, int) or isinstance(exitstatus, bool):
+        summary.add("failed", "pytest session", "no exit status recorded")
+    elif exitstatus in _ABORTED_EXITS:
+        summary.add("failed", "pytest session", f"exit status {exitstatus} ({_ABORTED_EXITS[exitstatus]})")
+    elif exitstatus == _NO_TESTS_COLLECTED:
+        summary.add("vacuous", "pytest session: no tests collected")
+    elif exitstatus != 0 and not summary.failed:
+        summary.add("failed", "pytest session", f"exit status {exitstatus} with no failed test recorded")
 
 
 def _add_test(summary: Summary, entry: dict[str, object]) -> None:
@@ -184,11 +165,72 @@ def _add_test(summary: Summary, entry: dict[str, object]) -> None:
             summary.note(nodeid, f"recovery: {text}" if key == "recovery" else text)
 
 
+def _commit() -> str:
+    sha = (_git("rev-parse", "--short", "HEAD") or "").strip()
+    if not sha:
+        return "unknown"
+    # A status git cannot report reads as dirty: an unknown tree is never presented as the commit.
+    porcelain = _git("status", "--porcelain")
+    return f"{sha} (uncommitted changes)" if porcelain is None or porcelain.strip() else sha
+
+
+def _git(*args: str) -> str | None:
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        done = subprocess.run([git, *args], capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def _item_line(kind: str, name: str, detail: str) -> str:
+    if not detail:
+        return f"  - {name}"
+    if kind == "deselected":
+        return f"  - {name}: by {detail}"
+    if kind == "retried":
+        return f"  - {name} (attempt {detail})"
+    return f"  - {name}: {detail}"
+
+
+def _props(props: object) -> list[tuple[str, str]]:
+    # Every user_properties (key, value) pair, the value as text.
+    pairs = props if isinstance(props, list) else []
+    return [(str(p[0]), str(p[1])) for p in pairs if isinstance(p, list) and len(p) == _PAIR_LEN]
+
+
+def from_records(runner: str, data: str) -> Summary:
+    # The block a shell or Node runner accumulated, as NUL-separated records (the usage above); a malformed one raises.
+    tokens = data.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+    summary, at = Summary(runner), 0
+    sizes = {"item": 3, "note": 2, "unit": 1, "levels": 1, "gc": 1, "reason": 1, "counts": 1 + len(KINDS)}
+    while at < len(tokens):
+        tag, at = tokens[at], at + 1
+        if tag not in sizes or at + sizes[tag] > len(tokens):
+            raise ValueError(f"malformed summary record {tag!r} at token {at}")
+        fields, at = tokens[at : at + sizes[tag]], at + sizes[tag]
+        if tag == "item":
+            summary.add(*fields)
+        elif tag == "note":
+            summary.note(*fields)
+        elif tag == "counts":
+            summary.extra_counts.append((fields[0], Counts(*(int(n) for n in fields[1:]))))
+        elif tag == "unit":
+            summary.unit = fields[0]
+        else:
+            setattr(summary, {"levels": "levels", "gc": "gc_stage", "reason": "not_clean_reason"}[tag], fields[0])
+    return summary
+
+
 def from_run_record(path: Path) -> Summary:
     # The pytest run record as a Summary (unit tests); a missing or unreadable record is one failed item.
     summary = Summary("pytest")
     try:
-        record = json.loads(path.read_text())
+        record = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(record, dict):
             raise TypeError("not a JSON object")
     except (OSError, TypeError, ValueError):
@@ -218,25 +260,22 @@ def from_run_record(path: Path) -> Summary:
     return summary
 
 
-def _add_session_status(summary: Summary, exitstatus: object) -> None:
-    # A session that ended without a verdict, or failed with no failed test recorded, is never clean.
-    if not isinstance(exitstatus, int) or isinstance(exitstatus, bool):
-        summary.add("failed", "pytest session", "no exit status recorded")
-    elif exitstatus in _ABORTED_EXITS:
-        summary.add("failed", "pytest session", f"exit status {exitstatus} ({_ABORTED_EXITS[exitstatus]})")
-    elif exitstatus == _NO_TESTS_COLLECTED:
-        summary.add("vacuous", "pytest session: no tests collected")
-    elif exitstatus != 0 and not summary.failed:
-        summary.add("failed", "pytest session", f"exit status {exitstatus} with no failed test recorded")
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--from-run-record", type=Path, required=True, metavar="PATH", help="a run record written by scripts/_pytest_run_record.py")
-    mode = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--print", nargs=2, metavar=("RUNNER", "EXIT"), help="print the block of the records on stdin and exit with its code")
+    parser.add_argument("--from-run-record", type=Path, metavar="PATH", help="a run record written by scripts/_pytest_run_record.py")
+    mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--counts-only", action="store_true", help='print "P F S D": passed, failed, skipped, deselected')
     mode.add_argument("--list", choices=(*KINDS, "notes"), metavar="KIND", help=f"print name<TAB>detail per item of KIND ({', '.join(KINDS)}) or per note (notes)")
     args = parser.parse_args(argv)  # a usage error exits 2 (argparse)
+    if args.print is not None:
+        runner, given = args.print
+        try:
+            return from_records(runner, sys.stdin.read()).print(int(given))
+        except ValueError as e:
+            parser.error(str(e))
+    if args.from_run_record is None or not (args.counts_only or args.list):
+        parser.error("--from-run-record needs --counts-only or --list, or use --print")
     summary = from_run_record(args.from_run_record)
     if args.counts_only:
         counts = summary.counts()

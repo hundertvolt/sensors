@@ -4,7 +4,8 @@ How to get a heap-layout or serving-memory figure worth believing, on the digita
 board: what the allocator does, which instruments and metrics work, the traps that have silently
 produced wrong numbers, how to calibrate the twin, and how to rebuild the instruments. **It holds
 method, not results.** Current-state facts and rules live where they are enforced — `SPECIFICATION.md`
-Part I (I.2's settled decisions, I.3's bounded assembly, I.4(e)/(f)/(f.1)/(g)), H.7 and B.14.2 —
+Part I (I.2's allocation-site catalog with its recorded decisions, I.3's bounded assembly,
+I.4(e)/(f)/(f.1)/(g)), H.7 and B.14.2 —
 and the silicon-side rules for serving under load are `tests_hardware/README.md`'s "Measuring heap
 and serving under load". This file is the reasoning those rules come from.
 
@@ -278,6 +279,7 @@ call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.
 | `device_scripts/serving_at_default_gc.py`, `heap_under_connection_ceiling.py` | serving at `-1`; heap with the connection ceiling held open |
 | `bench/test_serving_heap_at_default_gc.py`, `bench/test_heap_under_connection_ceiling.py`, `flash/test_memory_stress.py` | the host sides, with `sweep_levels()`, tallies and the derived assertions |
 | `tests_scripts/test_device_script_gc_threshold.py`, `test_device_script_config_flush.py` | §M3.8's and the config-flush habit's static enforcement |
+| `digital_twin/run_device_script.py` + `scripts/record_twin_instrument_runs.py` (+ `tests_hardware/twin_board.py`) | runs a device script unchanged in the twin, and the flash tier's tests against `TwinBoard` (`pytest --twin`); the recorder writes the twin record (twin_record.json in `tests_hardware/`: every instrument's twin run, the bench tier's as needing the bridge). **Always do this before silicon**: it found three instrument defects the board would otherwise have |
 
 ### M5.2 Interpreter builds
 
@@ -314,7 +316,6 @@ Scratchpad tools, rebuilt from these descriptions when needed (names from the ar
 | wire-identity prototype (`proto.py`) | record every CS edge and transfer on the fake `SPI`/`Pin`, assert a restructured path's trace equals the current one, then price both with the fakes' own allocations removed |
 | serving sweep (`sweep.py` / `drive.py` / `boot.py`) | boot the frozen twin at a heap and threshold; a separate CPython process drives N simultaneous requests × R rounds (one socket each, `threading.Barrier(N)`, bodies drained never kept, 1 s settle since a slot outlives its response); failures counted from the twin's own log and grouped by size and last three frames (`classify.py`) |
 | peak twin (`boot_peak.py` / `drive_peak.py` / `sweep_peak.py`) | the silicon `--peak` load against a fresh twin per level under a cgroup CPU quota (`QUOTA`), `MAXCONN` patched into the frozen generated module, a rejection counter on `_open_conns.increment`; host resets beyond the device's rejections are true failures |
-| device scripts in the twin (`twin_wrap.py` / `validate_bench.py`) | run a device script **unchanged** after `run_generic_integration`'s setup, and a bench test module's own functions against a fake `Board` whose `run_isolated()` is `twin_wrap.py`. **Always do this before silicon**: it found three instrument defects the board would otherwise have |
 
 ### M5.4 The removed silicon sweep tool
 
@@ -365,7 +366,7 @@ graph (the script's own code costs heap production does not pay).
 
 ## M7. Remedy directions already ruled out
 
-Measured, not argued (agent, 2026-09-24, `17b4354`); each reopens with a new mechanism. Evidence:
+Measured, not argued (`17b4354`); each reopens with a new mechanism. Evidence:
 archive §6, §6A, §7.
 
 - **Cutting churn volume alone** — the outcome does not track volume; removing the *large*,
@@ -381,11 +382,10 @@ archive §6, §6A, §7.
 - **Any single write-path component, the await chain, the per-call buffers** — none controls it.
 - **Combinations** — nothing composes; the outcome is a coincidence count (§M1).
 - **`gc.collect()` / `gc.threshold()` as the fix** — forbidden by `SPECIFICATION.md` I.4(e)-(g);
-  the boot-confined collects of I.4(f.1) are placement discipline at the two lists where permanent
-  objects are born, never run-phase margin.
+  the boot lists where permanent objects are born run with no collect (I.4(f.1)).
 
-What did ship: the FRAM path restructured with the wire protocol byte-identical and the lock held per
-block operation (`SPECIFICATION.md` C.8), and the boot-confined collects
+What ships: the FRAM path restructured with the wire protocol byte-identical, synchronous and with no
+lock (`SPECIFICATION.md` C.8), with which the boot lists need no collect
 (I.4(f.1)); for serving, bounded assembly and chunked static reads (I.3), `max_connections = 6`
 (H.7) and the lwIP ensemble (B.14.2).
 

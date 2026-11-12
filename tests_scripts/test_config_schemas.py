@@ -150,6 +150,7 @@ def validator() -> Validator:
     stubs["micropython"].const = lambda value: value  # type: ignore[attr-defined]
     stubs["asy_print_log"].DEFAULT_LOG = None  # type: ignore[attr-defined]
     stubs["asy_print_log"].make_logger = None  # type: ignore[attr-defined]
+    stubs["asy_print_log"].report_if_fatal = None  # type: ignore[attr-defined]
     saved = {name: sys.modules.get(name) for name in stubs}
     sys.modules.update(stubs)
     try:

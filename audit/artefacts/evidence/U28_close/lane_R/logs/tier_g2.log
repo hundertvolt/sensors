@@ -1,0 +1,28 @@
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 34%]
+........................................................................ [ 43%]
+........................................................................ [ 52%]
+........................................................................ [ 61%]
+..................................F..................................... [ 69%]
+........................................................................ [ 78%]
+........................................................................ [ 87%]
+........................................................................ [ 96%]
+.................................                                        [100%]
+=================================== FAILURES ===================================
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_scripts/test_ruff_exemptions_live.py: [(66, '"dev"'), (145, 'wozi')]
+E           tests_scripts/test_tool_pins.py: [(25, '"dev"'), (45, '"dev"')]
+E       assert not {'tests_scripts/test_ruff_exemptions_live.py': [(66, '"dev"'), (145, 'wozi')], 'tests_scripts/test_tool_pins.py': [(25, '"dev"'), (45, '"dev"')]}
+
+tests_scripts/test_no_variant_literals.py:108: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+1 failed, 824 passed in 128.38s (0:02:08)

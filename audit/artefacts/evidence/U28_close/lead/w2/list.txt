@@ -1,0 +1,21 @@
+./bmp3xx/bst-bmp384-ds003.pdf
+./bmp3xx/bst-bmp388-ds001.pdf
+./bmp3xx/bst-bmp390-ds002.pdf
+./bmp3xx/bst-mps-an006.pdf
+./fram/MB85RS2MTA-DS501-00032-3v0-E.pdf
+./fram/MB85RS64V-DS501-00015-4v0-E.pdf
+./isl29125/REN_isl29125_DST_20151201_1.pdf
+./pico w/Infineon_CYW43439_DataSheet_v03_00_EN.pdf
+./pico w/RP-008312-DS-2-pico-w-datasheet.pdf
+./pico w/RP-008371-DS-1-rp2040-datasheet.pdf
+./pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf
+./scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf
+./scd30/Sensirion_CO2_Sensors_SCD30_Design-In_Guidelines_D1.pdf
+./scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf
+./scd30/Sensirion_CO2_Sensors_SCD30_Low_Power_Mode.pdf
+./scd30/Sensirion_SCD30_Field_Calibration.pdf
+./sgp40/GAS_AN_SGP4x_BuildingStandards_D1_1.pdf
+./sgp40/Info_Note_Integration_VOC_NOx_Sensor.pdf
+./sgp40/Info_Note_VOC_Index.pdf
+./sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf
+./ws2812/WS2812.pdf

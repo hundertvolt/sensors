@@ -1,0 +1,13 @@
+== tests/test_generated_boot_entry.py gc=-1 rc=0 0.10 s
+4/4 passed, 0 failed, 0 skipped
+== tests/test_reset_call_site_invariant.py gc=-1 rc=0 0.32 s
+3/3 passed, 0 failed, 0 skipped
+== tests/test_sensortask.py gc=-1 rc=0 39.22 s
+90/90 passed, 0 failed, 0 skipped
+== tests/test_generated_boot_entry.py gc=32768 rc=0 0.13 s
+4/4 passed, 0 failed, 0 skipped
+== tests/test_reset_call_site_invariant.py gc=32768 rc=0 0.40 s
+3/3 passed, 0 failed, 0 skipped
+== tests/test_sensortask.py gc=32768 rc=0 56.33 s
+90/90 passed, 0 failed, 0 skipped
+ALL DONE

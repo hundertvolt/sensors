@@ -1,0 +1,25 @@
+......F                                                                  [100%]
+=================================== FAILURES ===================================
+_____________ test_a_service_word_the_command_does_not_offer_fails _____________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7982/test_a_service_word_the_comman0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24t/src')
+
+    def test_a_service_word_the_command_does_not_offer_fails(tmp_path: Path, src_dir: Path) -> None:
+        # The service gains a sixth word the definitions never offer: the page could not send it.
+        src = Path(shutil.copytree(src_dir, tmp_path / "src"))
+        service = src / "asy_webserver_service.py"
+        text = service.read_text(encoding="utf-8")
+        anchor = '_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause", "resetconfig", "erasefram"))'
+        assert text.count(anchor) == 1
+        service.write_text(text.replace(anchor, anchor.replace('"erasefram"))', '"erasefram", "selftest"))')), encoding="utf-8")
+        definitions = json.loads(json.dumps(definitions_for_toml(device_toml(DEVICE_NAMES[0]), src)))
+>       assert _system_cmd_problems(definitions, src), "a word _SYSTEM_CMDS gained passed unoffered"
+E       AssertionError: a word _SYSTEM_CMDS gained passed unoffered
+E       assert []
+E        +  where [] = _system_cmd_problems({'schemaVersion': '1.0.0', 'websiteVersion': '2.0b0', 'device': {'id': 'arzi', 'displayName': 'arzi'}, 'landingSection': 'measurements', ...}, PosixPath('/tmp/pytest-of-root/pytest-7982/test_a_service_word_the_comman0/src'))
+
+tests_scripts/test_buildgen_definitions.py:367: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_definitions.py::test_a_service_word_the_command_does_not_offer_fails
+1 failed, 6 passed, 391 deselected in 1.18s

@@ -1,0 +1,28 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+____________ test_no_function_body_is_copied_in_the_hardware_levels ____________
+
+    def test_no_function_body_is_copied_in_the_hardware_levels() -> None:
+        groups = clone_groups(_TESTS_HARDWARE)
+>       assert not groups, "identical function bodies - one helper (or a device_scripts/_shared include) instead:\n  " + "\n  ".join(" = ".join(g) for g in groups)
+E       AssertionError: identical function bodies - one helper (or a device_scripts/_shared include) instead:
+E           bench/test_bus_concurrency_under_api_load.py::_synced = bench/test_network_resilience.py::_synced = bench/test_network_resilience.py::_synced
+E           bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker
+E           bench/test_end_to_end_timing.py::_try_fetch_ok = bench/test_hotspot_role_reversal.py::_dut_reachable_again = bench/test_network_resilience.py::_sta_reconnected = bench/test_wifi_networking.py::_http_ok
+E           device_scripts/bus_concurrency_cross_device_scd30_sgp40.py::sgp_loop = device_scripts/isl29125_cross_device_concurrency.py::sgp_loop
+E           device_scripts/bus_concurrency_isl29125_write_vs_siblings.py::scd_loop = device_scripts/isl29125_cross_device_concurrency.py::scd_loop
+E           device_scripts/bus_concurrency_scd30_write_vs_siblings.py::isl_loop = device_scripts/isl29125_cross_device_concurrency.py::isl_loop
+E           device_scripts/heap_headroom_after_full_system_build.py::_dump_map = device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map
+E           device_scripts/heap_headroom_after_full_system_build.py::_largest_block = device_scripts/heap_layout_after_full_boot_sequence.py::_largest_block
+E           device_scripts/heap_headroom_after_full_system_build.py::_report_checked = device_scripts/heap_layout_after_full_boot_sequence.py::_report_checked
+E           device_scripts/heap_under_connection_ceiling.py::_dump = device_scripts/serving_at_default_gc.py::_dump
+E           device_scripts/heap_under_connection_ceiling.py::_report_unretrieved = device_scripts/serving_at_default_gc.py::_report_unretrieved
+E           device_scripts/uart_crossover_exchange.py::_settled = device_scripts/uart_crossover_recovery.py::_settled
+E           flash/test_bus_concurrency.py::_assert_pass = flash/test_uart_crossover.py::_assert_pass = flash/test_unretrieved_task_exception_handler.py::_assert_pass
+E           flash/test_bus_electrical_timing.py::_parse_result = flash/test_reboot_persistence.py::_parse_result
+E       assert not [['bench/test_bus_concurrency_under_api_load.py::_synced', 'bench/test_network_resilience.py::_synced', 'bench/test_ne...ncurrency_scd30_write_vs_siblings.py::isl_loop', 'device_scripts/isl29125_cross_device_concurrency.py::isl_loop'], ...]
+
+tests_scripts/test_hardware_clones.py:32: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_clones.py::test_no_function_body_is_copied_in_the_hardware_levels
+1 failed, 1 passed in 0.47s

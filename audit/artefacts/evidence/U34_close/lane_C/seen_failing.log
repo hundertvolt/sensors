@@ -1,0 +1,39 @@
+.................F                                                       [100%]
+=================================== FAILURES ===================================
+_ test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action_computes _
+
+    def test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action_computes() -> None:
+        # A browser restored under another runner image or C library fails at launch; a key read before its step is empty.
+        ident = [_step_lines(step) for step in _action_steps(_TOOLCHAIN_ACTION) if _IDENT_ID.search(step)]
+        assert len(ident) == 1, "the toolchain action must hold exactly one `id: ident` step, the identity every Playwright cache copies"
+        problems = []
+        caches = 0
+        for name, job in _jobs().items():
+            steps = _steps(job, 6)
+            for index, step in enumerate(steps):
+                if _IDENT_ID.search(step) and _step_lines(step) != ident[0]:
+                    problems.append(f"{name}: its identity step differs from the toolchain action's - copy that step's text unchanged")
+                if "path: ~/.cache/ms-playwright" not in step:
+                    continue
+                caches += 1
+                key = re.search(r"^\s+key: (.*)$", step, re.MULTILINE)
+                if not key or "${{ steps.ident.outputs.id }}" not in key.group(1):
+                    problems.append(f"{name}: the Playwright cache key misses `${{{{ steps.ident.outputs.id }}}}` - a runner-image change would restore a stale browser")
+                if not any(_IDENT_ID.search(earlier) for earlier in steps[:index]):
+                    problems.append(f"{name}: no identity step (the toolchain action's, `id: ident`) before its Playwright cache")
+        assert caches, "no step caches ~/.cache/ms-playwright: a reshaped workflow must fail this rule rather than pass it empty"
+>       assert not problems, "\n".join(problems)
+E       AssertionError: web-unit-tests: the Playwright cache key misses `${{ steps.ident.outputs.id }}` - a runner-image change would restore a stale browser
+E         web-unit-tests: no identity step (the toolchain action's, `id: ident`) before its Playwright cache
+E         web-put-matrix: the Playwright cache key misses `${{ steps.ident.outputs.id }}` - a runner-image change would restore a stale browser
+E         web-put-matrix: no identity step (the toolchain action's, `id: ident`) before its Playwright cache
+E         web-coverage: the Playwright cache key misses `${{ steps.ident.outputs.id }}` - a runner-image change would restore a stale browser
+E         web-coverage: no identity step (the toolchain action's, `id: ident`) before its Playwright cache
+E         web-cross-browser-smoke: the Playwright cache key misses `${{ steps.ident.outputs.id }}` - a runner-image change would restore a stale browser
+E         web-cross-browser-smoke: no identity step (the toolchain action's, `id: ident`) before its Playwright cache
+E       assert not ['web-unit-tests: the Playwright cache key misses `${{ steps.ident.outputs.id }}` - a runner-image change would restor...tale browser', "web-coverage: no identity step (the toolchain action's, `id: ident`) before its Playwright cache", ...]
+
+tests_scripts/test_ci_workflow.py:327: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_ci_workflow.py::test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action_computes
+1 failed, 17 passed in 0.11s

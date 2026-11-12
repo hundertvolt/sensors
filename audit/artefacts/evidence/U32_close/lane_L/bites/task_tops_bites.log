@@ -1,0 +1,76 @@
+== vacuous
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+name = 'asy_config_manager.py', old = '"- flush task failed:", e, errno='
+new = '"- flush task failed:", errno='
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+old = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+old = '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+            '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_supervised_loop_started_outside_its_starter_fails
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_top_that_does_not_cover_its_task_fails[narrowed]
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_top_that_does_not_cover_its_task_fails[cause-not-logged]
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_top_that_does_not_cover_its_task_fails[fatal-not-reported]
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_top_that_does_not_cover_its_task_fails[work-after-the-top]
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_top_that_does_not_cover_its_task_fails[loop-pass-outside-the-top]
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_top_that_does_not_cover_its_task_fails[callback-fatal-not-reported]
+FAILED tests_scripts/test_task_tops_bite_vacuous.py::test_a_connection_callback_whose_top_is_removed_fails
+8 failed, 3 passed in 3.18s
+== noserver
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+name = 'asy_config_manager.py', old = '"- flush task failed:", e, errno='
+new = '"- flush task failed:", errno='
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+old = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+old = '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+            '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_every_task_outside_the_starters_ends_in_its_own_top
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_supervised_loop_started_outside_its_starter_fails
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_top_that_does_not_cover_its_task_fails[narrowed]
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_top_that_does_not_cover_its_task_fails[cause-not-logged]
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_top_that_does_not_cover_its_task_fails[fatal-not-reported]
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_top_that_does_not_cover_its_task_fails[work-after-the-top]
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_top_that_does_not_cover_its_task_fails[loop-pass-outside-the-top]
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_top_that_does_not_cover_its_task_fails[callback-fatal-not-reported]
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_a_connection_callback_whose_top_is_removed_fails
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_an_unresolvable_coroutine_fails
+FAILED tests_scripts/test_task_tops_bite_noserver.py::test_an_unresolvable_or_unowned_server_callback_fails
+11 failed in 1.30s
+== nocomplete
+FAILED tests_scripts/test_task_tops_bite_nocomplete.py::test_an_unresolvable_or_unowned_server_callback_fails
+1 failed, 10 passed in 1.00s

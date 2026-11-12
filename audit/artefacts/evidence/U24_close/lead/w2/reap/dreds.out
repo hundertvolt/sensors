@@ -1,0 +1,6 @@
+integ_-1.log rc=0 wall=60 14/15 passed, 1 failed, 0 skipped mem=0
+integ_32768.log rc=0 wall=63 14/15 passed, 1 failed, 0 skipped mem=0
+schlafzi_32768_1.log rc=0 wall=43 20/20 passed, 0 failed, 0 skipped mem=0
+schlafzi_32768_2.log rc=0 wall=43 20/20 passed, 0 failed, 0 skipped mem=0
+schlafzi_32768_3.log rc=0 wall=44 20/20 passed, 0 failed, 0 skipped mem=0
+ALL_DONE

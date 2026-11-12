@@ -1,0 +1,150 @@
+digital_twin/run_generic_integration.py starting - device='sensortask_arzi' module='sensortask_arzi' host='127.0.0.1' port=19090 state=StatePaths(fram=None, scd30=None, mem_backup=None) config_dir='tests/_tmp/rgi/1_boot/' online_ntp=False debug_level=5 injections=Injections(seed=None, faults=[('sgp40', 'writeto', 2, None, 'oserror')], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+92 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+92 FRAM Allocation successful, FRAM now has 30 Bytes allocated.
+92 NEOPIXEL Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 60 Bytes allocated.
+93 WIFI Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 90 Bytes allocated.
+93 CFGMGR_WIFI Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 120 Bytes allocated.
+93 DNSSRV Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 150 Bytes allocated.
+93 NTP Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 180 Bytes allocated.
+93 CFGMGR_NTP Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 210 Bytes allocated.
+93 SYSTEM Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 240 Bytes allocated.
+93 CFGMGR_SYSTEM Init with FRAM logging.
+93 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+93 FRAM Allocation successful, FRAM now has 270 Bytes allocated.
+93 SCD30 Init with FRAM logging.
+94 CFGMGR_SCD30 Init with memory logging.
+94 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+94 FRAM Allocation successful, FRAM now has 300 Bytes allocated.
+94 SGP40 Init with FRAM logging.
+94 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+94 FRAM Allocation successful, FRAM now has 330 Bytes allocated.
+94 CFGMGR_SGP40 Init with FRAM logging.
+94 FRAM Storage for 256 bytes and timestamp requested, allocating 540 bytes allover.
+94 FRAM Allocation successful, FRAM now has 870 Bytes allocated.
+94 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+94 FRAM Allocation successful, FRAM now has 900 Bytes allocated.
+94 NOTIFY Init with FRAM logging.
+94 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+94 FRAM Allocation successful, FRAM now has 930 Bytes allocated.
+94 CFGMGR_NOTIFY Init with FRAM logging.
+94 FRAM Storage for 12 bytes requested, allocating 30 bytes allover.
+94 FRAM Allocation successful, FRAM now has 960 Bytes allocated.
+94 WEBSERVER Init with FRAM logging.
+96 FRAM SPI FRAM Driver Setup complete
+Serving forever at http://127.0.0.1:19090/ - Ctrl+C to stop
+103 FRAM Uninitialized data in block 0, reading block 1
+104 FRAM Uninitialized data in block 1
+104 FRAM Writing block 0 data
+108 FRAM Writing block 1 data
+113 FRAM Uninitialized data in block 0, reading block 1
+113 FRAM Uninitialized data in block 1
+113 FRAM Writing block 0 data
+118 FRAM Writing block 1 data
+122 CFGMGR_SYSTEM tests/_tmp/rgi/1_boot/config_SYSTEM.cfg - config is ready, nothing to write
+122 CFGMGR_SYSTEM tests/_tmp/rgi/1_boot/config_SYSTEM.cfg - Reading config data into list.
+124 FRAM Uninitialized data in block 0, reading block 1
+124 FRAM Uninitialized data in block 1
+124 FRAM Writing block 0 data
+128 FRAM Writing block 1 data
+133 FRAM Uninitialized data in block 0, reading block 1
+134 FRAM Uninitialized data in block 1
+134 FRAM Writing block 0 data
+138 FRAM Writing block 1 data
+142 CFGMGR_WIFI Config file tests/_tmp/rgi/1_boot/config_WIFI.cfg not present - writing the defaults once
+142 CFGMGR_WIFI tests/_tmp/rgi/1_boot/config_WIFI.cfg - Writing configuration file!
+382 CFGMGR_WIFI Default data was written in tests/_tmp/rgi/1_boot/config_WIFI.cfg - config is ready.
+382 FRAM Uninitialized data in block 0, reading block 1
+383 FRAM Uninitialized data in block 1
+383 FRAM Writing block 0 data
+387 FRAM Writing block 1 data
+392 FRAM Uninitialized data in block 0, reading block 1
+392 FRAM Uninitialized data in block 1
+392 FRAM Writing block 0 data
+396 FRAM Writing block 1 data
+401 FRAM Uninitialized data in block 0, reading block 1
+401 FRAM Uninitialized data in block 1
+401 FRAM Writing block 0 data
+405 FRAM Writing block 1 data
+409 CFGMGR_NTP tests/_tmp/rgi/1_boot/config_NTP.cfg - config is ready, nothing to write
+410 FRAM Uninitialized data in block 0, reading block 1
+410 FRAM Uninitialized data in block 1
+410 FRAM Writing block 0 data
+414 FRAM Writing block 1 data
+419 FRAM Uninitialized data in block 0, reading block 1
+420 FRAM Uninitialized data in block 1
+420 FRAM Writing block 0 data
+423 FRAM Writing block 1 data
+427 CFGMGR_SCD30 Config file tests/_tmp/rgi/1_boot/config_SCD30.cfg not present - writing the defaults once
+427 CFGMGR_SCD30 tests/_tmp/rgi/1_boot/config_SCD30.cfg - Writing configuration file!
+667 CFGMGR_SCD30 Default data was written in tests/_tmp/rgi/1_boot/config_SCD30.cfg - config is ready.
+669 FRAM Uninitialized data in block 0, reading block 1
+669 FRAM Uninitialized data in block 1
+669 FRAM Writing block 0 data
+673 FRAM Writing block 1 data
+677 FRAM Uninitialized data in block 0, reading block 1
+677 FRAM Uninitialized data in block 1
+677 FRAM Writing block 0 data
+681 FRAM Writing block 1 data
+685 CFGMGR_SGP40 Config file tests/_tmp/rgi/1_boot/config_SGP40.cfg not present - writing the defaults once
+685 CFGMGR_SGP40 tests/_tmp/rgi/1_boot/config_SGP40.cfg - Writing configuration file!
+925 CFGMGR_SGP40 Default data was written in tests/_tmp/rgi/1_boot/config_SGP40.cfg - config is ready.
+926 FRAM Uninitialized data in block 0, reading block 1
+927 FRAM Uninitialized data in block 1
+927 FRAM Writing block 0 data
+931 FRAM Writing block 1 data
+935 FRAM Uninitialized data in block 0, reading block 1
+936 FRAM Uninitialized data in block 1
+936 FRAM Writing block 0 data
+940 FRAM Writing block 1 data
+944 CFGMGR_NOTIFY Config file tests/_tmp/rgi/1_boot/config_NOTIFY.cfg not present - writing the defaults once
+944 CFGMGR_NOTIFY tests/_tmp/rgi/1_boot/config_NOTIFY.cfg - Writing configuration file!
+1184 CFGMGR_NOTIFY Default data was written in tests/_tmp/rgi/1_boot/config_NOTIFY.cfg - config is ready.
+1185 FRAM Uninitialized data in block 0, reading block 1
+1186 FRAM Uninitialized data in block 1
+1186 FRAM Writing block 0 data
+1189 FRAM Writing block 1 data
+1194 CFGMGR_WIFI tests/_tmp/rgi/1_boot/config_WIFI.cfg - Reading config data into list.
+1194 WIFI Establishing WLAN connection
+1194 CFGMGR_WIFI tests/_tmp/rgi/1_boot/config_WIFI.cfg - Reading config data into list.
+1194 CFGMGR_WIFI tests/_tmp/rgi/1_boot/config_WIFI.cfg - Reading config data into list.
+1194 WIFI No SSID configured, hotspot mode
+2030 CFGMGR_NOTIFY tests/_tmp/rgi/1_boot/config_NOTIFY.cfg - Reading config data into list.
+2030 CFGMGR_NOTIFY tests/_tmp/rgi/1_boot/config_NOTIFY.cfg - Reading config data into list.
+2030 CFGMGR_NOTIFY tests/_tmp/rgi/1_boot/config_NOTIFY.cfg - Reading config data into list.
+2168 FRAM Writing block 0 data
+2192 FRAM Writing block 1 data
+2215 SGP40 Error in initial setup: no I2C device at address: 0x59
+2215 FRAM Writing block 0 data
+2219 SYSTEM Timer started: 0
+2219 SYSTEM Timer started: 1
+2219 SYSTEM Timer started: 2
+2219 SYSTEM Timer started: 3
+2219 SYSTEM Timer started: 4
+2219 SYSTEM Timer started: 5
+2219 SYSTEM All timers running.
+2219 NTP Force resync triggered.
+2229 SYSTEM All tasks running.
+2230 NTP NTP sync starting.
+2230 NTP Network not available, skipping sync attempt.
+mem: total=5725353, current=1836796, peak=1836876
+stack: 4992 out of 80000
+GC: total: 16582784, used: 757824, free: 15824960
+ No. of 1-blocks: 6304, 2-blocks: 1451, max blk sz: 885, max free sz: 472061
+digital_twin/run_generic_integration.py [sensortask_arzi] shutdown: would_have_triggered_count=0 feed_count=10 largest_feed_gap_ms=1036 wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=239 gc_block_bytes=32
+BOOT_MS 2260
+PASS test_main_boots_logs_the_armed_fault_at_error_level_writes_the_responder_ntp_config_and_shuts_down_cleanly
+1/1 passed, 0 failed, 0 skipped

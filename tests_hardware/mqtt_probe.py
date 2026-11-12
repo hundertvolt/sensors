@@ -1,7 +1,8 @@
 """Host-side MQTT tools shared by the twin suite and the bench tier (CPython, stdlib only): a mosquitto process the
 test owns, on its own port and config, and Probe, a small MQTT 3.1.1 client recording every message it receives, so a
-test drives and watches the device's broker traffic with no MQTT CLI tool (SPECIFICATION.md Part A.11)."""
+test drives and watches the device's broker traffic with no MQTT CLI tool (SPECIFICATION.md Part A.12)."""
 
+import contextlib
 import os
 import shutil
 import signal
@@ -17,14 +18,29 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-# @tunable l4.mqtt_probe_start_timeout_s = 10.0
 _START_TIMEOUT_S = 10.0  # mosquitto listening, or a probe's CONNACK
-# @tunable l4.mqtt_probe_retry_s = 0.5
 _RETRY_S = 0.5  # a probe's reconnect gap after it lost its broker
-# @tunable l4.mqtt_probe_keepalive_s = 20
 _KEEPALIVE_S = 20
 _PING_EVERY_S = _KEEPALIVE_S / 2
 _IO_TIMEOUT_S = 1.0  # one socket read, so a closing probe notices within a second
+
+
+def _length(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        out.append(byte | 0x80 if value else byte)
+        if not value:
+            return bytes(out)
+
+
+def _packet(first: int, body: bytes) -> bytes:
+    return bytes([first]) + _length(len(body)) + body
+
+
+def _str(data: bytes) -> bytes:
+    return struct.pack("!H", len(data)) + data
 
 
 def free_tcp_port(host: str = "127.0.0.1") -> int:
@@ -81,9 +97,8 @@ class Mosquitto:
             self.proc.send_signal(sig)
 
     def start(self) -> None:
-        log = open(self.log_path, "ab")
-        self.proc = subprocess.Popen([self.binary, "-c", str(self.conf)], stdout=log, stderr=subprocess.STDOUT)  # noqa: S603 - fixed argv
-        log.close()
+        with self.log_path.open("ab") as log:  # the child keeps its own descriptor
+            self.proc = subprocess.Popen([self.binary, "-c", str(self.conf)], stdout=log, stderr=subprocess.STDOUT)  # noqa: S603 - fixed argv
         deadline = time.monotonic() + _START_TIMEOUT_S
         while time.monotonic() < deadline:
             try:
@@ -114,24 +129,6 @@ class Message:
     topic: str
     payload: bytes
     retained: bool
-
-
-def _str(data: bytes) -> bytes:
-    return struct.pack("!H", len(data)) + data
-
-
-def _length(value: int) -> bytes:
-    out = bytearray()
-    while True:
-        byte = value & 0x7F
-        value >>= 7
-        out.append(byte | 0x80 if value else byte)
-        if not value:
-            return bytes(out)
-
-
-def _packet(first: int, body: bytes) -> bytes:
-    return bytes([first]) + _length(len(body)) + body
 
 
 class Probe:
@@ -249,18 +246,16 @@ class Probe:
         with self._send_lock:
             sock.sendall(data)
 
+    def is_connected(self) -> bool:
+        return self._connected.is_set()
+
     def close(self) -> None:
         self._closed.set()
         sock = self._sock
         if sock is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self._send(sock, b"\xe0\x00")
-            except OSError:
-                pass
         self._thread.join(timeout=5)
-
-    def is_connected(self) -> bool:
-        return self._connected.is_set()
 
     def publish(self, topic: str, payload: bytes, qos: int = 0, *, retain: bool = False) -> bool:
         # True when the packet went out; a lost connection answers False rather than raising.

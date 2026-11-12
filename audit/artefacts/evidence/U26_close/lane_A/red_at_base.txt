@@ -1,0 +1,36 @@
+== test_bench_device (base code, new test file)
+FAILED tests_scripts/test_bench_device.py::test_exactly_one_device_toml_names_the_bench_board
+FAILED tests_scripts/test_bench_device.py::test_both_readers_name_the_flagged_device
+FAILED tests_scripts/test_bench_device.py::test_none_or_several_flagged_tomls_are_refused_naming_the_files[none]
+FAILED tests_scripts/test_bench_device.py::test_none_or_several_flagged_tomls_are_refused_naming_the_files[two]
+FAILED tests_scripts/test_bench_device.py::test_the_environment_override_names_an_existing_device_or_is_refused
+FAILED tests_scripts/test_bench_device.py::test_the_build_refuses_a_bench_flag_that_is_no_bool
+6 failed in 0.55s
+== test_harness_mpremote_retry (base code, new test file)
+_ ERROR at setup of test_a_failed_trailing_soft_reset_raises_naming_it_and_never_reruns_the_script _
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8941/test_a_failed_trailing_soft_re0')
+FAILED tests_scripts/test_harness_mpremote_retry.py::test_a_refused_usb_rebind_is_named_with_one_event
+FAILED tests_scripts/test_harness_mpremote_retry.py::test_the_rebind_checks_each_sudo_tee_and_polls_the_state_it_waits_for
+FAILED tests_scripts/test_harness_mpremote_retry.py::test_a_settle_poll_gives_up_at_its_bound_and_says_so
+ERROR tests_scripts/test_harness_mpremote_retry.py::test_a_transient_failure_before_anything_ran_is_retried_once_and_recorded
+ERROR tests_scripts/test_harness_mpremote_retry.py::test_a_transient_failure_after_the_script_printed_is_never_retried
+ERROR tests_scripts/test_harness_mpremote_retry.py::test_a_failed_trailing_soft_reset_raises_naming_it_and_never_reruns_the_script
+ERROR tests_scripts/test_harness_mpremote_retry.py::test_every_board_call_runs_uv_without_a_sync
+ERROR tests_scripts/test_harness_mpremote_retry.py::test_a_timeout_interrupts_the_board_and_resets_it_before_raising
+3 failed, 5 errors in 0.16s
+== test_bench_control_restore (base code, new test file)
+ERROR tests_scripts/test_bench_control_restore.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.23s
+== test_evidence_snapshot (base code, new test file)
+ERROR tests_scripts/test_evidence_snapshot.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.27s
+== test_bench_harness_helpers (base code, new test file)
+ERROR tests_scripts/test_bench_harness_helpers.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.26s
+== test_resolve_board_device (base code, new test file)
+FAILED tests_scripts/test_resolve_board_device.py::test_a_board_with_no_by_id_entry_is_no_board
+FAILED tests_scripts/test_resolve_board_device.py::test_the_harness_keeps_no_board_glob_or_scan_of_its_own
+2 failed, 6 passed in 0.17s

@@ -1,0 +1,76 @@
+........................................................................ [  4%]
+........................................................................ [  8%]
+........................................................................ [ 13%]
+........................................................................ [ 17%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 31%]
+........................................................................ [ 35%]
+........................................................................ [ 40%]
+........................................................................ [ 44%]
+........................................................................ [ 48%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 62%]
+.......................................................F................ [ 66%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+........................................................................ [ 88%]
+........................................................................ [ 93%]
+.......F..................F............................................. [ 97%]
+....................................                                     [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
+E       assert not [('tests_scripts/test_test_sh.py', 'Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+________________________ test_every_listed_tool_exists _________________________
+
+    def test_every_listed_tool_exists() -> None:
+        missing = [tool for tool in TOOLS if not (REPO_ROOT / tool).is_file()]
+>       assert not missing, f"TOOLS names files that are gone: {missing} - update the list with the tree"
+E       AssertionError: TOOLS names files that are gone: ['scripts/preview_server.py'] - update the list with the tree
+E       assert not ['scripts/preview_server.py']
+
+tests_scripts/test_tool_help.py:108: AssertionError
+_ test_help_answers_with_usage_and_touches_nothing[scripts/preview_server.py] __
+
+tool = 'scripts/preview_server.py'
+safe_path = '/tmp/pytest-of-root/pytest-10695/safe_bin0'
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+
+    @pytest.mark.parametrize("tool", TOOLS)
+    def test_help_answers_with_usage_and_touches_nothing(tool: str, safe_path: str, micropython_bin: Path) -> None:
+        command = _command(tool, micropython_bin)
+        if command[0] == "node" and shutil.which("node") is None:
+            pytest.fail("node is a hard prerequisite of the host tier, and is not on PATH")
+        env = {**os.environ, "PATH": safe_path, "MICROPYPATH": _TWIN_MICROPYPATH}
+        if command[0] in ("bash", "node"):
+            command[0] = str(shutil.which(command[0]))
+        before = _tree_state()
+        done = subprocess.run(command, cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=_TIMEOUT_S, check=False)
+        after = _tree_state()
+>       assert done.returncode == 0, f"{tool} --help exited {done.returncode}:\n{done.stdout}\n{done.stderr}"
+E       AssertionError: scripts/preview_server.py --help exited 2:
+E         
+E         /home/user/sensors/.venv/bin/python: can't open file '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28c/scripts/preview_server.py': [Errno 2] No such file or directory
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', 'scripts/preview_server.py', '--help'], returncode=2, st...5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28c/scripts/preview_server.py': [Errno 2] No such file or directory\n").returncode
+
+tests_scripts/test_tool_help.py:122: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_tool_help.py::test_every_listed_tool_exists - Asser...
+FAILED tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/preview_server.py]
+3 failed, 1617 passed in 115.57s (0:01:55)

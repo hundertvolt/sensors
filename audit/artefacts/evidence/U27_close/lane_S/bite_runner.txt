@@ -1,0 +1,7 @@
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_exit_is_the_worst_of_the_runs[0-1-1]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_exit_is_the_worst_of_the_runs[0-3-3]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_ci_runner_builds_the_site_each_part_boots_from[args0-parts0]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_ci_runner_builds_the_site_each_part_boots_from[args2-parts2]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs[scripts/run_digital_twin_ci.sh-args0]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs[scripts/run_unix_port_integration.sh-args1]
+6 failed, 12 passed in 6.97s

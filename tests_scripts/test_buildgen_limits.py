@@ -18,8 +18,8 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[LimitField, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
-    return parse_limits(path, "dev", "x")
+    path.write_text(source, encoding="utf-8")
+    return parse_limits(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None" = None) -> None:
@@ -33,7 +33,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None"
 
 
 @pytest.mark.parametrize(
-    "payload,low,high",
+    ("payload", "low", "high"),
     [
         ("1..3600", 1, 3600),
         ("0..0", 0, 0),  # min == max is an exact-value requirement
@@ -58,7 +58,7 @@ def test_parse_limits_accepts_every_name_shape(tmp_path: Path, field: str) -> No
 
 
 @pytest.mark.parametrize(
-    "payload,expected",
+    ("payload", "expected"),
     [
         ("in {0x76, 0x77}", {0x76, 0x77}),
         ("in {0x76,0x77}", {0x76, 0x77}),  # no space after the comma
@@ -110,7 +110,7 @@ def test_parse_limits_duplicate_field_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    ("source", "match"),
     [
         ("# @limts trigger_s 1..3600\n", "misspelled @limits tag"),  # deletion
         ("# @limiits trigger_s 1..3600\n", "misspelled @limits tag"),  # insertion
@@ -133,7 +133,7 @@ def test_parse_limits_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Pa
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ("# @limits trigger_s\n", "malformed @limits tag", "tag.malformed"),  # the whole domain dropped
         ("# @limits trigger_s 1..\n", "missing one of its bounds", "limits.missing-bound"),  # max dropped
@@ -207,7 +207,7 @@ def test_parse_limits_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 
 
 def test_parse_limits_real_bmp3xx_driver(src_dir: Path) -> None:
-    assert parse_limits(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx") == (
+    assert parse_limits(src_dir / "asy_bmp3xx_driver.py", "fixture", "bmp3xx") == (
         LimitField("address", frozenset({0x76, 0x77}), None, None),
         LimitField("trigger_s", None, 1, 3600),
     )
@@ -216,17 +216,45 @@ def test_parse_limits_real_bmp3xx_driver(src_dir: Path) -> None:
 def test_parse_limits_real_isl29125_driver(src_dir: Path) -> None:
     # No "address" limit, unlike bmp3xx - 0x44 is hard-wired with no address-select pin at all, so
     # this driver has no TOML-configurable address field for a @limits tag to describe.
-    assert parse_limits(src_dir / "asy_isl29125_driver.py", "dev", "isl29125") == (LimitField("trigger_s", None, 1, 3600),)
+    assert parse_limits(src_dir / "asy_isl29125_driver.py", "fixture", "isl29125") == (LimitField("trigger_s", None, 1, 3600),)
 
 
 def test_parse_limits_real_scd30_driver(src_dir: Path) -> None:
     # 1 s up to the chip's longest measurement interval (Interface Description 1.4.3): the stuck-pin fallback's bounds.
-    assert parse_limits(src_dir / "asy_scd30_driver.py", "dev", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
+    assert parse_limits(src_dir / "asy_scd30_driver.py", "fixture", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
+
+
+def _init_defaults(path: Path) -> "dict[str, list[ast.expr]]":
+    # Each parameter's default expressions over every __init__ a module defines, by parameter name.
+    defaults: dict[str, list[ast.expr]] = {}
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__":
+            positional = node.args.posonlyargs + node.args.args
+            pairs = list(zip(positional[len(positional) - len(node.args.defaults) :], node.args.defaults, strict=True))
+            pairs += [(arg, default) for arg, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True) if default is not None]
+            for arg, default in pairs:
+                defaults.setdefault(arg.arg, []).append(default)
+    return defaults
+
+
+def test_every_limited_field_defaults_inside_its_own_domain(src_dir: Path) -> None:
+    # TOML has no null: a device leaving a limited field out renders no keyword, so the constructor default stands in.
+    checked = []
+    for path in sorted(src_dir.glob("*.py")):
+        for limit in parse_limits(path, "fixture", "x"):
+            defaults = _init_defaults(path).get(limit.toml_field, [])
+            assert defaults, f"{path.name}: no __init__ defaults the limited field {limit.toml_field}"
+            for expr in defaults:
+                value = ast.literal_eval(expr)
+                in_range = (limit.min is None or value >= limit.min) and (limit.max is None or value <= limit.max)
+                assert value in limit.choices if limit.choices is not None else in_range, f"{path.name}: {limit.toml_field} defaults to {value!r}, outside its @limits domain"
+                checked.append((path.name, limit.toml_field))
+    assert {name for name, _field in checked} == {"asy_bmp3xx_driver.py", "asy_fram_manager.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}
 
 
 def _known_fram_sizes(driver: Path) -> "frozenset[int]":
     # _KNOWN_PRODUCT_IDS' keys, read without importing the MicroPython-only driver.
-    for node in ast.walk(ast.parse(driver.read_text())):
+    for node in ast.walk(ast.parse(driver.read_text(encoding="utf-8"))):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "_KNOWN_PRODUCT_IDS":
             assert isinstance(node.value, ast.Dict)
             return frozenset(ast.literal_eval(key) for key in node.value.keys if key is not None)
@@ -235,11 +263,11 @@ def _known_fram_sizes(driver: Path) -> "frozenset[int]":
 
 def test_fram_max_size_limits_match_the_known_product_ids(src_dir: Path) -> None:
     # The build-time set and the boot-time RDID table are two copies of one fact; a size in one only builds-then-fails.
-    (limit,) = parse_limits(src_dir / "asy_fram_manager.py", "dev", "fram")
+    (limit,) = parse_limits(src_dir / "asy_fram_manager.py", "fixture", "fram")
     assert limit.toml_field == "max_size"
     assert limit.choices == _known_fram_sizes(src_dir / "asy_fram_driver.py")
 
 
 def test_no_other_src_module_declares_an_unnoticed_limits_tag(src_dir: Path) -> None:
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "fixture", "x")}
     assert tagged == {"asy_bmp3xx_driver.py", "asy_fram_manager.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}

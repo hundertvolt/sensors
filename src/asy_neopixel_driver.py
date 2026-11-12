@@ -1,17 +1,16 @@
-"""Pure NeoPixel LED hardware service: overlay switch/toggle, a dimmed ramp-up/ramp-down signal, and internal
-(`request_signal()`, waits for a running signal up to a deadline) / external (`led_signal()`, refused at once while
-a signal is queued or running) arbitration for the one shared physical pixel."""
-# No config schema (owner, 2026-08-05). Also satisfies the WiFi service's LEDControl Protocol via `on()`/
-# `off()`/`toggle()`.
+"""Pure NeoPixel LED hardware service: overlay switch/toggle, a dimmed ramp-up/ramp-down signal, and one lock held by
+whatever drives the one shared pixel: an internal request (`request_signal()`) waits its turn on it, an external one
+(`led_signal()`) is refused while it is held or a request is pending (owner, 2026-10-02)."""
+# No config schema (owner, 2026-08-05), no failure path, so no error log (SPECIFICATION.md Part A.4). Also satisfies the
+# WiFi service's LEDControl Protocol via `on()`/`off()`/`toggle()`.
 
 import asyncio
-import time
 
 import neopixel
 from machine import Pin
 from micropython import const
 
-from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistory, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog
 
 try:
     from typing import TYPE_CHECKING
@@ -20,184 +19,132 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_base_classes import ErrorSource, TaskStarter, TimerStarter
-    from asy_print_log import ErrorLog
 
 _NAME = const("NEOPIXEL")
 # @tunable led.min_signal_s = 0.1
-_MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the non-finite fallback
-_MAX_SIGNAL_S = const(60.0)  # the REST ceiling of t (asy_webserver_service.py's _LIGHT_CMD_FIELDS, legacy led_cmd())
+_MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN fallback
 # @tunable led.refresh_hz = 20
 _NEOPIXEL_FREQ_HZ = const(20)
 # @tunable led.overlay_brightness = 50
 _LED_OVERL_BRI = const(50)
-# Twice the longest signal: a late frame schedule never drops a queued flash; the deadline only guards a signal task that never restarts.
-# @tunable led.signal_wait_ms = 120000
-_SIGNAL_WAIT_MS = const(120000)
-# The overlay is rewritten at least this often with no change pending: the default notification FlashInterval, so
-# about once per notification cycle (agent, 2026-10-06).
-# @tunable led.overlay_refresh_ms = 300000
-_OVERLAY_REFRESH_MS = const(300000)
-
-# One optional live cross-instance dependency (SPECIFICATION.md Parts C.14 and L.4): the FRAM store its logger writes to, passed as log=.
-# @wiring fram_target FRAMManager log optional kwarg
-
-# The value types a signal accepts; bool is listed because it is no int subclass here (SPECIFICATION.md Part F.1).
-_NUMERIC = (bool, int, float)
 
 
-def _clamp_byte(value: object) -> int:
-    if not isinstance(value, _NUMERIC):  # anything else has no byte value
-        return 0
+def _clamp_byte(value: int | float) -> int:
     try:
         return min(max(int(value), 0), 255)
-    except (OverflowError, ValueError):  # int() of +/-inf raises OverflowError, of NaN ValueError
+    except (ValueError, OverflowError):  # NaN/inf: int() raises for both
         return 0
-
-
-def _signal_values(r: object, g: object, b: object, t: object) -> list[int | float] | None:
-    # Every value a signal request carries, made safe where it enters: None refuses a non-numeric one.
-    if not (isinstance(r, _NUMERIC) and isinstance(g, _NUMERIC) and isinstance(b, _NUMERIC) and isinstance(t, _NUMERIC)):
-        return None
-    if t - t != 0 or t < _MIN_SIGNAL_S:  # inf - inf and NaN - NaN are NaN: a non-finite t takes the floor
-        dur = _MIN_SIGNAL_S
-    elif t > _MAX_SIGNAL_S:
-        dur = _MAX_SIGNAL_S
-    else:
-        dur = float(t)
-    return [_clamp_byte(r), _clamp_byte(g), _clamp_byte(b), dur]
 
 
 class NeopixelDriver:
-    def __init__(self, neopixel_pin: int, log: LogConfig = DEFAULT_LOG) -> None:
-        self.pr: PrintLogHistory = make_logger(log, _NAME)
-        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
-        # asy_webserver_service.py's registration lists key on (error_sources=).
+    def __init__(
+        self,
+        neopixel_pin: int,
+        neopixel_freq: int = _NEOPIXEL_FREQ_HZ,
+        led_overl_bri: int = _LED_OVERL_BRI,
+        log: LogConfig = DEFAULT_LOG,
+    ) -> None:
+        self.pr = PrintLog(log.debug, _NAME)  # event lines only: the console level is all it takes from log
+        self.name = _NAME
         self._pixel = neopixel.NeoPixel(Pin(neopixel_pin, Pin.OUT), 1, bpp=3)
-        self._rgbt: list[int | float] = [0, 0, 0, 0.1]
+        self._frame = [0, 0, 0]  # every write's one reused pixel value
+        self._rgbt: tuple[int, int, int, float] = (0, 0, 0, 0.1)  # the external command the signal task plays
         self._start_signal_event = asyncio.Event()
-        self._overlay_lock = asyncio.Lock()  # serialises the pixel and its write() between the overlay and a signal ramp
-        self._overlay_start = asyncio.ThreadSafeFlag()
-        self._overlay_bri = _LED_OVERL_BRI
-        self._overlay_rgb: tuple[int, int, int] = (0, 0, 0)
+        self._led_lock = asyncio.Lock()  # held by whatever drives the pixel: a ramp, its waiters queue on it in order
+        self._pending = 0  # signals taken and not yet ended, the external one included
+        self._overlay_bri = led_overl_bri
         self._overlay_on = False
-        self.neopixel_freq = _NEOPIXEL_FREQ_HZ
-        self.neopixel_dt = 1.0 / _NEOPIXEL_FREQ_HZ
+        self.neopixel_freq = neopixel_freq
+        self._frame_ms = 1000 // neopixel_freq  # the frame period as an int: every frame wait is a float-free sleep_ms()
 
-    async def _overlay_loop(self) -> None:
-        self._overlay_start.set()  # a (re)started task writes the current overlay at once
-        while True:
-            # A WS2812 has no status to read and after a power-lost reset shows only new data (datasheet, Features and
-            # General description): the periodic rewrite puts a pixel blanked by a supply dip right again.
-            try:
-                await asyncio.wait_for_ms(self._overlay_start.wait(), _OVERLAY_REFRESH_MS)
-            except asyncio.TimeoutError:
-                pass
-            async with self._overlay_lock:  # a running ramp holds it, so a rewrite never cuts into a signal
-                bri = _clamp_byte(self._overlay_bri)
-                self._overlay_rgb = (bri,) * 3 if self._overlay_on else (0, 0, 0)
-                self._pixel[0] = self._overlay_rgb
-                self._pixel.write()
+    def _set_overlay(self, *, on: bool) -> None:
+        self._overlay_on = on
+        if not self._led_lock.locked():  # else the running ramp's end restores it
+            self._put_overlay()
+
+    def _put(self, r: int, g: int, b: int) -> None:
+        frame = self._frame
+        frame[0] = r
+        frame[1] = g
+        frame[2] = b
+        self._pixel[0] = frame
+        self._pixel.write()
+
+    def _put_overlay(self) -> None:
+        bri = _clamp_byte(self._overlay_bri) if self._overlay_on else 0
+        self._put(bri, bri, bri)
+
+    async def _ramp(self, r: int, g: int, b: int, t: float) -> None:
+        # Its caller holds the lock. Up in `steps` frames, down to black, a second black, then the overlay; integer
+        # steps into the one frame, so no frame allocates.
+        self.pr.evt("Signal started.")
+        if not t >= _MIN_SIGNAL_S:  # `not >=`, not `<`: a NaN comparison is always False, so the floor kicks in
+            t = _MIN_SIGNAL_S
+        try:
+            steps = max(int(t * 0.5 * self.neopixel_freq), 1)  # one dim half; at least one step at a low rate
+        except OverflowError:  # t is +inf
+            steps = 1
+        r, g, b = _clamp_byte(r), _clamp_byte(g), _clamp_byte(b)
+        for i in range(1, 2 * steps + 1):
+            n = steps - abs(steps - i)
+            self._put(r * n // steps, g * n // steps, b * n // steps)
+            await asyncio.sleep_ms(self._frame_ms)
+        self._put(0, 0, 0)  # defined off state after signal
+        self._put_overlay()
 
     async def _signal_loop(self) -> None:
-        self._pixel[0] = (0, 0, 0)
-        self._pixel.write()
-        self._overlay_start.set()  # a restarted task leaves the overlay restored, as a ramp's end does
+        # Plays the external command led_signal() took; cancelled mid-ramp, it leaves the command pending, so a restart plays it.
+        self._put(0, 0, 0)
         while True:
             await self._start_signal_event.wait()
-            self.pr.evt("Signal started.")
-            try:
-                t = self._rgbt[3]  # ramp duration, finite and within its bounds since _signal_values()
-                steps = max(int(t * 0.5 * self.neopixel_freq), 1)  # per dim half; at least 1, so never a divide-by-zero
-                steps_inv = 1.0 / steps
-                r_s = self._rgbt[0] * steps_inv  # red
-                g_s = self._rgbt[1] * steps_inv  # green
-                b_s = self._rgbt[2] * steps_inv  # blue
-
-                async with self._overlay_lock:
-                    for n in range(1, steps + 1):
-                        self._pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
-                        self._pixel.write()
-                        await asyncio.sleep(self.neopixel_dt)
-                    for n in range(steps - 1, -1, -1):
-                        self._pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
-                        self._pixel.write()
-                        await asyncio.sleep(self.neopixel_dt)
-            finally:  # also on a cancel or failure mid-ramp: the slot freed first, then the defined off state
-                self._start_signal_event.clear()
-                self._overlay_start.set()  # restore last overlay value, written after the black frame (no await here)
-                self._pixel[0] = (0, 0, 0)
-                self._pixel.write()
+            async with self._led_lock:
+                await self._ramp(*self._rgbt)
+            self._start_signal_event.clear()
+            self._pending -= 1
 
     def get_task_starters(self) -> "list[TaskStarter]":
-        return [self.start_asy_overlay, self.start_asy_signal]
+        return [self.start_asy_signal]
 
     def get_timer_starters(self) -> "list[TimerStarter]":
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver uniformly)
 
-    def start_asy_overlay(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._overlay_loop())
-
     def start_asy_signal(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._signal_loop())
-
-    async def get_error_counter(self) -> "ErrorLog":
-        return await self.pr.get_log()
+        return asyncio.create_task(self._signal_loop())
 
     def get_error_sources(self) -> "list[ErrorSource]":
-        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as asy_base_classes.py's
-        # SensorReader.get_error_sources() - duck-typed, not inherited (no schema at all, see this
-        # module's own docstring).
-        return [self]
+        return []  # nothing it can fail at, so no /status error entry (module header)
 
-    def get_loggers(self) -> list[PrintLogHistory]:
+    def get_loggers(self) -> list[PrintLog]:
         return [self.pr]
 
     def led_signal(self, r: int, g: int, b: int, t: float) -> bool:
-        values = _signal_values(r, g, b, t)
-        if values is None:
-            return False
-        if self._start_signal_event.is_set():
+        self.pr.evt("External LED command received.")
+        if self._pending:
             self.pr.evt("External LED command refused: busy, retry later.")
             return False
-        self._rgbt = values
+        self._pending = 1
+        self._rgbt = (r, g, b, t)
         self._start_signal_event.set()
         return True
 
     def off(self) -> None:
-        self._overlay_on = False
-        self._overlay_start.set()
+        self._set_overlay(on=False)
 
     def on(self) -> None:
-        self._overlay_on = True
-        self._overlay_start.set()
+        self._set_overlay(on=True)
 
-    # Internal requests are bounded in number and rate, so one waits for a running signal, then queues; an external command is refused instead, and told to retry (owner, 2026-10-02).
+    # An internal request waits its turn on the lock, in arrival order: every ramp is finite, so every wait ends.
     async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
-        values = _signal_values(r, g, b, t)
-        if values is None:
-            return False
-        deadline = time.ticks_add(time.ticks_ms(), _SIGNAL_WAIT_MS)
-        while self._start_signal_event.is_set():
-            if time.ticks_diff(deadline, time.ticks_ms()) <= 0:
-                self.pr.evt("Internal LED command dropped: signal still busy.")
-                return False
-            await asyncio.sleep(self.neopixel_dt)
-        self._rgbt = values
-        self._start_signal_event.set()
-        return True
-
-    async def reset_error_counter(self) -> bool:
-        return await self.pr.reset()
-
-    async def setup(self) -> bool:
-        # The logger's own setup, in the boot batch before either task starts. True = ready: a logger
-        # that cannot reach its store has logged it and runs in RAM (Part C.13, as SensorReader).
-        await self.pr.setup()
+        self.pr.evt("Internal LED command received.")
+        self._pending += 1
+        try:
+            async with self._led_lock:
+                self.pr.evt("Internal LED command started.")
+                await self._ramp(r, g, b, t)
+        finally:
+            self._pending -= 1
         return True
 
     def toggle(self) -> None:
-        self._overlay_on = not self._overlay_on
-        self._overlay_start.set()
+        self._set_overlay(on=not self._overlay_on)

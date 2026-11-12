@@ -1,9 +1,11 @@
-"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six external endpoints plus connection hardening (timeouts, reject-when-full, a bounded request head).
-`ext/microdot.py` is never edited; every behavior change wraps/calls it instead (CLAUDE.md hard rule). See SPECIFICATION.md Part A.5 (Microdot layer) and A.8 (full endpoint reference) for the complete design."""
+"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six
+external endpoints plus connection hardening (timeouts, reject-when-full, a bounded request head).
+
+`ext/microdot.py` is never edited; every behavior change wraps/calls it instead (CLAUDE.md hard rule). See
+SPECIFICATION.md Part A.5 (Microdot layer) and A.8 (full endpoint reference) for the complete design."""
 
 import asyncio
 import json
-import math
 from collections import namedtuple
 
 # Typed via the vendored upstream stub (ext/typings/microdot/); firmware freezes ext/ and src/ flat together.
@@ -12,9 +14,9 @@ from microdot import Request, Response, abort, redirect, send_file
 from micropython import const
 
 import asy_api_response as ar
-from asy_base_classes import UNAVAILABLE, HourlyWindowCounter, LockedCounter
+from asy_base_classes import UNAVAILABLE, HourlyWindowCounter
 from asy_config_manager import FAILED, INVALID, VALID, checked_float, checked_int
-from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -23,7 +25,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asyncio import StreamReader, StreamWriter
-    from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+    from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping, Sequence
     from typing import NamedTuple, NoReturn, Protocol, TypeVar
 
     import asy_config_manager as cm
@@ -54,13 +56,10 @@ if TYPE_CHECKING:
         async def get_error_counter(self) -> "ErrorLog": ...
         async def reset_error_counter(self) -> bool: ...
 
-    class _Closable(Protocol):
-        # What release() closes: the static file a route opened, held for the connection's end.
-        def close(self) -> None: ...
-
-    class _ClosableStream(_Closable, Protocol):
+    class _ClosableStream(Protocol):
         # _close_writer()'s own narrower view of the stream below - exactly the two methods it
         # calls, so a writer-only object (real or test double) satisfies it without a read half.
+        def close(self) -> None: ...
         async def wait_closed(self) -> None: ...
 
     class _StreamLike(_ClosableStream, Protocol):
@@ -92,6 +91,7 @@ if TYPE_CHECKING:
 
     StatusSourceFct = Callable[[], Awaitable[JsonDict]]
     SystemCmdFct = Callable[[str], Awaitable[bool]]
+    ResetRefusalFct = Callable[[], bool]
     NotificationLedFct = Callable[[int, int, int, float], Awaitable[bool]]
     NotificationPauseFct = Callable[[int], Awaitable[bool]]
     HotspotActiveFct = Callable[[], bool]
@@ -102,13 +102,11 @@ _ERR_CALLBACK = const(14)
 _ERR_UNEXPECTED = const(23)
 _WRN_HTTP_PEER_RESET = const(48)
 _WRN_HTTP_CALL_TIMEOUT = const(49)
-_WRN_HTTP_REQUEST_CAP = const(50)
 _WRN_HTTP_SOCKET_ERROR = const(51)
 _WRN_HTTP_CLOSE_RAISED = const(52)
 _WRN_HTTP_WAIT_CLOSED = const(53)
 _WRN_HTTP_REFUSED = const(60)
 _WRN_HTTP_BAD_HEAD = const(61)
-_WRN_HTTP_START_FAILED = const(62)
 
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its FRAM
 # error-log target, resolved from [device.wiring].fram_target implicitly because this is mandatory
@@ -119,7 +117,6 @@ _WRN_HTTP_START_FAILED = const(62)
 # runs a command, so no alias, prefix or case variant does (owner, 2026-09-30). mempause's fixed 300 s lives in
 # the callback (Part A.8).
 _SYSTEM_CMDS = const(("reboot", "bootloader", "mempause", "resetconfig", "erasefram"))
-_SHUTDOWN_CMDS = const(("reboot", "bootloader", "resetconfig", "erasefram"))  # the four that end in a reset (Part A.8)
 _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
 # legacy's own pauseAutoLED command range and asy_notification_service.py's own
 # set_override_led() clamp ceiling (_MAX_OVERRIDE_TIME), kept here as its own constant (not
@@ -141,9 +138,12 @@ _LIGHT_CMD_FIELDS: "tuple[cm.FieldSchema, ...]" = (
 )
 _LED_BUSY_DESCR = const("LED busy - retry later")  # the envelope's descr when a running signal refused LightCmdLED
 _UNAVAILABLE_TEXT = '{"error":"' + UNAVAILABLE + '"}'  # a failed /status source's piece, built once at import
+_ERRCOUNT_FIRST = const('{"type": "%s", "num": %d}')  # one errcount history slot, as json.dumps() writes {"num", "type"}
+_ERRCOUNT_NEXT = const(', {"type": "%s", "num": %d}')
 
 # @tunable web.max_pending_fragments = 16
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
+_FLAT_MAX = const(4)  # a flat dump's most members and longest string: at most 224 B however escaped (owner, 2026-11-06)
 # Shipped defaults: buildgen reads each from here and passes it in ServingLimits/StaticSite.
 # @tunable web.max_content_length = 2048
 _DEFAULT_MAX_CONTENT_LENGTH = const(2048)  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
@@ -153,9 +153,9 @@ _DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pi
 # under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 _DEFAULT_MAX_CONNECTIONS = const(6)  # three below the firmware's MEMP_NUM_TCP_PCB (toolchain/versions.toml), Part H.7
 # @tunable web.per_call_timeout_s = 5.0
-_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)
+_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)  # bounds a client (owner, 2026-08-12: "never wedge indefinitely"); the number the agent's (2026-08-12)
 # @tunable web.outer_cap_s = 15.0
-_DEFAULT_OUTER_CAP_S = const(15.0)
+_DEFAULT_OUTER_CAP_S = const(15.0)  # the agent's (2026-08-12); silicon's slowest measured request, GET /status, took 2,591 ms (2026-10-29)
 _DEFAULT_STATIC_INDEX = const("index.html")
 
 # The request head's bounds, checked by the reader proxy before Microdot parses a line (SPECIFICATION.md A.5).
@@ -164,15 +164,10 @@ _MAX_HEADER_LINES = const(32)  # browsers send about 15-20 headers, curl about 4
 # @tunable web.max_head_bytes = 2048
 _MAX_HEAD_BYTES = const(2048)  # the request line and headers together: no cookie or auth header on this device
 _EPIPE = const(32)  # a refused head's errno: Microdot mutes 32 (ext/microdot.py:56-61); MicroPython's errno has no EPIPE
-# A failed start_server() is retried across one lwIP close linger (MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS, 10 s).
-# @tunable web.start_retries = 3
-_START_RETRIES = const(3)
-# @tunable web.start_retry_s = 5
-_START_RETRY_S = const(5)
 
 _ERROR_STATUSES = const((400, 404, 405, 413, 500))  # the five shaped statuses SPECIFICATION.md A.5 names; each is its own envelope code (C.5.3)
 
-# The one route table: registered in this order; buildgen reads it for the REST reference (SPECIFICATION.md A.8).
+# The webserver's route table: registered in this order; buildgen reads it for the REST reference (SPECIFICATION.md A.8).
 ROUTES = (
     ("GET", "/measurements", "_get_measurements"),
     ("GET", "/sensors", "_get_sensors"),
@@ -189,21 +184,19 @@ ROUTES = (
 
 
 def _body_as_dict(request: "_RequestLike") -> "dict[str, JsonValue] | None":
-    # None covers both a request.json access raising (malformed/undecodable JSON, matches
-    # asy_api_response.py's parse_cmd_request() precedent) and a syntactically valid but non-dict body
-    # (array/string/number/null) - both degrade to the same clean ERR envelope at the call site.
+    # None covers both a request.json access raising (malformed/undecodable JSON) and a syntactically
+    # valid but non-dict body (array/string/number/null) - both degrade to the same clean ERR envelope.
     try:
         data = request.json
-    except Exception:
+    except Exception as e:
+        report_if_fatal(e)
         return None
     return data if isinstance(data, dict) else None
 
 
 def _cfg_values(values: "Mapping[str, Mapping[str, JsonValue]]") -> "Mapping[str, JsonValue]":
     # Every module's get_dict_cfg() returns make_dict()'s {name: {field: value}}; this takes the one inner dict.
-    for inner in values.values():
-        return inner
-    return {}
+    return next(iter(values.values()))
 
 
 class _PieceWriter:
@@ -227,9 +220,11 @@ class _PieceWriter:
             self._group = [b"".join(self._group)]
 
     def add_value(self, value: object) -> None:
-        # Exactly json.dumps(value)'s text, never built as one string: dicts, lists and tuples are
-        # walked and only their keys and scalars dumped, with json.dumps()'s own ", "/": ".
-        if isinstance(value, dict):
+        # Exactly json.dumps(value)'s text, never one string past a piece: a scalar or a small flat container (_flat())
+        # is dumped whole, any other dict, list or tuple walked, only its keys and scalars dumped, with ", "/": ".
+        if not isinstance(value, (dict, list, tuple)) or _flat(value):
+            self.add(json.dumps(value))
+        elif isinstance(value, dict):
             self.add("{")
             for index, (key, item) in enumerate(value.items()):
                 # json.dumps() quotes a non-str key's own JSON text (True -> "true"), never str(key).
@@ -243,10 +238,11 @@ class _PieceWriter:
                     self.add(", ")
                 self.add_value(item)
             self.add("]")
-        elif isinstance(value, float) and not math.isfinite(value):
-            self.add("null")  # json.dumps() writes bare nan/inf, which JSON rejects (Part G.2)
-        else:
-            self.add(json.dumps(value))
+
+    async def add_value_yielding(self, value: object) -> None:
+        # One top-level value of an answer, then a yield: no answer holds the loop past its largest value (Part I.3).
+        self.add_value(value)
+        await asyncio.sleep(0)
 
     def flush(self) -> None:
         if self._group:
@@ -255,9 +251,23 @@ class _PieceWriter:
             self._size = 0
 
 
+def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
+    # The body's iterator: each piece leaves the list as it is written, so no written piece stays held (Part I.3).
+    pieces.reverse()
+    while pieces:
+        yield pieces.pop()
+
+
+def _flat(value: dict[object, object] | list[object] | tuple[object, ...]) -> bool:
+    # At most _FLAT_MAX members, all _short(), keys included.
+    if isinstance(value, dict):
+        return len(value) <= _FLAT_MAX and all(_short(key) and _short(item) for key, item in value.items())
+    return len(value) <= _FLAT_MAX and all(_short(item) for item in value)
+
+
 def _index_by_name(items: "Iterable[_Named]") -> "dict[str, _Named]":
     # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
-    # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
+    # simplest per-item loop already behaves this way; no dedup/guard code on top.
     result: dict[str, _Named] = {}
     for item in items:
         result[item.name] = item
@@ -297,24 +307,22 @@ class _HeadRefusedError(OSError):
 
 
 class _TimeoutStreamProxy:
-    # Forwards every stream method ext/microdot.py calls, each bounded by timeout_s (a plain asyncio.TimeoutError,
+    # Forwards every stream method ext/microdot.py calls, each read and write bounded by timeout_ms (asyncio.TimeoutError,
     # not an OSError subclass - Part F.1), and bounds the request head before Microdot parses it (SPECIFICATION.md A.5).
     # Microdot's read-phase catch swallows a read timeout (Part A.5), so this proxy is the only place it is observable.
     def __init__(
         self,
         stream: "_StreamLike",
-        timeout_s: float,
+        timeout_ms: int,
         pr: "PrintLogHistory",
         peer_gone: list[bool],
-        timed_out: list[bool],
         head_refused: list[bool] | None = None,
         chunk: int = _DEFAULT_CHUNK_BYTES,
     ) -> None:
         self._stream = stream
-        self._timeout_s = timeout_s
+        self._timeout_ms = timeout_ms
         self._pr = pr
         self._peer_gone = peer_gone  # shared by one connection's pair
-        self._timed_out = timed_out  # likewise: _serve() reads it
         self._head_refused = [False] if head_refused is None else head_refused  # the reader's: the writer parses no head
         self._chunk = chunk  # the largest single read, so no read allocates more than one piece
         self._head: list[bytes] | None = []  # the response's header block until its blank line
@@ -322,22 +330,14 @@ class _TimeoutStreamProxy:
         self._head_lines = 0  # the request line and headers returned so far
         self._head_bytes = 0
         self._length_seen = False
-        self._held: _Closable | None = None
-
-    async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
-        try:
-            return await asyncio.wait_for(coro, self._timeout_s)
-        except asyncio.TimeoutError:
-            self._timed_out[0] = True  # only non-read calls: a read's was logged already, below
-            raise
 
     async def _bounded_read(self, coro: "Awaitable[_T]") -> "_T":
         # Logged here, and only for reads: a write-phase timeout escapes microdot and reaches
         # _serve(), which logs it itself - logging both counted one timeout twice.
         try:
-            return await asyncio.wait_for(coro, self._timeout_s)
+            return await asyncio.wait_for_ms(coro, self._timeout_ms)
         except asyncio.TimeoutError as e:
-            await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
+            self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
             raise
         except OSError:
             # A read that saw a reset leaves the socket in STATE_PEER_RST_HANDLED with its pcb freed
@@ -347,38 +347,21 @@ class _TimeoutStreamProxy:
             raise
 
     def _check_head_line(self, line: bytes, limit: int) -> None:
-        # Refuses, before Microdot parses it, what Microdot would buffer whole or raise and print on (ext/microdot.py
-        # Request.create()); each rule is one refusal (SPECIFICATION.md A.5).
+        # Refuses, before Microdot reads it, a line or a head past its bounds, and a Content-Length that is not ASCII
+        # digits or comes twice (SPECIFICATION.md A.5); Microdot answers whatever else it cannot parse.
         self._head_bytes += len(line)
         if len(line) > limit or self._head_bytes > _MAX_HEAD_BYTES:  # one line over max_readline, or the whole head
             self._refuse()
-        try:
-            text = line.decode().strip()
-        except UnicodeError:  # not UTF-8: Microdot's own decode would raise
-            self._refuse()
-        if not text:
+        line = line.strip()
+        if not line:
             return  # the blank line ending the head, or EOF
-        first = self._head_lines == 0
         if self._head_lines <= _MAX_HEADER_LINES:  # the request line, then at most _MAX_HEADER_LINES headers
             self._head_lines += 1
         else:
             self._refuse()
-        if first:
-            try:
-                _method, _url, version = text.split()
-            except ValueError:  # Microdot unpacks the request line into exactly three tokens
-                self._refuse()
-            if "/" not in version:  # and splits the version at "/"
-                self._refuse()
-            return
-        colon = text.find(":")
-        if colon < 0:  # Microdot unpacks a header's name and value at its first ":"
-            self._refuse()
-        name = text[:colon].lower()
-        if name == "transfer-encoding":  # a body must carry a length: Microdot would read a chunked one as empty
-            self._refuse()
-        if name == "content-length":
-            if self._length_seen or not text[colon + 1 :].strip().isdigit():  # ASCII digits, once: int() takes a sign
+        name, colon, value = line.partition(b":")
+        if colon and name.lower() == b"content-length":
+            if self._length_seen or not value.strip().isdigit():  # ASCII digits, once: int() takes a sign
                 self._refuse()
             self._length_seen = True
 
@@ -390,8 +373,8 @@ class _TimeoutStreamProxy:
     def get_extra_info(self, name: str) -> object:
         return self._stream.get_extra_info(name)
 
-    async def aclose(self) -> None:
-        await self._bounded(self._stream.aclose())
+    async def aclose(self) -> None:  # aclose() and wait_closed() unbounded: neither yields at v1.29.0 (stream.py:19-21, 220)
+        await self._stream.aclose()
 
     async def awrite(self, data: bytes) -> None:
         if self._peer_gone[0]:
@@ -405,7 +388,7 @@ class _TimeoutStreamProxy:
             data = b"".join(self._head)
             self._head = None
         try:
-            await self._bounded(self._stream.awrite(data))
+            await asyncio.wait_for_ms(self._stream.awrite(data), self._timeout_ms)
         except OSError:
             # Microdot mutes ECONNRESET/EPIPE from a response write (ext/microdot.py:56-61, 689-705), so a client gone
             # mid-response is recorded here; the early return above then stops further writes.
@@ -415,9 +398,6 @@ class _TimeoutStreamProxy:
     def close(self) -> None:
         self._stream.close()
 
-    def hold(self, closable: "_Closable") -> None:
-        self._held = closable  # one object: the static file a route opened, closed by release()
-
     async def readexactly(self, n: int) -> bytes:
         # The body: what the head's reads already took first, then the rest from the stream.
         buf = self._rbuf
@@ -425,11 +405,7 @@ class _TimeoutStreamProxy:
             self._rbuf = buf[n:]
             return buf[:n]
         self._rbuf = b""
-        try:
-            rest = await self._bounded_read(self._stream.readexactly(n - len(buf)))
-        except EOFError:  # the body ended before Content-Length bytes: refused like a bad head, not printed
-            self._refuse()
-        return buf + rest
+        return buf + await self._bounded_read(self._stream.readexactly(n - len(buf)))
 
     async def readline(self) -> bytes:
         # One head line, read in pieces of at most chunk bytes and never past max_readline + 1 bytes, so no read
@@ -449,13 +425,8 @@ class _TimeoutStreamProxy:
         self._check_head_line(line, limit)
         return line
 
-    def release(self) -> None:
-        held, self._held = self._held, None  # cleared first, so a second release() closes nothing
-        if held is not None:
-            held.close()
-
     async def wait_closed(self) -> None:
-        await self._bounded(self._stream.wait_closed())
+        await self._stream.wait_closed()
 
 
 # Three config objects the generated module builds whole (every field passed): what the routes
@@ -466,6 +437,7 @@ if TYPE_CHECKING:
         settings: dict[str, Sequence[SettingsGroup]] | None
         build_info: JsonDict | None  # verbatim "build" sub-entry of GET /system (Part L.7); None omits it
         system_cmd: SystemCmdFct | None
+        reset_refusals: Sequence[ResetRefusalFct] | None  # ResetErrors clears nothing while one answers True (Part A.8)
         notification_led: NotificationLedFct | None
         notification_pause: NotificationPauseFct | None
         status_sources: dict[str, StatusSourceFct] | None
@@ -489,7 +461,7 @@ if TYPE_CHECKING:
 
 else:
     RouteSources = namedtuple("RouteSources", (
-        "sensors", "settings", "build_info", "system_cmd", "notification_led", "notification_pause",
+        "sensors", "settings", "build_info", "system_cmd", "reset_refusals", "notification_led", "notification_pause",
         "status_sources", "maintenance_sensors", "error_sources",
     ))
     ServingLimits = namedtuple("ServingLimits", (
@@ -504,13 +476,13 @@ class _StaticRoutes:
         self._site = site
         self._chunk_bytes = chunk_bytes
 
-    async def get_index(self, request: "_RequestLike") -> Response:
-        return self.serve(request, self._site.index_file)
+    async def get_index(self, _request: "_RequestLike") -> Response:
+        return self.serve(self._site.index_file)
 
-    async def get(self, request: "_RequestLike", filename: str) -> Response:
-        return self.serve(request, filename)
+    async def get(self, _request: "_RequestLike", filename: str) -> Response:
+        return self.serve(filename)
 
-    def serve(self, request: "_RequestLike", filename: str) -> Response:
+    def serve(self, filename: str) -> Response:
         if ".." in filename:
             abort(404)  # guard-clause before touching the mounted filesystem - cheap and uniform
             # even though freezefs's own VfsFrozen already refuses to escape its mount root.
@@ -523,7 +495,6 @@ class _StaticRoutes:
                 # see SPECIFICATION.md Part A.5 for the full mechanism and why no try/except is needed.
                 return redirect("/")
             abort(404)
-        request.sock[1].hold(stream)  # closed when the connection ends, a HEAD or aborted response included
         size = stream.seek(0, 2)  # sent as Content-Length: without it this HTTP/1.0 body ends only at FIN,
         stream.seek(0)  # so a write that fails after the 200 would reach the client as a complete page
         response = send_file(filename, compressed=True, stream=stream)
@@ -558,7 +529,7 @@ class WebserverService:
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (routes.settings or {}).items()}
         self._build_info = routes.build_info
         self._system_cmd = routes.system_cmd
-        self._shutdown_accepted = False  # one-way: a _SHUTDOWN_CMDS word answered "Valid", so the unit is going down
+        self._reset_refusals = tuple(routes.reset_refusals or ())
         self._notification_led = routes.notification_led
         self._notification_pause = routes.notification_pause
         self._status_sources: dict[str, StatusSourceFct] = dict(routes.status_sources or {})
@@ -567,16 +538,19 @@ class WebserverService:
         max_connections = serving.max_connections
         self._max_connections = max_connections
         self._chunk_bytes = max(serving.chunk_bytes, 1)  # a read of 0 would never end microdot's loop
-        # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
+        # Clamped rather than rejected: a
         # backlog under the ceiling resets part of a burst the ceiling admits, which reads as an
         # application bug. buildgen rejects the same mistake in config, where it can be named.
         self._backlog = max_connections + 1 if serving.backlog is None else max(serving.backlog, max_connections)
-        self._per_call_timeout_s = serving.per_call_timeout_s
-        self._outer_cap_s = serving.outer_cap_s
+        # Converted once from ServingLimits' seconds: wait_for_ms() takes whole milliseconds, where a float timeout
+        # boxes one float per stream call of every request (extmod/asyncio/core.py sleep(), SPECIFICATION.md Part I.2).
+        self._per_call_timeout_ms = round(serving.per_call_timeout_s * 1000)
+        self._outer_cap_ms = round(serving.outer_cap_s * 1000)
         self._host = serving.host
         self._port = serving.port
-        self._open_conns = LockedCounter(init_value=0)  # the shared COUNTER_CAP; a gauge bounded by the backlog
+        self._open_conns = 0  # a gauge bounded by the backlog; no step awaits, so it needs no lock
         self._dropped = HourlyWindowCounter()  # HTTPDropped: the last 24 hours in hourly bins, allocated once here
+        self._status_lock = asyncio.Lock()  # one /status build at a time (Part I.3)
         max_content_length = serving.max_content_length
 
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
@@ -641,13 +615,16 @@ class WebserverService:
             for field in group.fields:
                 if field in values:
                     result[field] = values[field]
-                elif "error" in values:  # the module's unavailable marker (Part C.6), sent in place of each field
+                elif len(values) == 1 and values.get("error") == UNAVAILABLE:  # the unavailable marker's whole shape (Part C.6), sent for each field
                     result[field] = values
         return result
 
     async def _get_status(self, _request: "_RequestLike") -> Response:
-        # Streamed like every configuration-sized route (Part I.3), its pieces built below.
-        return _pieces_response(await self._build_status_pieces())
+        # Streamed like every configuration-sized route, its pieces built below one build at a time: a build holds its
+        # pieces to its end, and concurrent builds would exhaust the heap's 256 B runs (Part I.3).
+        async with self._status_lock:
+            pieces = await self._build_status_pieces()
+        return _pieces_response(pieces)
 
     async def _get_system(self, _request: "_RequestLike") -> Response:
         result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
@@ -719,11 +696,11 @@ class WebserverService:
         except Exception as e:  # best-effort cleanup, never load-bearing - still logged (Part C.7's
             # silent-failure-masking convention) since a repeatedly-failing close() could leak TCP
             # PCBs under this platform's tiny connection ceiling with no other trace.
-            await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
-        try:
-            await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)
-        except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
-            await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
+            self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
+        try:  # unbounded: v1.29.0's Stream.wait_closed() is self.s.close(), no yield (extmod/asyncio/stream.py:19-21)
+            await writer.wait_closed()
+        except Exception as e:
+            self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
 
     async def _dispatch_notification_led(self, payload: object) -> tuple[str, bool]:
         # The word, and whether a running signal refused the command: told apart from a raising callback, both "Failed".
@@ -741,9 +718,9 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_led(r, g, b, t)
         except Exception as e:
-            await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED, False
-        # External LED commands are refused while a signal runs and told to retry; internal ones wait, bounded (owner, 2026-10-02).
+        # External LED commands are refused while the LED is busy and told to retry (owner, 2026-10-02); internal ones queue.
         return (VALID, False) if ok else (FAILED, True)
 
     async def _dispatch_notification_pause(self, payload: object) -> str:
@@ -758,7 +735,7 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_pause(pause)
         except Exception as e:
-            await self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
         return VALID if ok else FAILED
 
@@ -774,21 +751,18 @@ class WebserverService:
         # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
         # into FRAM history - never to shape the reply. The 500 status-code handler already does
         # that on its own, whether or not this one is registered (Part A.5).
-        await self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
+        self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
         return ar.make_response(500), 500
 
     async def _note_drop(self, wrnno: int, what: str) -> None:
         # One entry per event; a run of identical codes spends one history slot (print_log's newest-entry rule).
         self._dropped.add(await self._uptime_s())
-        await self.pr.wrn_s(what, wrnno=wrnno)
+        self.pr.wrn_s(what, wrnno=wrnno)
 
     def _print_exception(self, exc: BaseException) -> None:
-        # Microdot's own exception print (rebound in __init__): level-gated like every other line, except a
-        # MemoryError's text, which stays on the console so the memory gates read it (CLAUDE.md memory rule).
-        if isinstance(exc, MemoryError):
-            console(_NAME, "Microdot caught:", exc)
-        else:
-            self.pr.err("Microdot caught:", exc)
+        # Microdot's own exception print (rebound in __init__), all its request-read catch does: one level-gated line,
+        # whose entry records a C-stack overflow.
+        self.pr.err("Microdot caught:", exc)
 
     async def _put_networking(self, request: "_RequestLike") -> "ResponseEnvelope":
         body = _body_as_dict(request)
@@ -832,21 +806,18 @@ class WebserverService:
             if key != "ResetErrors" or value is not True:
                 result[key] = INVALID  # {"ResetErrors": true} is the one request (SPECIFICATION.md A.8)
                 continue
-            if self._shutdown_accepted:  # refused, nothing cleared: the logs survive into the reboot (owner, 2026-10-13)
+            if any(refused() for refused in self._reset_refusals):
+                # Refused, nothing cleared: from the system's reset decision on, so the logs survive into the reboot (owner,
+                # 2026-10-13), and while the FRAM manager's pause holds, the logs held in memory included (owner, 2026-10-13,
+                # asked "Clear nothing when ResetErrors answers Failed in mempause?": '1 b').
                 result[key] = FAILED
                 continue
-            # Every source at once, this service's own entry included (_build_status_pieces()): "`ResetErrors`
-            # resets the FRAM-backed logs concurrently rather than one after another" (owner, 2026-09-26).
-            # One store whose write failed or that raised answers the whole key "Failed"; every reset is awaited first.
-            outcomes = await asyncio.gather(*(m.reset_error_counter() for m in self._error_sources.values()), self.reset_error_counter(), return_exceptions=True)
-            result[key] = VALID
-            names = iter(self._error_sources)  # the outcomes' order; this service's own entry is the last
-            for outcome in outcomes:
-                name = next(names, _NAME)
-                if isinstance(outcome, BaseException):  # persisted after the resets, so the cleared log keeps it
-                    await self.pr.err_s("Error log reset failed:", name, outcome, errno=_ERR_CALLBACK)
-                if isinstance(outcome, BaseException) or not outcome:
-                    result[key] = FAILED
+            # One source after another, no task per source, this service's own entry last (owner, 2026-11-07). One store
+            # whose write failed answers "Failed"; a raise reaches the catch-all (500).
+            ok = True
+            for module in self._error_sources.values():
+                ok = await module.reset_error_counter() and ok
+            result[key] = VALID if await self.reset_error_counter() and ok else FAILED
         return ar.make_response(0, result=result)
 
     async def _put_system(self, request: "_RequestLike") -> "ResponseEnvelope":
@@ -866,101 +837,98 @@ class WebserverService:
             # persisted errno instead of escaping through the route handler.
             ok = await self._system_cmd(name)
         except Exception as e:
-            await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
-        if ok and name in _SHUTDOWN_CMDS:  # set before this task yields: no request runs between the acceptance and here
-            self._shutdown_accepted = True
         return VALID if ok else FAILED
 
     async def _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:
-        current = await self._open_conns.increment()
-        if current > self._max_connections:
-            # Reject-when-full (owner, 2026-08-12; SPEC A.8): accepted by asyncio, then closed with no response ever
-            # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
-            await self._open_conns.decrement()
-            try:
-                await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
-            finally:  # a trace that cannot be written still closes the refused connection
-                await self._close_writer(writer)
-            return
+        counted = False  # this connection still holds its count, which the finally releases once
         try:
-            peer_gone = [False]
-            timed_out = [False]
-            head_refused = [False]
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone, timed_out)
-            logged = False  # an arm below persisted this connection's one entry, so no drop trace follows it (C.7)
             try:
-                # The stub types the streams as CPython's StreamReader/StreamWriter; MicroPython's one duck-typed Stream, which the
-                # proxy stands in for, is neither - removal trigger: SPECIFICATION.md B.15.
-                await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)  # type: ignore[arg-type]
+                self._open_conns += 1
+                current = self._open_conns
+                counted = True
+                if current > self._max_connections:
+                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): its slot freed, closed with no response written. Every entry
+                    # is written inside its call, which never suspends (agent, 2026-11-07), so nothing waits on FRAM (owner, 2026-11-07: option B).
+                    self._open_conns -= 1
+                    counted = False
+                    await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
+                    return
+                peer_gone = [False]
+                head_refused = [False]
+                proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_ms, self.pr, peer_gone, head_refused, self._chunk_bytes)
+                proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_ms, self.pr, peer_gone)
+                try:
+                    # The stub types the streams as CPython's StreamReader/StreamWriter; MicroPython's one duck-typed Stream, which the
+                    # proxy stands in for, is neither - removal trigger: SPECIFICATION.md B.15.
+                    await asyncio.wait_for_ms(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_ms)  # type: ignore[arg-type]
+                except asyncio.CancelledError:
+                    raise  # never swallow a genuine task cancellation
+                except asyncio.TimeoutError as e:
+                    # Either the outer wait_for_ms() above (bounds a Slowloris-paced client no per-call
+                    # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
+                    # read-phase one logged inside the proxy, and microdot swallowed it.
+                    self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
+                except OSError as e:  # a socket error Microdot does not mute (e.g. EHOSTUNREACH on a response
+                    # write); the resets it mutes end in peer_gone instead, traced below.
+                    self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
+                except Exception as e:  # a fault the request raised (SPECIFICATION.md A.5)
+                    self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
+                else:  # no arm traced this connection's one entry, so a drop trace may (C.7)
+                    if head_refused[0]:
+                        await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
+                    elif peer_gone[0]:
+                        await self._note_drop(_WRN_HTTP_PEER_RESET, "Connection reset by the peer before or during its response")
             except asyncio.CancelledError:
                 raise  # never swallow a genuine task cancellation
-            except asyncio.TimeoutError as e:
-                # Either the outer wait_for() above (bounds a Slowloris-paced client no per-call
-                # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
-                # read-phase one logged inside the proxy, and microdot swallowed it.
-                await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP)
-                logged = True
-            except OSError as e:  # a socket error Microdot does not mute (e.g. EHOSTUNREACH on a response
-                # write); the resets it mutes end in peer_gone instead, traced below.
-                await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
-                logged = True
-            except Exception as e:  # never raises out of this task (SPECIFICATION.md A.5)
-                await self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
-                logged = True
-            finally:
-                proxy_writer.release()  # a held static stream closes once, whatever ended the response
-            if not logged:
-                if head_refused[0]:
-                    await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
-                elif peer_gone[0]:
-                    await self._note_drop(_WRN_HTTP_PEER_RESET, "Connection reset by the peer before or during its response")
+            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a
+                # proxy, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)
+                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, the decrement cannot raise
+                self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)
         finally:
             try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
                 await self._close_writer(writer)
             finally:  # and a slot skipped here would be lost until reboot
-                await self._open_conns.decrement()
+                if counted:
+                    self._open_conns -= 1
 
     async def _serve_loop(self) -> None:
-        # backlog is explicit, never MicroPython's own default of 5 (extmod/asyncio/stream.py):
-        # inherited, a burst of a raised max_connections would be reset past its fifth arrival.
-        attempt = 0
-        while True:
-            try:
-                # The stub splits MicroPython's one Stream into StreamReader/StreamWriter (extmod/asyncio/stream.py:92-93
-                # aliases both to Stream); remove the ignore once the stub models the one class.
-                server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)  # type: ignore[arg-type]
-                break
-            except (MemoryError, OSError) as e:
-                attempt += 1
-                if attempt >= _START_RETRIES:
-                    await self.pr.wrn_s("Web server start failed:", e, wrnno=_WRN_HTTP_START_FAILED)
-                    raise
-                self.pr.wrn("Web server start failed, retrying:", e)
-                # Retries span one lwIP close linger (10 s): a socket() failure holds nothing; a failed bind()/listen()
-                # holds its pcb until a collection, up to two across the retries. The last failure ends the task (A.5).
-                await asyncio.sleep(_START_RETRY_S)
+        # backlog is explicit, never MicroPython's default of 5 (extmod/asyncio/stream.py): inherited, a burst of a
+        # raised max_connections would be reset past its fifth arrival. A failed start raises; the supervisor retries.
+        # The ignore: the stub splits the one Stream into StreamReader/StreamWriter (stream.py:92-93); drop it then.
+        server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)  # type: ignore[arg-type]
         await server.wait_closed()
 
     async def _write_errcount_entry(self, writer: _PieceWriter, get_log_fct: "Callable[[], Awaitable[ErrorLog]]", name: str) -> None:
         try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
+            self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
-        writer.add_value(_shape_errcount_entry(raw, name))
+        # One fragment per history slot, the bytes json.dumps() gives the {"counter", "history"} entry, in MicroPython's own
+        # key order on every port (Part I.3).
+        entry = raw.get(name)
+        if entry is None:  # a module that never logged reads as an empty ring
+            writer.add('{"history": [], "counter": 0}')
+        else:
+            nums, kinds, count = entry["ErrNum"], entry["ErrType"], entry["ErrCount"]
+            writer.add('{"history": [')
+            for i in range(len(nums)):
+                writer.add((_ERRCOUNT_NEXT if i else _ERRCOUNT_FIRST) % (kinds[i], nums[i]))
+            writer.add(f'], "counter": {count}}}')
+        await asyncio.sleep(0)
 
     async def _write_guarded(self, writer: _PieceWriter, fct: "StatusSourceFct", name: str) -> None:
         try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
             # one failing source discard every other section's already-fetched data.
             value = await fct()
         except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
+            self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
-        writer.add_value(value)
+        await writer.add_value_yielding(value)
 
     async def _write_status_source(self, writer: _PieceWriter, key: str) -> None:
         source = self._status_sources.get(key)
@@ -978,8 +946,7 @@ class WebserverService:
         return []  # No machine.Timer in this module: kept empty, not omitted, so callers treat every module alike (SPECIFICATION.md C.9).
 
     def start_asy_serve(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._serve_loop())
+        return asyncio.create_task(self._serve_loop())
 
     # -- getters -----------------------------------------------------------
 
@@ -1005,9 +972,8 @@ class WebserverService:
         self._dropped.reset()  # ResetErrors clears the drop window too (owner, 2026-10-01)
         return await self.pr.reset()
 
-    async def setup(self) -> bool:
+    async def setup(self) -> None:
         await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task
-        return True
 
 
 def _pieces_response(pieces: list[bytes]) -> Response:
@@ -1017,23 +983,9 @@ def _pieces_response(pieces: list[bytes]) -> Response:
     return Response(
         # The vendored stub types body as str | bytes (microdot.pyi:165), yet Microdot streams a sync
         # iterator (ext/microdot.py:734). Remove the ignore when the stub accepts one (warn_unused_ignores).
-        iter(pieces),  # type: ignore[arg-type]
+        _drained(pieces),  # type: ignore[arg-type]
         headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in pieces))},
     )
-
-
-def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "JsonDict":
-    entry = raw.get(name)
-    if entry is None:  # module never logged anything - the same empty shape the old {} default produced
-        return {"counter": 0, "history": []}
-    err_num = entry.get("ErrNum", [])
-    err_type = entry.get("ErrType", [])
-    return {
-        "counter": entry.get("ErrCount", 0),
-        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905 - MicroPython zip() rejects strict=, ErrEntry keeps both lists in step
-        # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only) - see
-        # src/asy_fram_manager.py's identical precedent.
-    }
 
 
 def _shaped_error_handler(status_code: int) -> "Callable[[object], tuple[ResponseEnvelope, int]]":
@@ -1041,6 +993,11 @@ def _shaped_error_handler(status_code: int) -> "Callable[[object], tuple[Respons
         return ar.make_response(status_code), status_code
 
     return handler
+
+
+def _short(item: object) -> bool:
+    # A scalar, and a string one at most _FLAT_MAX characters.
+    return not isinstance(item, (dict, list, tuple)) and not (isinstance(item, str) and len(item) > _FLAT_MAX)
 
 
 async def _stream_dict_response(result: "Mapping[str, object]", chunk_bytes: int) -> Response:
@@ -1052,7 +1009,7 @@ async def _stream_dict_response(result: "Mapping[str, object]", chunk_bytes: int
     writer.add("{")
     for index, (key, value) in enumerate(result.items()):
         writer.add(("," if index else "") + json.dumps(key) + ":")
-        writer.add_value(value)
+        await writer.add_value_yielding(value)
     writer.add("}")
     writer.flush()
     return _pieces_response(pieces)

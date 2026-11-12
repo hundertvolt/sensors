@@ -1,0 +1,4 @@
+cov	a	test_sensortask[wozi]	24.52	45.438	23.709	0.809	0	mem=0	91/91 passed, 0 failed, 0 skipped
+cov	b	test_sensortask[wozi]	25.85	47.924	24.795	1.058	0	mem=0	91/91 passed, 0 failed, 0 skipped
+cov	a	test_sensortask[dev]	32.62	64.101	31.311	1.305	0	mem=0	91/91 passed, 0 failed, 0 skipped
+cov	b	test_sensortask[dev]	32.98	66.503	31.626	1.359	0	mem=0	91/91 passed, 0 failed, 0 skipped

@@ -1,0 +1,6 @@
+.........                                                                [100%]
+============================= slowest 3 durations ==============================
+4.77s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_bench_tier_deselects_exactly_its_persistence_writers_by_default
+0.93s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_flash_tier_gates_its_config_writing_reboot_tests_too
+0.39s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest
+9 passed in 7.95s

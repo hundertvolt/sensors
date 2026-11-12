@@ -75,9 +75,9 @@ And on 2026-10-08:
   - lint and all three typecheck passes;
   - `scripts/test.sh` at both GC stages: 96 files, 4,984 MicroPython tests, zero memory errors;
   - the full `tests_scripts/` tier: 4,275 tests passed, 11 skipped;
-  - the `dev` twin suite, Run 12 included (the client against a real mosquitto: kill, stall, takeover,
-    flood, the will, a persistent session across a restart, the keep-alive the ping interval sets, pings
-    off, the retire): 372 of 372 checks across both stages;
+  - the `dev` twin suite, Run 12 (Run 14 since the audit merge) included (the client against a real
+    mosquitto: kill, stall, takeover, flood, the will, a persistent session across a restart, the keep-alive
+    the ping interval sets, pings off, the retire): 372 of 372 checks across both stages;
   - `npm test` under the `.nvmrc` Node 24, the website's settings matrix with it: 1,367 passed, 8 skipped.
 - **CI**: 26 of 27 checks passed on `46671ce`. The 27th, `Unit tests (shipped gc.threshold)`, failed one test each in
   `tests/test_digital_twin_sensortask_integration.py` (wozi only) and `tests/test_digital_twin_isl29125_autorange.py`:
@@ -100,7 +100,7 @@ And on 2026-10-08:
 
 ### 1.4 The client in brief
 
-`mqtt_poc/DESIGN.md` is the full design; SPECIFICATION.md Part A.11 its permanent form.
+`mqtt_poc/DESIGN.md` is the full design; SPECIFICATION.md Part A.12 its permanent form.
 
 - **Files**:
   - `src/mqtt_codec.py`: MQTT 3.1.1 packets.
@@ -129,9 +129,10 @@ And on 2026-10-08:
   - `<base>/status`: retained `online`, and `offline` as the will and before a reconfiguring DISCONNECT;
   - `<base>/measurements/<NAME>`: one JSON object per sensor;
   - `<base>/cmd/#`: inbound, counted.
-- **Error log `MQTT`** (FRAM-backed, like `CFGMGR_MQTT`): E 115 `MQTT_DNS`, 116 `MQTT_CONNECT`, 117
+- **Error log `MQTT`** (FRAM-backed, like `CFGMGR_MQTT`): E 116 `MQTT_CONNECT`, 117
   `MQTT_REFUSED`, 118 `MQTT_PROTOCOL`, 119 `MQTT_NO_PINGRESP`, 120 `MQTT_LOST`, 121 `MQTT_STALLED`,
-  122 `MQTT_SUB_REFUSED`; W 82 `MQTT_SHORT_SESSIONS`.
+  122 `MQTT_SUB_REFUSED`, 123 `MQTT_DNS` (E 115 until the audit merge gave 115 to `SYSTEM`); W 82
+  `MQTT_SHORT_SESSIONS`.
 - **What else changed on `dev`**:
   - `max_connections` 6 → 5;
   - FRAM chunks `MQTT` and `CFGMGR_MQTT` ahead of `WEBSERVER`'s;
@@ -150,8 +151,8 @@ The owner, 2026-10-08:
 
 What that became on this branch:
 - **Write permission per settings group.** Each `@pytest.mark.persistence_write(...)` names the groups its
-  write lands in (`networking/mqtt`, `sensors/SCD30`, ...). `--allow-persistence-writes-to GROUP` runs only
-  the writers whose every group is given. The global `--allow-persistence-writes` stays for the later full
+  write lands in (`networking/mqtt`, `sensors/SCD30`, ...). `--allow-persistence-write-to GROUP` runs only
+  the writers whose every group is given. The global `--allow-persistence-write` stays for the later full
   run, and the runner refuses it alongside a scope.
 - **A run scope.** `scripts/run_bench_hardware_suite.sh --scope mqtt` runs the lower levels, then only what
   `tests_hardware/run_scopes.py` lists, each entry with the reason the branch reaches it. That is 3 flash
@@ -224,8 +225,8 @@ CLAUDE.md is the authority; these are the rules this run meets.
 - **FRAM logs before anything clears them**, and know what ran against the board before reading them as
   evidence: a flash-tier script builds its own FRAM manager over the chip.
 - **Only `dev` is flashed**, once per session.
-- **Only the scoped writes**: `--allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`.
-  Leave out `--allow-persistence-writes`, `--allow-scd30-extra-write` and `--allow-flash-cycle`.
+- **Only the scoped writes**: `--allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`.
+  Leave out `--allow-persistence-write`, `--allow-scd30-extra-write` and `--allow-flash-cycle`.
 - **No credential in the repository**: the scrub in section 7.
 - **A failure is root-caused, never written off as a flake**; no test is skipped, disabled or edited to pass.
 - **Decision records**: a decision written down names its actor and date, and an owner decision quotes the
@@ -292,12 +293,12 @@ CLAUDE.md is the authority; these are the rules this run meets.
 
 ```bash
 scripts/run_bench_hardware_suite.sh --scope mqtt \
-    --allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig \
+    --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig \
     2>&1 | tee "$HOME/mqtt_bench_console.log"; echo "runner exit ${PIPESTATUS[0]}"
 ```
 
 **The lower levels run first** and touch no board: `scripts/test.sh` at both GC stages, `npm test`, and the
-twin suite for every device. On the Pi4 this likely takes hours (an estimate). A failure there stops the run
+twin suite for one device per hardware family, `dev` among them. On the Pi4 this likely takes hours (an estimate). A failure there stops the run
 before the board (section 6).
 
 **The flash step: 3 tests.**
@@ -380,7 +381,7 @@ that ran passed, but the rest of both tiers did not run. Exit 1 is a failure. On
      - `scripts/run_digital_twin_ci.sh dev`;
      - a test that fails without the fix.
   4. Then rerun that part of the scope: `uv run pytest <node id>` with the same
-     `--allow-persistence-writes-to=...`, then the whole scope again before reporting.
+     `--allow-persistence-write-to=...`, then the whole scope again before reporting.
   5. If the cause is unclear or the fix is a design change, stop and bring it to the owner with the
      evidence.
 - **The board stops answering after a reset.** The tests already recover from this once themselves (a
@@ -420,23 +421,24 @@ One directory per run, committed on this branch: `mqtt_poc/bench_results/<YYYY-M
 ## 8. What to measure
 
 The tests write each value into the run record as a `result_note`: in `bench_step/run_record.json`, and in
-the summary block's notes. Each settles a SPECIFICATION.md Part N row that still reads "measurement owed".
+the summary block's notes. Each settles a SPECIFICATION.md Part N row that still reads "measurement owed"; the
+test's own waits and bounds are plain literals in it, as Part N's rule keeps a single test's (owner, 2026-11-04).
 
 | Test (in `test_mqtt_broker_faults.py`) | Note | Part N rows |
 |---|---|---|
 | `test_the_client_connects_and_announces_itself_online` | time to connected | `mqtt.connect_timeout_ms`, `mqtt.response_timeout_ms` |
 | `test_every_sensor_publishes_strict_json_on_its_own_topic` | largest payload | `mqtt.out_payload_max` |
-| `test_a_killed_broker_is_reconnected_after_its_restart` | reconnect after the restart | `mqtt.backoff_min_ms`, `l4.mqtt_connect_wait_s` |
-| `test_a_stalled_broker_is_detected_by_the_pingresp_deadline` | detection, reconnect | `mqtt.response_timeout_ms`, `l4.mqtt_detect_bound_s` |
-| `test_a_silent_path_loss_is_detected_and_recovered` | detection, reconnect | `mqtt.response_timeout_ms`, `l4.mqtt_detect_bound_s` |
-| `test_stall_detection_follows_the_publish_rounds` | each offset's detection time | `mqtt.response_timeout_ms`, `l4.mqtt_stall_phase_tolerance_s` |
-| `test_a_duplicate_client_id_is_bounded_by_the_backoff` | retakes against the duplicate | `mqtt.stable_after_ms`, `mqtt.short_session_warn`, `l4.mqtt_takeover_max_connects` |
-| `test_an_inbound_flood_leaves_rest_serving_and_the_session_up` | messages taken, `GET /status` latency | `l4.mqtt_flood_messages`, `l4.mqtt_rest_budget_s` |
-| `test_an_inbound_qos1_burst_is_acknowledged_in_full` | burst time | `mqtt.qos1_retry_ms`, `l4.mqtt_detect_wait_s` |
+| `test_a_killed_broker_is_reconnected_after_its_restart` | reconnect after the restart | `mqtt.backoff_min_ms` |
+| `test_a_stalled_broker_is_detected_by_the_pingresp_deadline` | detection, reconnect | `mqtt.response_timeout_ms` |
+| `test_a_silent_path_loss_is_detected_and_recovered` | detection, reconnect | `mqtt.response_timeout_ms` |
+| `test_stall_detection_follows_the_publish_rounds` | each offset's detection time | `mqtt.response_timeout_ms` |
+| `test_a_duplicate_client_id_is_bounded_by_the_backoff` | retakes against the duplicate | `mqtt.stable_after_ms`, `mqtt.short_session_warn` |
+| `test_an_inbound_flood_leaves_rest_serving_and_the_session_up` | messages taken, `GET /status` latency | none: the test's own bounds |
+| `test_an_inbound_qos1_burst_is_acknowledged_in_full` | burst time | `mqtt.qos1_retry_ms` |
 | `test_the_broker_is_found_by_the_bench_hosts_local_name` | resolved address, connect time | none: the `.local` path itself |
-| `test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link` | reconnect, failed attempts | `l4.mqtt_ap_reconnect_timeout_s`, `l4.mqtt_ap_max_failed_attempts` |
-| `test_a_reboot_reconnects_from_the_stored_settings` | connected after the reset | `l4.mqtt_reboot_wait_s` |
-| `test_the_broker_faults_run_clean_at_micropythons_default_gc` | timeline, every free-heap sample and the collects between them (at the reactive default the lowest sample is no margin) | `l4.mqtt_at_default_gc_window_s`, `l4.mqtt_default_gc_script_timeout_s` |
+| `test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link` | reconnect, failed attempts | none: the test's own bounds |
+| `test_a_reboot_reconnects_from_the_stored_settings` | connected after the reset | none: the test's own bounds |
+| `test_the_broker_faults_run_clean_at_micropythons_default_gc` | timeline, every free-heap sample and the collects between them (at the reactive default the lowest sample is no margin) | none: the test's own bounds |
 
 Record the heap tests' notes beside them (the connection wall, the serving sweep, the hammer load): they are
 the first figures with the client resident. The bench session records; it does not retune.
@@ -467,6 +469,6 @@ stall.
 | The MQTT bench module, its device script, the host broker helper | `tests_hardware/bench/test_mqtt_broker_faults.py`, `tests_hardware/device_scripts/mqtt_at_default_gc.py`, `tests_hardware/mqtt_probe.py` |
 | The scope and the write groups | `tests_hardware/run_scopes.py`, `tests_hardware/persistence_groups.py`, `tests_hardware/conftest.py` |
 | The runner | `scripts/run_bench_hardware_suite.sh` (`--scope`) |
-| The twin's MQTT run | `scripts/_digital_twin_ci_suite.py` (Run 12) |
+| The twin's MQTT run | `scripts/_digital_twin_ci_suite.py` (Run 14) |
 | The bench tier's reference | `tests_hardware/README.md` |
-| The rules | `CLAUDE.md`; SPECIFICATION.md Parts A.11, E.6, N |
+| The rules | `CLAUDE.md`; SPECIFICATION.md Parts A.12, E.6, N |

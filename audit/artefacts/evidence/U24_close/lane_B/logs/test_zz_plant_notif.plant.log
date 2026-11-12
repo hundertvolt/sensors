@@ -1,0 +1,16 @@
+.Fsss                                                                    [100%]
+=================================== FAILURES ===================================
+__________ test_a_real_device_wires_a_notification_and_a_warn_signal ___________
+
+    def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:
+        # The floor of the per-device notification checks: none of them may pass by running on no device.
+>       assert _NOTIFICATION_DEVICES, "no device declares a notification, so the notification checks below run on nothing"
+E       AssertionError: no device declares a notification, so the notification checks below run on nothing
+E       assert []
+
+tests_scripts/test_zz_plant_notif.py:334: AssertionError
+=========================== short test summary info ============================
+SKIPPED [1] tests_scripts/test_zz_plant_notif.py:338: got empty parameter set for (device)
+SKIPPED [1] tests_scripts/test_zz_plant_notif.py:493: got empty parameter set for (device)
+SKIPPED [1] tests_scripts/test_zz_plant_notif.py:726: got empty parameter set for (device)
+1 failed, 1 passed, 3 skipped, 379 deselected in 0.58s

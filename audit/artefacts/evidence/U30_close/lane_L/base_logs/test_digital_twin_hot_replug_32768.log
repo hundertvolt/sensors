@@ -1,0 +1,3 @@
+PASS test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step
+PASS test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot
+2/2 passed, 0 failed, 0 skipped

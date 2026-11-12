@@ -1,0 +1,11 @@
+U34 lane A: README's licence bullet says what the file holds
+
+The THIRD_PARTY_LICENSES.md bullet claimed one area "where a specific source couldn't be
+established"; the file names a source for each of those files. It now lists what the file holds,
+by kind, plus the image and website section and the AI disclosure, and states the arduino/
+exclusion with the owner's words as THIRD_PARTY_LICENSES.md quotes them (no meaning change to
+that decision). The list adds the ISL29125 driver and the aiodns credit, which the file also
+holds. The README map itself is unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

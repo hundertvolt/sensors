@@ -1,0 +1,340 @@
+{
+ "tests_hardware/device_scripts/float_boundary_2pow24.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_bus_electrical_timing.py: test_single_precision_float_boundary_at_2pow24: failure: AssertionError: 2**24 + 1 came back as 16777217, expected 2**24 (round to even on a 24-bit mantissa)"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_bus_electrical_timing.py: test_single_precision_float_boundary_at_2pow24: failure: AssertionError: 2**24 + 1 came back as 16777217, expected 2**24 (round to even on a 24-bit mantissa)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_bus_concurrency.py: test_fram_cs_pin_hijack_fault_injection_and_recovery: failure: AssertionError: the hijacked write reached the chip although CS was deasserted first: {'raised': None, 'readback_ok': False, 'recovered': True, 'seeded': True, 'injected': True}"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_bus_concurrency.py: test_fram_cs_pin_hijack_fault_injection_and_recovery: failure: AssertionError: the hijacked write reached the chip although CS was deasserted first: {'raised': None, 'readback_ok': False, 'recovered': True, 'seeded': True, 'injected': True}"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_write_protect_roundtrip.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_fram_storage.py: test_write_protection_actually_gates_a_real_write_and_a_real_read: failure: AssertionError: write protection: data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d; facts {'setup': True, 'allocated': True, 'blocked_write': True, 'blocked_read': True, 'data_survived': False, 'left_protected': False, 'cleared_last': True, 'failure': 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d'}"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_fram_storage.py: test_write_protection_actually_gates_a_real_write_and_a_real_read: failure: AssertionError: write protection: data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d; facts {'setup': True, 'allocated': True, 'blocked_write': True, 'blocked_read': True, 'data_survived': False, 'left_protected': False, 'cleared_last': True, 'failure': 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d'}"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_memory_stress.py: test_real_gc_heap_headroom_survives_a_full_system_build: failure: AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 1137440 B, over 100000 B; facts {'heap_baseline': {'alloc': 728896, 'largest_block': 196608, 'free': 15854272}, 'heap_after_build_system': {'alloc': 1137440, 'largest_block': 196608, 'free': 15445696}, 'heap_after_build_system_control': {'alloc': 1137056, 'largest_block': 196608, 'free': 15446208}, 'heap_after_build_system_production_threshold': {'alloc': 1136992, 'largest_block': 196608, 'free': 15446304}, 'used': 1137440, 'max_used': 100000, 'largest_block': 196608, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_memory_stress.py: test_real_gc_heap_headroom_survives_a_full_system_build: failure: AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 1138016 B, over 100000 B; facts {'heap_baseline': {'alloc': 729472, 'largest_block': 196608, 'free': 15853696}, 'heap_after_build_system': {'alloc': 1138016, 'largest_block': 196608, 'free': 15445120}, 'heap_after_build_system_control': {'alloc': 1137632, 'largest_block': 196608, 'free': 15445632}, 'heap_after_build_system_production_threshold': {'alloc': 1137568, 'largest_block': 196608, 'free': 15445728}, 'used': 1138016, 'max_used': 100000, 'largest_block': 196608, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py": {
+  "-1": [],
+  "32768": [
+   "run by tests_hardware/flash/test_heap_layout.py: test_the_live_arm_keeps_the_boot_survivors_under_the_high_band: failure: AssertionError: with the boot's placement collects live, 55 new blocks sit above the high band, over the twin's 32"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_under_connection_ceiling.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of heap_under_connection_ceiling.py timed out after 60.0s"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of heap_under_connection_ceiling.py timed out after 60.0s"
+  ]
+ },
+ "tests_hardware/device_scripts/i2c_held_sda_recovery.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_bus_concurrency.py: test_a_held_sda_line_is_cleared_and_every_device_answers: failure: AssertionError: the bit-banged read left SDA high - no held line was made: {'held': False, 'answered': {'bmp3xx': None}, 'status': 0, 'stuck_errno': None, 'clear_ms': 0}"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_bus_concurrency.py: test_a_held_sda_line_is_cleared_and_every_device_answers: failure: AssertionError: the bit-banged read left SDA high - no held line was made: {'held': False, 'answered': {'bmp3xx': None}, 'status': 0, 'stuck_errno': None, 'clear_ms': 0}"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_lighting_scenarios.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_sensor_accuracy.py: test_isl29125_survives_recombined_realistic_lighting_scenarios: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_sensor_accuracy.py: test_isl29125_survives_recombined_realistic_lighting_scenarios: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_mechanism_envelope.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_sensor_accuracy.py: test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_sensor_accuracy.py: test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_real_irq_edge.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_bus_concurrency.py: test_isl29125_real_irq_edge_beats_the_periodic_fallback: failure: AssertionError: no reading within 6000 ms (periodic fallback 30 s) - the INT line does not reach its pin"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_bus_concurrency.py: test_isl29125_real_irq_edge_beats_the_periodic_fallback: failure: AssertionError: no reading within 6000 ms (periodic fallback 30 s) - the INT line does not reach its pin"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_watchdog_starvation.py: test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: failure: harness.HardwareTestFailureError: twin run of reboot_fallback_starves_the_watchdog.py timed out after 20.0s"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_watchdog_starvation.py: test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: failure: harness.HardwareTestFailureError: twin run of reboot_fallback_starves_the_watchdog.py timed out after 20.0s"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_command_incomplete.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of reset_code_command_incomplete.py at gc.threshold(-1) starved the watchdog:\nFACT answer=\"Valid\"\nFACT raised_at=256\nFACT no_reset_after_ms=16000\nDONE\ndigital_twin/run_device_script.py: the watchdog would have reset the board 2 time(s)\n"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of reset_code_command_incomplete.py at gc.threshold(32768) starved the watchdog:\nFACT answer=\"Valid\"\nFACT raised_at=256\nFACT no_reset_after_ms=16000\nDONE\ndigital_twin/run_device_script.py: the watchdog would have reset the board 2 time(s)\n"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_invalid_record.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of reset_code_invalid_record.py at gc.threshold(-1) failed (exit 3):\nFACT state=\"invalid\"\nFACT invalid_record=[305419896, 0, 0]\nRESET NOW\ndigital_twin/run_device_script.py: machine reset: kind=reset\n"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of reset_code_invalid_record.py at gc.threshold(32768) failed (exit 3):\nFACT state=\"invalid\"\nFACT invalid_record=[305419896, 0, 0]\nRESET NOW\ndigital_twin/run_device_script.py: machine reset: kind=reset\n"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_loop_end.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of reset_code_loop_end.py at gc.threshold(-1) failed (exit 1):\nTraceback (most recent call last):\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/digital_twin/run_device_script.py\", line 130, in main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_loop_end.py\", line 62, in <module>\nImportError: no module named 'main'\n"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of reset_code_loop_end.py at gc.threshold(32768) failed (exit 1):\nTraceback (most recent call last):\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/digital_twin/run_device_script.py\", line 130, in main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_loop_end.py\", line 62, in <module>\nImportError: no module named 'main'\n"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_stack_exhausted.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of reset_code_stack_exhausted.py at gc.threshold(-1) failed (exit 3):\nFACT reader=\"scd30\"\nUNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved\nTraceback (most recent call last):\n  File \"asyncio/core.py\", line 1, in run_until_complete\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 102, in read_loop\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scrat"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of reset_code_stack_exhausted.py at gc.threshold(32768) failed (exit 3):\nFACT reader=\"scd30\"\nUNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved\nTraceback (most recent call last):\n  File \"asyncio/core.py\", line 1, in run_until_complete\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 102, in read_loop\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/reset_code_stack_exhausted.py\", line 94, in _deep\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/sc"
+  ]
+ },
+ "tests_hardware/device_scripts/scheduler_saturation_drop.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_bus_electrical_timing.py: test_soft_timer_callback_drop_self_heals_under_scheduler_saturation: failure: AssertionError: a timer never fired again after the drop: busy [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], heal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_bus_electrical_timing.py: test_soft_timer_callback_drop_self_heals_under_scheduler_saturation: failure: AssertionError: a timer never fired again after the drop: busy [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], heal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"
+  ]
+ },
+ "tests_hardware/device_scripts/serving_at_default_gc.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of serving_at_default_gc.py timed out after 60.0s"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of serving_at_default_gc.py timed out after 60.0s"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_sample_cadence.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_sensor_accuracy.py: test_sgp40_sample_cadence: skipped: a fixed 600 s run of the whole task graph - run scripts/run_bench_soak_tests.sh --duration short"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_sensor_accuracy.py: test_sgp40_sample_cadence: skipped: a fixed 600 s run of the whole task graph - run scripts/run_bench_soak_tests.sh --duration short"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_hang.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_system_commands.py: test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:",
+   "run by tests_hardware/flash/test_system_commands.py: test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_system_commands.py: test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(32768) starved the watchdog:",
+   "run by tests_hardware/flash/test_system_commands.py: test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(32768) starved the watchdog:"
+  ]
+ },
+ "tests_hardware/device_scripts/system_debug_level_set_standard.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of system_debug_level_set_standard.py at gc.threshold(-1) failed (exit 1):\nFACT valid=true\nFACT before=0\nTraceback (most recent call last):\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/digital_twin/run_device_script.py\", line 130, in main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/system_debug_level_set_standard.py\", line 108, in <module>\n  File \"asyncio/core.py\", line 1, in run\n  File \"asyncio/core.py\", line 1, in run_until_complete\n  File \"asyncio/core.py\", line 1, in run_until_complete\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/system_debug_level_set_standard.py\", line 100, in _main\nKeyError: standard_debug_level\n"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of system_debug_level_set_standard.py at gc.threshold(32768) failed (exit 1):\nFACT valid=true\nFACT before=0\nTraceback (most recent call last):\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/digital_twin/run_device_script.py\", line 130, in main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/system_debug_level_set_standard.py\", line 108, in <module>\n  File \"asyncio/core.py\", line 1, in run\n  File \"asyncio/core.py\", line 1, in run_until_complete\n  File \"asyncio/core.py\", line 1, in run_until_complete\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/system_debug_level_set_standard.py\", line 100, in _main\nKeyError: standard_debug_level\n"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_break_mid_frame_fails_that_transaction_only[none]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(-1) failed (exit 1):",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_break_mid_frame_fails_that_transaction_only[crc16]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(-1) failed (exit 1):",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_real_config_write_during_traffic_loses_no_frame[none]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 87, 'frames_intact': 0, 'flush_us': 104, 'uartrsr_oe': False, 'streamed': False}",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_real_config_write_during_traffic_loses_no_frame[crc16]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 84, 'frames_intact': 0, 'flush_us': 142, 'uartrsr_oe': False, 'streamed': False}",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_no_frame_is_lost_while_interrupts_are_off[none]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_no_frame_is_lost_while_interrupts_are_off[crc16]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_break_mid_frame_fails_that_transaction_only[none]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(32768) failed (exit 1):",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_break_mid_frame_fails_that_transaction_only[crc16]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(32768) failed (exit 1):",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_real_config_write_during_traffic_loses_no_frame[none]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 87, 'frames_intact': 0, 'flush_us': 141, 'uartrsr_oe': False, 'streamed': False}",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_real_config_write_during_traffic_loses_no_frame[crc16]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 84, 'frames_intact': 0, 'flush_us': 146, 'uartrsr_oe': False, 'streamed': False}",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_no_frame_is_lost_while_interrupts_are_off[none]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML",
+   "run by tests_hardware/flash/test_uart_crossover.py: test_no_frame_is_lost_while_interrupts_are_off[crc16]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_uart_crossover.py: test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving: failure: AssertionError: the unclamped control read took only 12 us - the measurement is not exercising the stall"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_uart_crossover.py: test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving: failure: AssertionError: the unclamped control read took only 12 us - the measurement is not exercising the stall"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py": {
+  "-1": [
+   "HardwareTestFailureError: twin run of uart_link_echo_under_serving_load.py timed out after 60.0s"
+  ],
+  "32768": [
+   "HardwareTestFailureError: twin run of uart_link_echo_under_serving_load.py timed out after 60.0s"
+  ]
+ },
+ "tests_hardware/device_scripts/watchdog_starvation_reset.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_watchdog_starvation.py: test_watchdog_starvation_triggers_a_real_hardware_reset: failure: harness.HardwareTestFailureError: twin run of watchdog_starvation_reset.py timed out after 15.0s"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_watchdog_starvation.py: test_watchdog_starvation_triggers_a_real_hardware_reset: failure: harness.HardwareTestFailureError: twin run of watchdog_starvation_reset.py timed out after 15.0s"
+  ]
+ },
+ "tests_hardware/device_scripts/wifi_country_code_reaction.py": {
+  "-1": [
+   "run by tests_hardware/flash/test_bus_electrical_timing.py: test_a_malformed_country_code_reaction_is_recorded: failure: harness.HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(-1) failed (exit 1):"
+  ],
+  "32768": [
+   "run by tests_hardware/flash/test_bus_electrical_timing.py: test_a_malformed_country_code_reaction_is_recorded: failure: harness.HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(32768) failed (exit 1):"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py": {
+  "-1": [
+   "test_isl29125_real_irq_edge_beats_the_periodic_fallback: failure: AssertionError: no reading within 6000 ms (periodic fallback 30 s) - the INT line does not reach its pin",
+   "test_a_held_sda_line_is_cleared_and_every_device_answers: failure: AssertionError: the bit-banged read left SDA high - no held line was made: {'held': False, 'answered': {'bmp3xx': None}, 'status': 0, 'stuck_errno': None, 'clear_ms': 0}",
+   "test_fram_cs_pin_hijack_fault_injection_and_recovery: failure: AssertionError: the hijacked write reached the chip although CS was deasserted first: {'raised': None, 'readback_ok': False, 'recovered': True, 'seeded': True, 'injected': True}"
+  ],
+  "32768": [
+   "test_isl29125_real_irq_edge_beats_the_periodic_fallback: failure: AssertionError: no reading within 6000 ms (periodic fallback 30 s) - the INT line does not reach its pin",
+   "test_a_held_sda_line_is_cleared_and_every_device_answers: failure: AssertionError: the bit-banged read left SDA high - no held line was made: {'held': False, 'answered': {'bmp3xx': None}, 'status': 0, 'stuck_errno': None, 'clear_ms': 0}",
+   "test_fram_cs_pin_hijack_fault_injection_and_recovery: failure: AssertionError: the hijacked write reached the chip although CS was deasserted first: {'raised': None, 'readback_ok': False, 'recovered': True, 'seeded': True, 'injected': True}"
+  ]
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py": {
+  "-1": [
+   "test_soft_timer_callback_drop_self_heals_under_scheduler_saturation: failure: AssertionError: a timer never fired again after the drop: busy [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], heal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+   "test_single_precision_float_boundary_at_2pow24: failure: AssertionError: 2**24 + 1 came back as 16777217, expected 2**24 (round to even on a 24-bit mantissa)",
+   "test_a_malformed_country_code_reaction_is_recorded: failure: harness.HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(-1) failed (exit 1):",
+   "test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout: skipped: real SCD30 clock stretches come about once a day - run scripts/run_bench_soak_tests.sh --duration {short,mid,long} to watch for one"
+  ],
+  "32768": [
+   "test_soft_timer_callback_drop_self_heals_under_scheduler_saturation: failure: AssertionError: a timer never fired again after the drop: busy [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], heal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+   "test_single_precision_float_boundary_at_2pow24: failure: AssertionError: 2**24 + 1 came back as 16777217, expected 2**24 (round to even on a 24-bit mantissa)",
+   "test_a_malformed_country_code_reaction_is_recorded: failure: harness.HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(32768) failed (exit 1):",
+   "test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout: skipped: real SCD30 clock stretches come about once a day - run scripts/run_bench_soak_tests.sh --duration {short,mid,long} to watch for one"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py": {
+  "-1": [
+   "test_write_protection_actually_gates_a_real_write_and_a_real_read: failure: AssertionError: write protection: data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d; facts {'setup': True, 'allocated': True, 'blocked_write': True, 'blocked_read': True, 'data_survived': False, 'left_protected': False, 'cleared_last': True, 'failure': 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d'}"
+  ],
+  "32768": [
+   "test_write_protection_actually_gates_a_real_write_and_a_real_read: failure: AssertionError: write protection: data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d; facts {'setup': True, 'allocated': True, 'blocked_write': True, 'blocked_read': True, 'data_survived': False, 'left_protected': False, 'cleared_last': True, 'failure': 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d'}"
+  ]
+ },
+ "tests_hardware/flash/test_heap_layout.py": {
+  "-1": [],
+  "32768": [
+   "test_the_live_arm_keeps_the_boot_survivors_under_the_high_band: failure: AssertionError: with the boot's placement collects live, 55 new blocks sit above the high band, over the twin's 32"
+  ]
+ },
+ "tests_hardware/flash/test_memory_stress.py": {
+  "-1": [
+   "test_real_gc_heap_headroom_survives_a_full_system_build: failure: AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 1137440 B, over 100000 B; facts {'heap_baseline': {'alloc': 728896, 'largest_block': 196608, 'free': 15854272}, 'heap_after_build_system': {'alloc': 1137440, 'largest_block': 196608, 'free': 15445696}, 'heap_after_build_system_control': {'alloc': 1137056, 'largest_block': 196608, 'free': 15446208}, 'heap_after_build_system_production_threshold': {'alloc': 1136992, 'largest_block': 196608, 'free': 15446304}, 'used': 1137440, 'max_used': 100000, 'largest_block': 196608, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}",
+   "test_single_core_timing_headroom_holds_under_normal_full_task_load: skipped: passive soak over one named duration - run via scripts/run_bench_soak_tests.sh --duration {short,mid,long}"
+  ],
+  "32768": [
+   "test_real_gc_heap_headroom_survives_a_full_system_build: failure: AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 1138016 B, over 100000 B; facts {'heap_baseline': {'alloc': 729472, 'largest_block': 196608, 'free': 15853696}, 'heap_after_build_system': {'alloc': 1138016, 'largest_block': 196608, 'free': 15445120}, 'heap_after_build_system_control': {'alloc': 1137632, 'largest_block': 196608, 'free': 15445632}, 'heap_after_build_system_production_threshold': {'alloc': 1137568, 'largest_block': 196608, 'free': 15445728}, 'used': 1138016, 'max_used': 100000, 'largest_block': 196608, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}",
+   "test_single_core_timing_headroom_holds_under_normal_full_task_load: skipped: passive soak over one named duration - run via scripts/run_bench_soak_tests.sh --duration {short,mid,long}"
+  ]
+ },
+ "tests_hardware/flash/test_reboot_persistence.py": {
+  "-1": [
+   "test_boot_import_mechanism_actually_boots_the_real_system: failure: TimeoutError: no boot line (config is ready / FRAM SPI FRAM Driver Setup complete) within 20.0s - the board needs DebugLevel >= 3 for it (the standard state holds 5); log tail: ['FACT valid=true', 'FACT marker=424242', 'FACT expected=424242', 'DONE']"
+  ],
+  "32768": [
+   "test_boot_import_mechanism_actually_boots_the_real_system: failure: TimeoutError: no boot line (config is ready / FRAM SPI FRAM Driver Setup complete) within 20.0s - the board needs DebugLevel >= 3 for it (the standard state holds 5); log tail: ['FACT valid=true', 'FACT marker=424242', 'FACT expected=424242', 'DONE']"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py": {
+  "-1": [
+   "test_sgp40_sample_cadence: skipped: a fixed 600 s run of the whole task graph - run scripts/run_bench_soak_tests.sh --duration short",
+   "test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)",
+   "test_isl29125_survives_recombined_realistic_lighting_scenarios: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)"
+  ],
+  "32768": [
+   "test_sgp40_sample_cadence: skipped: a fixed 600 s run of the whole task graph - run scripts/run_bench_soak_tests.sh --duration short",
+   "test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)",
+   "test_isl29125_survives_recombined_realistic_lighting_scenarios: skipped: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)"
+  ]
+ },
+ "tests_hardware/flash/test_system_commands.py": {
+  "-1": [
+   "test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:",
+   "test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:"
+  ],
+  "32768": [
+   "test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(32768) starved the watchdog:",
+   "test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: failure: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(32768) starved the watchdog:"
+  ]
+ },
+ "tests_hardware/flash/test_toolchain_flash_boot.py": {
+  "-1": [
+   "test_env_tier_flash_recurring_run_is_idempotent: skipped: a full toolchain re-verification: network fetches and ~8 min of builds; pass --allow-toolchain-reverify",
+   "test_real_uf2_reflash_and_boot_smoke_test: skipped: this IS a real flash cycle - pass --allow-flash-cycle to deliberately run it"
+  ],
+  "32768": [
+   "test_env_tier_flash_recurring_run_is_idempotent: skipped: a full toolchain re-verification: network fetches and ~8 min of builds; pass --allow-toolchain-reverify",
+   "test_real_uf2_reflash_and_boot_smoke_test: skipped: this IS a real flash cycle - pass --allow-flash-cycle to deliberately run it"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py": {
+  "-1": [
+   "test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving: failure: AssertionError: the unclamped control read took only 12 us - the measurement is not exercising the stall",
+   "test_no_frame_is_lost_while_interrupts_are_off[none]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML",
+   "test_no_frame_is_lost_while_interrupts_are_off[crc16]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML",
+   "test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "test_a_break_mid_frame_fails_that_transaction_only[none]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(-1) failed (exit 1):",
+   "test_a_break_mid_frame_fails_that_transaction_only[crc16]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(-1) failed (exit 1):",
+   "test_a_real_config_write_during_traffic_loses_no_frame[none]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 87, 'frames_intact': 0, 'flush_us': 104, 'uartrsr_oe': False, 'streamed': False}",
+   "test_a_real_config_write_during_traffic_loses_no_frame[crc16]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 84, 'frames_intact': 0, 'flush_us': 142, 'uartrsr_oe': False, 'streamed': False}"
+  ],
+  "32768": [
+   "test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving: failure: AssertionError: the unclamped control read took only 12 us - the measurement is not exercising the stall",
+   "test_no_frame_is_lost_while_interrupts_are_off[none]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML",
+   "test_no_frame_is_lost_while_interrupts_are_off[crc16]: failure: Failed: the bench TOML's rx_ring 512 B cannot hold the 400 ms flash window (4608 B at 115200 baud): size it in the device TOML",
+   "test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: failure: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]",
+   "test_a_break_mid_frame_fails_that_transaction_only[none]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(32768) failed (exit 1):",
+   "test_a_break_mid_frame_fails_that_transaction_only[crc16]: failure: harness.HardwareTestFailureError: twin run of uart_dma_ring_interrupts_off.py at gc.threshold(32768) failed (exit 1):",
+   "test_a_real_config_write_during_traffic_loses_no_frame[none]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 87, 'frames_intact': 0, 'flush_us': 141, 'uartrsr_oe': False, 'streamed': False}",
+   "test_a_real_config_write_during_traffic_loses_no_frame[crc16]: failure: AssertionError: a frame was lost across a real flash write: {'frames_sent': 84, 'frames_intact': 0, 'flush_us': 146, 'uartrsr_oe': False, 'streamed': False}"
+  ]
+ },
+ "tests_hardware/flash/test_watchdog_starvation.py": {
+  "-1": [
+   "test_watchdog_starvation_triggers_a_real_hardware_reset: failure: harness.HardwareTestFailureError: twin run of watchdog_starvation_reset.py timed out after 15.0s",
+   "test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: failure: harness.HardwareTestFailureError: twin run of reboot_fallback_starves_the_watchdog.py timed out after 20.0s"
+  ],
+  "32768": [
+   "test_watchdog_starvation_triggers_a_real_hardware_reset: failure: harness.HardwareTestFailureError: twin run of watchdog_starvation_reset.py timed out after 15.0s",
+   "test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: failure: harness.HardwareTestFailureError: twin run of reboot_fallback_starves_the_watchdog.py timed out after 20.0s"
+  ]
+ }
+}

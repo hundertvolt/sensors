@@ -1,0 +1,43 @@
+stage=-1 leak=0 X01F crc -1 300 [2336, 2144, 2144]
+stage=-1 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=-1 leak=0 X01F nocrc -1 300 [2336, 2144, 2144]
+stage=-1 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=-1 leak=0 X01C crc -1 300 0
+stage=-1 leak=0 X01C nocrc -1 300 0
+stage=-1 leak=0 X01F crc -1 0 [2336, 2144, 2144]
+stage=-1 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=-1 leak=0 X01F nocrc -1 0 [2336, 2144, 2144]
+stage=-1 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=-1 leak=0 X01C crc -1 0 0
+stage=-1 leak=0 X01C nocrc -1 0 0
+stage=-1 leak=0 4/8 passed, 4 failed, 0 skipped
+stage=32768 leak=0 X01F crc 32768 300 [2336, 2144, 2144]
+stage=32768 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=32768 leak=0 X01F nocrc 32768 300 [2336, 2144, 2144]
+stage=32768 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=32768 leak=0 X01C crc 32768 300 0
+stage=32768 leak=0 X01C nocrc 32768 300 0
+stage=32768 leak=0 X01F crc 32768 0 [2336, 2144, 2144]
+stage=32768 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=32768 leak=0 X01F nocrc 32768 0 [2336, 2144, 2144]
+stage=32768 leak=0 AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+stage=32768 leak=0 X01C crc 32768 0 0
+stage=32768 leak=0 X01C nocrc 32768 0 0
+stage=32768 leak=0 4/8 passed, 4 failed, 0 skipped
+stage=-1 leak=8 X01F crc -1 300 [4544, 4576, 4064]
+stage=-1 leak=8 AssertionError: [4544, 4576, 4064] bytes over 30 failures a window = 135.5 B/failure at the least
+stage=-1 leak=8 X01F nocrc -1 300 [4256, 4064, 4064]
+stage=-1 leak=8 AssertionError: [4256, 4064, 4064] bytes over 30 failures a window = 135.5 B/failure at the least
+stage=-1 leak=8 X01C crc -1 300 6336
+stage=-1 leak=8 AssertionError: 6336 bytes over 99 transactions = 64.00 B/transaction
+stage=-1 leak=8 X01C nocrc -1 300 10432
+stage=-1 leak=8 AssertionError: 10432 bytes over 99 transactions = 105.37 B/transaction
+stage=-1 leak=8 X01F crc -1 0 [4256, 4064, 4064]
+stage=-1 leak=8 AssertionError: [4256, 4064, 4064] bytes over 30 failures a window = 135.5 B/failure at the least
+stage=-1 leak=8 X01F nocrc -1 0 [4256, 4064, 4064]
+stage=-1 leak=8 AssertionError: [4256, 4064, 4064] bytes over 30 failures a window = 135.5 B/failure at the least
+stage=-1 leak=8 X01C crc -1 0 6336
+stage=-1 leak=8 AssertionError: 6336 bytes over 99 transactions = 64.00 B/transaction
+stage=-1 leak=8 X01C nocrc -1 0 14528
+stage=-1 leak=8 AssertionError: 14528 bytes over 99 transactions = 146.75 B/transaction
+stage=-1 leak=8 0/8 passed, 8 failed, 0 skipped

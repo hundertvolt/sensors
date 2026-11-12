@@ -1,0 +1,173 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh
+
+ ✓ |chromium| tests_js/live-backend-put-matrix.test.js (116 tests | 2 skipped) 266645ms
+   ✓ live PUT matrix on arzi (76)
+     ✓ live PUT sensors/SCD30/TempOffset (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 2748ms
+       ✓ rejects -0.5 (out of range): real render stays at the field's own current value 2676ms
+       ✓ rejects 655.85 (out of range): real render stays at the field's own current value 2607ms
+       ✓ accepts a fractional literal for this float-typed field, rendered correctly 2684ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 2669ms
+       ✓ accepts 327.68 (a valid value distributed across the range), rendered correctly 2625ms
+       ✓ accepts 655.35 (a valid value distributed across the range), rendered correctly 2567ms
+     ✓ live PUT sensors/SCD30/SelfCal (toggle) (2)
+       ✓ resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) 1312ms
+       ✓ flipping to the opposite state renders Valid with the new state actually shown 2618ms
+     ✓ live PUT sensors/SCD30/FRCWindow (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 2254ms
+       ✓ rejects 19 (out of range): real render stays at the field's own current value 2178ms
+       ✓ rejects 3601 (out of range): real render stays at the field's own current value 2235ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 2190ms
+       ✓ accepts 20 (a valid value distributed across the range), rendered correctly 2479ms
+       ✓ accepts 1810 (a valid value distributed across the range), rendered correctly 2469ms
+       ✓ accepts 3600 (a valid value distributed across the range), rendered correctly 2510ms
+     ✓ live PUT sensors/SGP40/WaitTimeNTP (number) (8)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 2170ms
+       ✓ rejects -1 (out of range): real render stays at the field's own current value 2321ms
+       ✓ rejects 601 (out of range): real render stays at the field's own current value 2259ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 2287ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 2457ms
+       ✓ accepts 300 (a valid value distributed across the range), rendered correctly 2493ms
+       ✓ accepts 600 (a valid value distributed across the range), rendered correctly 2498ms
+       ✓ accepts the declared special value 0 ("Never wait for NTP sync"), rendered correctly 2470ms
+     ✓ live PUT networking/identity/Country (string) (4)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 1512ms
+       ✓ rejects a too-short string: real render stays at the field's own current value 1738ms
+       ✓ rejects a too-long string: real render stays at the field's own current value 1451ms
+       ✓ accepts a 2-char string (a valid value distributed across the length range), rendered correctly 1668ms
+     ✓ live PUT networking/wifiLed/LEDWifiOn (toggle) (2)
+       ✓ resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) 722ms
+       ✓ flipping to the opposite state renders Valid with the new state actually shown 1776ms
+     ✓ live PUT networking/ntp/NTPInterval (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 1394ms
+       ✓ rejects 0 (out of range): real render stays at the field's own current value 1490ms
+       ✓ rejects 25 (out of range): real render stays at the field's own current value 1467ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 1457ms
+       ✓ accepts 1 (a valid value distributed across the range), rendered correctly 1673ms
+       ✓ accepts 13 (a valid value distributed across the range), rendered correctly 1650ms
+       ✓ accepts 24 (a valid value distributed across the range), rendered correctly 1698ms
+     ✓ live PUT system/settings/GMTOffset (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 467ms
+       ✓ rejects -43201 (out of range): real render stays at the field's own current value 533ms
+       ✓ rejects 43201 (out of range): real render stays at the field's own current value 517ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 493ms
+       ✓ accepts -43200 (a valid value distributed across the range), rendered correctly 700ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 752ms
+       ✓ accepts 43200 (a valid value distributed across the range), rendered correctly 698ms
+     ✓ live PUT notification/autoConfig/OnH (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 1425ms
+       ✓ rejects -1 (out of range): real render stays at the field's own current value 1448ms
+       ✓ rejects 24 (out of range): real render stays at the field's own current value 1406ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 1473ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 2038ms
+       ✓ accepts 12 (a valid value distributed across the range), rendered correctly 1882ms
+       ✓ accepts 23 (a valid value distributed across the range), rendered correctly 1685ms
+     ✓ live PUT notification/autoConfig/OffM (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 1414ms
+       ✓ rejects -1 (out of range): real render stays at the field's own current value 1452ms
+       ✓ rejects 60 (out of range): real render stays at the field's own current value 1464ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 1456ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 1378ms
+       ✓ accepts 30 (a valid value distributed across the range), rendered correctly 1652ms
+       ✓ accepts 59 (a valid value distributed across the range), rendered correctly 1788ms
+     ✓ live PUT notification/autoConfig/FlashDur (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 1460ms
+       ✓ rejects 0 (out of range): real render stays at the field's own current value 1452ms
+       ✓ rejects 10.5 (out of range): real render stays at the field's own current value 1487ms
+       ✓ accepts a fractional literal for this float-typed field, rendered correctly 1661ms
+       ✓ accepts 0.5 (a valid value distributed across the range), rendered correctly 1682ms
+       ✓ accepts 5.25 (a valid value distributed across the range), rendered correctly 1623ms
+       ✓ accepts 10 (a valid value distributed across the range), rendered correctly 1697ms
+     ✓ live PUT notification/autoConfig/WarnHum (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 1419ms
+       ✓ rejects -1 (out of range): real render stays at the field's own current value 1488ms
+       ✓ rejects 101 (out of range): real render stays at the field's own current value 1411ms
+       ✓ accepts a fractional literal for this float-typed field, rendered correctly 1652ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 1944ms
+       ✓ accepts 50 (a valid value distributed across the range), rendered correctly 1704ms
+       ✓ accepts 100 (a valid value distributed across the range), rendered correctly 1679ms
+     ✓ live PUT sensors/SCD30/AmbPres (never Unchanged) (1)
+       ✓ two identical valid sends both answer Valid 3714ms
+     ✓ live PUT sensors/SGP40/ResetVOC (never Unchanged) (1)
+       ✓ two identical valid sends both answer Valid 2767ms
+     ✓ live action status/resetErrors/ResetErrors (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 3645ms
+     ✓ live action system/command/SystemCmd (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 304ms
+   ✓ live PUT matrix on dev (35)
+     ✓ live PUT sensors/BMP3XX/TempOvers (enum) (7)
+       ✓ resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) 1638ms
+       ✓ selecting option 2 renders Valid with that option actually shown selected 2679ms
+       ✓ selecting option 4 renders Valid with that option actually shown selected 2716ms
+       ✓ selecting option 8 renders Valid with that option actually shown selected 2588ms
+       ✓ selecting option 16 renders Valid with that option actually shown selected 2697ms
+       ✓ selecting option 32 renders Valid with that option actually shown selected 2766ms
+     ✓ live PUT sensors/BMP3XX/TempOffset (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 2384ms
+       ✓ rejects -11 (out of range): real render stays at the field's own current value 2403ms
+       ✓ rejects 11 (out of range): real render stays at the field's own current value 2527ms
+       ✓ accepts a fractional literal for this float-typed field, rendered correctly 2885ms
+       ✓ accepts -10 (a valid value distributed across the range), rendered correctly 2713ms
+       ✓ accepts 0 (a valid value distributed across the range), rendered correctly 2785ms
+       ✓ accepts 10 (a valid value distributed across the range), rendered correctly 2704ms
+     ✓ live PUT sensors/ISL29125/SampleInterval (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 2415ms
+       ✓ rejects 0 (out of range): real render stays at the field's own current value 2459ms
+       ✓ rejects 3601 (out of range): real render stays at the field's own current value 2464ms
+       ✓ rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated 2466ms
+       ✓ accepts 1 (a valid value distributed across the range), rendered correctly 2463ms
+       ✓ accepts 1801 (a valid value distributed across the range), rendered correctly 2628ms
+       ✓ accepts 3600 (a valid value distributed across the range), rendered correctly 2722ms
+     ✓ live PUT sensors/ISL29125/Range (enum) (3)
+       ✓ resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) 1429ms
+       ✓ selecting option 375 renders Valid with that option actually shown selected 2759ms
+       ✓ selecting option 10000 renders Valid with that option actually shown selected 2689ms
+     ✓ live PUT sensors/ISL29125/IRCompOffset (enum) (3)
+       ✓ resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) 1509ms
+       ✓ selecting option 1 renders Valid with that option actually shown selected 2911ms
+     ✓ live PUT sensors/ISL29125/GainRatio (number) (7)
+       ✓ resubmitting the field's own current value renders it, answered Unchanged 2400ms
+       ✓ rejects 19 (out of range): real render stays at the field's own current value 2509ms
+       ✓ rejects 35 (out of range): real render stays at the field's own current value 2481ms
+       ✓ accepts a fractional literal for this float-typed field, rendered correctly 2843ms
+       ✓ accepts 20 (a valid value distributed across the range), rendered correctly 2673ms
+       ✓ accepts 27 (a valid value distributed across the range), rendered correctly 2588ms
+       ✓ accepts 34 (a valid value distributed across the range), rendered correctly 2723ms
+     ✓ live action notification/pause/PauseTime (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 4712ms
+   ✓ live PUT matrix on grkizi (1)
+     ✓ live action notification/flash/LightCmdLED (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 3416ms
+   ✓ live PUT matrix on klkizi (2)
+     ✓ live action status/resetErrors/ResetErrors (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 3663ms
+     ✓ live action system/command/SystemCmd (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 319ms
+   ✓ live PUT matrix on schlafzi (1)
+     ✓ live action notification/pause/PauseTime (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 3629ms
+   ✓ live PUT matrix on wozi (1)
+     ✓ live action notification/flash/LightCmdLED (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 3492ms
+
+ Test Files  1 passed (1)
+      Tests  114 passed | 2 skipped (116)
+   Start at  05:55:05
+   Duration  268.02s (tests 100%)
+
+== Summary: npm test ==
+Commit: 1042ee1 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 114 · failed 0 · skipped 2 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped:
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 1 renders Valid with that option actually shown selected: the current option: the resubmit probe covers it
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompOffset (enum) > selecting option 0 renders Valid with that option actually shown selected: the current option: the resubmit probe covers it
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

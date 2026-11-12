@@ -1,0 +1,128 @@
+FFFF......FF..........FF                                                 [100%]
+=================================== FAILURES ===================================
+__________________ test_a_new_enough_python3_passes_silently ___________________
+
+    def test_a_new_enough_python3_passes_silently() -> None:
+        done = _require(f"{Path(sys.executable).parent}:/usr/bin:/bin")
+>       assert (done.returncode, done.stdout, done.stderr) == (0, "checked\n", "")
+E       AssertionError: assert (1, '', 'scri... directory\n') == (0, 'checked\n', '')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_require_python.py:83: AssertionError
+_____ test_a_3_10_python3_fails_naming_the_caller_the_version_and_the_fix ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9778/test_a_3_10_python3_fails_nami0')
+
+    def test_a_3_10_python3_fails_naming_the_caller_the_version_and_the_fix(tmp_path: Path) -> None:
+        bin_dir, calls = _stub_bin(tmp_path)
+        done = _require(str(bin_dir))
+        assert (done.returncode, done.stdout) == (1, ""), done
+>       assert done.stderr.strip() == "error: scripts/caller.sh needs python3 >= 3.11 (tomllib, datetime.UTC) - the python3 on PATH is 3.10; fix: activate the uv venv (uv sync) or put a newer python3 first on PATH"
+E       AssertionError: assert 'scripts/call... or directory' == 'error: scrip...first on PATH'
+E         
+E         - error: scripts/caller.sh needs python3 >= 3.11 (tomllib, datetime.UTC) - the python3 on PATH is 3.10; fix: activate the uv venv (uv sync) or put a newer python3 first on PATH
+E         + scripts/caller.sh: line 2: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_require_python.sh: No such file or directory
+
+tests_scripts/test_require_python.py:90: AssertionError
+__________________ test_no_python3_on_path_fails_naming_that ___________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9778/test_no_python3_on_path_fails_0')
+
+    def test_no_python3_on_path_fails_naming_that(tmp_path: Path) -> None:
+        empty = tmp_path / "empty_bin"
+        empty.mkdir()
+        done = _require(str(empty))
+        assert (done.returncode, done.stdout) == (1, ""), done
+>       assert done.stderr.strip() == "error: scripts/caller.sh needs python3 >= 3.11 (tomllib, datetime.UTC) - no python3 is on PATH; fix: activate the uv venv (uv sync) or put a newer python3 first on PATH"
+E       AssertionError: assert 'scripts/call... or directory' == 'error: scrip...first on PATH'
+E         
+E         - error: scripts/caller.sh needs python3 >= 3.11 (tomllib, datetime.UTC) - no python3 is on PATH; fix: activate the uv venv (uv sync) or put a newer python3 first on PATH
+E         + scripts/caller.sh: line 2: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_require_python.sh: No such file or directory
+
+tests_scripts/test_require_python.py:99: AssertionError
+_________________ test_the_library_refuses_to_run_as_a_script __________________
+
+    def test_the_library_refuses_to_run_as_a_script() -> None:
+        done = subprocess.run(["/bin/bash", str(_LIB)], capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
+>       assert (done.returncode, done.stderr.strip()) == (2, "error: source scripts/_require_python.sh, do not run it")
+E       AssertionError: assert (127, '/bin/b...or directory') == (2, 'error: s...o not run it')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_require_python.py:104: AssertionError
+_ test_every_bare_python3_comes_after_the_version_check[scripts/build_frozen_html.sh] _
+
+script = 'scripts/build_frozen_html.sh'
+
+    @pytest.mark.parametrize("script", sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("*.sh") if p != _LIB))
+    def test_every_bare_python3_comes_after_the_version_check(script: str) -> None:
+        text = (REPO_ROOT / script).read_text(encoding="utf-8")
+        checks = _check_lines(text)
+        unchecked = [line for line in _bare_python3_lines(text) if not any(check < line for check in checks)]
+>       assert not unchecked, f"{script} runs a bare python3 at line(s) {unchecked} before any require_python311 (source scripts/_require_python.sh)"
+E       AssertionError: scripts/build_frozen_html.sh runs a bare python3 at line(s) [44] before any require_python311 (source scripts/_require_python.sh)
+E       assert not [44]
+
+tests_scripts/test_require_python.py:126: AssertionError
+_ test_every_bare_python3_comes_after_the_version_check[scripts/build_website.sh] _
+
+script = 'scripts/build_website.sh'
+
+    @pytest.mark.parametrize("script", sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("*.sh") if p != _LIB))
+    def test_every_bare_python3_comes_after_the_version_check(script: str) -> None:
+        text = (REPO_ROOT / script).read_text(encoding="utf-8")
+        checks = _check_lines(text)
+        unchecked = [line for line in _bare_python3_lines(text) if not any(check < line for check in checks)]
+>       assert not unchecked, f"{script} runs a bare python3 at line(s) {unchecked} before any require_python311 (source scripts/_require_python.sh)"
+E       AssertionError: scripts/build_website.sh runs a bare python3 at line(s) [45, 48, 52] before any require_python311 (source scripts/_require_python.sh)
+E       assert not [45, 48, 52]
+
+tests_scripts/test_require_python.py:126: AssertionError
+_ test_every_bare_python3_comes_after_the_version_check[scripts/typecheck.sh] __
+
+script = 'scripts/typecheck.sh'
+
+    @pytest.mark.parametrize("script", sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("*.sh") if p != _LIB))
+    def test_every_bare_python3_comes_after_the_version_check(script: str) -> None:
+        text = (REPO_ROOT / script).read_text(encoding="utf-8")
+        checks = _check_lines(text)
+        unchecked = [line for line in _bare_python3_lines(text) if not any(check < line for check in checks)]
+>       assert not unchecked, f"{script} runs a bare python3 at line(s) {unchecked} before any require_python311 (source scripts/_require_python.sh)"
+E       AssertionError: scripts/typecheck.sh runs a bare python3 at line(s) [41] before any require_python311 (source scripts/_require_python.sh)
+E       assert not [41]
+
+tests_scripts/test_require_python.py:126: AssertionError
+____ test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9778/test_build_frozen_html_stops_o0')
+
+    def test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything(tmp_path: Path) -> None:
+        root = tmp_path / "repo"
+        shutil.copytree(REPO_ROOT / "scripts", root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+        source = tmp_path / "site"
+        source.mkdir()
+        (source / "index.html").write_text("<!doctype html>\n", encoding="utf-8")
+        out = tmp_path / "out" / "frozen_html.py"
+        bin_dir, calls = _stub_bin(tmp_path)
+        env = {"PATH": str(bin_dir), "HOME": str(tmp_path), "HTML_SRC_DIRS": str(source)}
+        done = subprocess.run([str(bin_dir / "bash"), str(root / "scripts" / "build_frozen_html.sh"), str(out)], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
+>       assert done.returncode == 1, done
+E       AssertionError: CompletedProcess(args=['/tmp/pytest-of-root/pytest-9778/test_build_frozen_html_stops_o0/stub_bin/bash', '/tmp/pytest-o...oot/pytest-9778/test_build_frozen_html_stops_o0/repo/scripts/build_frozen_html.sh: line 36: find: command not found
+E         ')
+E       assert 127 == 1
+E        +  where 127 = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9778/test_build_frozen_html_stops_o0/stub_bin/bash', '/tmp/pytest-o...oot/pytest-9778/test_build_frozen_html_stops_o0/repo/scripts/build_frozen_html.sh: line 36: find: command not found\n').returncode
+
+tests_scripts/test_require_python.py:139: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_require_python.py::test_a_new_enough_python3_passes_silently
+FAILED tests_scripts/test_require_python.py::test_a_3_10_python3_fails_naming_the_caller_the_version_and_the_fix
+FAILED tests_scripts/test_require_python.py::test_no_python3_on_path_fails_naming_that
+FAILED tests_scripts/test_require_python.py::test_the_library_refuses_to_run_as_a_script
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/build_website.sh]
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/typecheck.sh]
+FAILED tests_scripts/test_require_python.py::test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything
+8 failed, 16 passed in 0.16s

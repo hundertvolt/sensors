@@ -1,0 +1,97 @@
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  6%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+...........................................................ssssss....... [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+........................................................................ [ 52%]
+........................................................................ [ 54%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 64%]
+........................................................................ [ 66%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 78%]
+....................................................F................... [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+........................................................................ [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+.......................................F................................ [ 98%]
+.............................................................            [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 3'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           BACKLOG.md: tests_js/vitest-commands.d.ts
+E           BACKLOG.md: tests_js/vitest-commands.d.ts
+E       assert not [('BACKLOG.md', 'tests_js/vitest-commands.d.ts'), ('BACKLOG.md', 'tests_js/vitest-commands.d.ts')]
+
+tests_scripts/test_citations.py:251: AssertionError
+__________________ test_each_pending_header_is_still_missing ___________________
+
+    def test_each_pending_header_is_still_missing() -> None:
+        # The pending set only shrinks: a file that has gained its header leaves it.
+        gained = sorted(p for p in _HEADER_PENDING if _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8")))
+>       assert gained == [], f"these now open with a header - delete their _HEADER_PENDING rows: {gained}"
+E       AssertionError: these now open with a header - delete their _HEADER_PENDING rows: ['eslint.config.js', 'vitest.config.js']
+E       assert ['eslint.conf...st.config.js'] == []
+E         
+E         Left contains 2 more items, first extra item: 'eslint.config.js'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:273: AssertionError
+============================= slowest 15 durations =============================
+14.45s setup    tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+8.02s setup    tests_scripts/test_build_device_websites_sh.py::test_every_device_gets_its_own_site_from_its_generated_definitions[arzi]
+7.46s call     tests_scripts/test_buildgen_fuzz.py::test_a_mutated_device_builds_or_fails_with_a_build_error
+5.16s setup    tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[arzi]
+2.70s call     tests_scripts/test_const_mirrors.py::test_every_test_copy_of_a_src_const_is_read_or_pinned
+2.29s call     tests_scripts/test_buildgen_locale.py::test_every_devices_build_is_the_same_under_an_ascii_locale_as_in_utf8_mode
+2.21s call     tests_scripts/test_ceiling_probe.py::test_the_walk_returns_only_once_its_whole_ceiling_is_admittable_again
+2.10s call     tests_scripts/test_coverage_runner.py::test_a_run_of_calls_under_the_tracer_never_rescans_the_heap
+1.55s call     tests_scripts/test_code_conventions.py::test_no_pytest_suite_groups_its_tests_in_a_class
+1.52s call     tests_scripts/test_ceiling_probe.py::test_the_walk_outlasts_the_idle_read_timeout_by_padding_every_held_connection
+1.26s setup    tests_scripts/test_api_reference.py::test_two_generations_are_byte_identical[arzi]
+1.10s call     tests_scripts/test_buildgen_reproducible.py::test_every_generated_input_is_identical_across_hash_seeds
+1.06s call     tests_scripts/test_buildgen_source_ast.py::test_a_whole_build_of_every_device_leaves_every_shared_tree_as_parsed
+1.03s call     tests_scripts/test_buildgen_locale.py::test_the_builds_read_every_src_file_that_carries_non_ascii_text
+1.00s call     tests_scripts/test_ceiling_probe.py::test_the_drain_wait_needs_the_whole_ceiling_not_one_slot
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_comment_block_cap.py::test_each_pending_header_is_still_missing
+2 failed, 3581 passed, 6 skipped in 118.87s (0:01:58)

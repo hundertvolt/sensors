@@ -1,0 +1,66 @@
+........F........F.....F...                                              [100%]
+=================================== FAILURES ===================================
+________ test_the_set_of_persisting_helpers_is_exactly_the_triaged_one _________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_the_set_of_persisting_helpers_is_exactly_the_triaged_one(repo_root: Path) -> None:
+        # A helper's own callers carry the marker, which this file cannot verify by name resolution.
+        # Pinning the set converts "a new untriaged helper" from silent into a failing test.
+        dispatch_only = _dispatch_only_fields(repo_root)
+        shape = _fetch_shape(repo_root)
+        helpers = {
+            name
+            for path in _tests_hardware_modules(repo_root)
+            for name in [*_persisting_put_functions(path, dispatch_only, shape, repo_root), *_non_literal_put_bodies(path, shape)]
+            if not name.startswith("test_") and name not in _JUSTIFIED_UNREADABLE_BODIES
+        }
+>       assert helpers == _KNOWN_PERSISTING_HELPERS, f"the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.\n  added: {sorted(helpers - _KNOWN_PERSISTING_HELPERS)}\n  gone: {sorted(_KNOWN_PERSISTING_HELPERS - helpers)}"
+E       AssertionError: the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.
+E           added: []
+E           gone: ['_repair_leftover']
+E       assert {'_recover_st...ined_hotspot'} == {'_recover_st..._worker', ...}
+E         
+E         Extra items in the right set:
+E         '_repair_leftover'
+E         Use -v to get more diff
+
+tests_scripts/test_persistence_write_marker_completeness.py:388: AssertionError
+______ test_every_device_script_that_persists_is_run_only_by_a_gated_test ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_every_device_script_that_persists_is_run_only_by_a_gated_test(repo_root: Path) -> None:
+        assert _persisting_scripts(repo_root / "tests_hardware" / "device_scripts", _scd30_config_codes(repo_root)), "no device script persists anything - the scan reads nothing"
+        offenders = _unowned_device_writes(_tests_hardware_modules(repo_root), repo_root / "tests_hardware" / "device_scripts", _scd30_config_codes(repo_root))
+>       assert not offenders, "these device scripts write flash or the SCD30's NVM outside the gate:\n  " + "\n  ".join(offenders)
+E       AssertionError: these device scripts write flash or the SCD30's NVM outside the gate:
+E           bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per_source.py (build_system() over the production config) unmarked
+E           flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build runs fram_capacity_after_full_system_build.py (build_system() over the production config) unmarked
+E           flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build runs heap_headroom_after_full_system_build.py (build_system() over the production config) unmarked
+E           heap_layout_after_full_boot_sequence.py (build_system() over the production config) has no runner in tests_hardware/
+E           scd30_same_device_rw_concurrency.py (set_ambient_pressure()) has no runner in tests_hardware/
+E           flash/test_sensor_accuracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked
+E       assert not ['bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per...uracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked']
+
+tests_scripts/test_persistence_write_marker_completeness.py:591: AssertionError
+_________________ test_no_test_carries_an_unregistered_marker __________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_no_test_carries_an_unregistered_marker(repo_root: Path) -> None:
+        # --strict-markers is on (pyproject addopts), so an unregistered marker fails collection; this
+        # names it before a hardware run would.
+        registered = _registered_markers(repo_root)
+        builtin = {"parametrize", "skipif", "skip", "xfail", "usefixtures", "filterwarnings"}
+        offenders = {name: sorted(marks - registered - builtin) for name, marks in _used_markers(repo_root).items() if marks - registered - builtin}
+>       assert not offenders, f"unregistered markers (a collection error under --strict-markers): {offenders}"
+E       AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic': ['long_soak'], 'tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], 'tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load': ['long_soak'], 'tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence': ['long_soak']}
+E       assert not {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_att...test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], ...}
+
+tests_scripts/test_persistence_write_marker_completeness.py:719: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_the_set_of_persisting_helpers_is_exactly_the_triaged_one
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_every_device_script_that_persists_is_run_only_by_a_gated_test
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_no_test_carries_an_unregistered_marker
+3 failed, 24 passed in 2.59s

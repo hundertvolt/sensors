@@ -1,0 +1,55 @@
+== test_decision_vocabulary: 2 failed, 4 passed in 8.12s
+E           tests/test_digital_twin_sensortask_integration.py	A second real backup mutates the twin's in-memory FRAM image but is deliberately
+E           tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/supervise_tasks().
+E           tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT pre-seed scd30's measurement data the way every other SGP4
+E           tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
+E           tests/test_digital_twin_sensortask_integration.py	Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why.
+E           tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
+E           tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
+E           tests/test_digital_twin_sensortask_integration.py	The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rat
+== test_citations: 2 failed, 13 passed in 9.77s
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests/test_digital_twin_sensortask_integration.py	measure A
+E       assert not [('tests/test_digital_twin_sensortask_integration.py', 'measure A')]
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+== test_comment_block_cap: 492 passed in 3.91s
+== test_tunables_register: 1 failed, 14 passed in 3.70s
+E         tests/test_digital_twin_uart_link.py:110: l2.uart_link_leak_rate_bytes_per_transfer is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_link.py:112: l2.uart_link_crc16_rounds is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_wifi_modes.py:59: l2.wifi_modes_sleep_scale is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10790: l2.twin_ready_poll_ms: Sites list [('digital_twin/run_generic_integration.py', '20'), ('digital_twin/segfault_stress_repro.py', '20')], the tags say [('digital_twin/run_generic_integration.py', '20')]
+E         SPECIFICATION.md:10819: l2.sensortask_integration_hotspot_wait_timeout_s: Sites list [('tests/test_digital_twin_sensortask_integration.py', '25.0')], the tags say [('tests/test_digital_twin_sensortask_integration.py', '40.0')]
+E         SPECIFICATION.md:10821: l2.sensortask_integration_hotspot_run_bound_s: Sites list [('tests/test_digital_twin_sensortask_integration.py', '35.0')], the tags say [('tests/test_digital_twin_sensortask_integration.py', '60.0')]
+E         SPECIFICATION.md:10823: l2.machine_wdt_short_timeout_ms: Sites list [('tests/test_digital_twin_machine.py', '150')], the tags say [('tests/test_digital_twin_machine.py', '100')]
+E         SPECIFICATION.md:10859: l2.uart_link_leak_budget_bytes is a tuned row, but no file carries its @tunable tag
+== test_legacy_paths: 3 passed in 1.49s
+== test_import_placement: 1 failed, 6 passed in 7.51s
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_digital_twin_sensortask_integration.py', 'test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list.scenario', 'asy_system_service')
+E           ('tests/test_digital_twin_sensortask_integration.py', 'test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario', 'network')
+E       assert not [('tests/test_digital_twin_sensortask_integration.py', 'test_start_and_check_tasks_restarts_a_real_dead_task_from_the_....py', 'test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario', 'network')]
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+== test_code_conventions: 25 passed in 3.82s
+== test_error_catalog: 40 passed in 18.05s
+== test_host_annotations: 12 passed in 1.99s
+== test_lint_ceilings: 19 passed in 9.93s
+== test_mypy_any_baseline: 7 passed in 0.10s
+== test_memory_error_gate_agreement: 13 passed in 3.84s
+== test_port_bands: 1 failed, 15 passed in 1.88s
+E       assert ["tests/_webs...999, 'tcp'))"] == []
+E         
+E         Left contains one more item: "tests/_webserver_concurrency_scenarios.py: rows [], literal ports [] (its own row (19700, 19999, 'tcp'))"
+E         Use -v to get more diff
+FAILED tests_scripts/test_port_bands.py::test_every_test_file_that_binds_a_port_draws_it_from_its_band
+== test_twin_entry_point_order: 1 failed, 7 passed in 1.08s
+E       AssertionError: ["test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, no...poll_set', 'require_fresh'] with the shim absent, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']", ...]
+E       assert ["test_digita..._port']", ...] == []
+E         
+E         Left contains 9 more items, first extra item: "test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"
+E         Use -v to get more diff
+FAILED tests_scripts/test_twin_entry_point_order.py::test_every_booting_twin_test_file_prewarms_then_shims_first
+== test_no_variant_literals: 1 failed, 18 passed in 9.40s
+E       AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py', 'tests/test_digital_twin_sensortask_integration.py', 'tests/test_digital_twin_uart_link.py']
+E       assert not ['tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py', 'tests/test_digital_twin_sensortask_integration.py', 'tests/test_digital_twin_uart_link.py']
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal

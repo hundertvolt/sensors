@@ -1,0 +1,50 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23fix
+
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on arzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on dev: 6 tabs, 2 loaded on the first pass, 4 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on grkizi: 6 tabs, 4 loaded on the first pass, 2 on their reload, 0 not at all
+ ✓ |chromium| tests_js/live-backend.test.js (18 tests | 15 skipped) 80572ms
+   ✓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 23181ms
+   ✓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 31585ms
+   ✓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 25803ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed | 15 skipped (18)
+   Start at  17:13:39
+   Duration  81.84s (tests 100%)
+
+== Summary: npm test ==
+Commit: 2ad4747 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 3 · failed 0 · skipped 15 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped:
+  - tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: dev > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: grkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: klkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: schlafzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: wozi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: klkizi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: schlafzi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

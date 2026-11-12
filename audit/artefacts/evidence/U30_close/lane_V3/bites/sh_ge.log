@@ -1,0 +1,20 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_a_string_at_the_limit_or_one_the_interpreter_expands_still_boots _____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11347/test_a_string_at_the_limit_or_0')
+
+    def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_boots(tmp_path: Path) -> None:
+        # The boundary's other side: 255 bytes everywhere, and a ~/ entry the interpreter builds from $HOME, never interns.
+        at_limit = "x" * _LIMIT
+        done, calls = _launch(tmp_path, "--device", "fixture_device_b", "--fault", at_limit, layout=f"{at_limit}:~/{_OVER}")
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: error: the twin was not started: --fault's value (255 bytes), MICROPYPATH entry 1 (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before the runner starts
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11347/test_a_string_at_the_limit_or_0/repo/scripts/run...H entry 1 (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before the runner starts\n").returncode
+
+tests_scripts/test_run_unix_port_integration_sh.py:147: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_string_at_the_limit_or_one_the_interpreter_expands_still_boots
+1 failed, 15 deselected in 0.16s

@@ -1,0 +1,14 @@
+.F..................                                                     [100%]
+=================================== FAILURES ===================================
+__________ test_a_real_device_wires_a_notification_and_a_warn_signal ___________
+
+    def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:
+        # The floor of the per-device notification checks: none of them may pass by running on no device.
+        assert _NOTIFICATION_DEVICES, "no device declares a notification, so the notification checks below run on nothing"
+>       assert any(_wired_warn_signals(device) for device in _NOTIFICATION_DEVICES), "no notification wires a warn signal, so the warn-field check compares two empty lists"
+E       AssertionError: no notification wires a warn signal, so the warn-field check compares two empty lists
+E       assert False
+E        +  where False = any(<generator object test_a_real_device_wires_a_notification_and_a_warn_signal.<locals>.<genexpr> at 0x7fb942be5380>)
+
+tests_scripts/test_zz_plant_warn.py:335: AssertionError
+1 failed, 19 passed, 379 deselected in 1.51s

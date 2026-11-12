@@ -1,0 +1,2 @@
+PASS test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable
+1/1 passed, 0 failed, 0 skipped

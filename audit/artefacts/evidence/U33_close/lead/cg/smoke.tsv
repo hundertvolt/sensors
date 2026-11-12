@@ -1,0 +1,2 @@
+cov	a	test_asy_notification_service	0.30	19.229	0.267	0.035	0	mem=0	67/67 passed, 0 failed, 0 skipped
+cov	b	test_asy_notification_service	0.28	19.207	0.225	0.053	0	mem=0	68/68 passed, 0 failed, 0 skipped

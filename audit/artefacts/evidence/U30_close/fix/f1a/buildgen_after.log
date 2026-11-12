@@ -1,0 +1,31 @@
+........................................................................ [ 19%]
+........................................................................ [ 39%]
+........................................................................ [ 58%]
+........................................................................ [ 78%]
+........................................F............................... [ 97%]
+........                                                                 [100%]
+=================================== FAILURES ===================================
+__________ test_device_without_a_fram_manager_reads_no_storage_pause ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11430/test_device_without_a_fram_man0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1a/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1a/ext')
+
+    def test_device_without_a_fram_manager_reads_no_storage_pause(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+        doc = base_doc()
+        doc["instance"] = [i for i in instances(doc) if i["driver"] != "fram"]
+        for table in [table_at(doc, "device"), *instances(doc)]:  # every fram_target, the device's and each instance's
+            wiring = table.get("wiring")
+            if isinstance(wiring, dict):
+                wiring.pop("fram_target", None)
+        del table_at(doc, "device", "wiring")["led_target"]  # its FRAM-logged NeoPixel names the chip too
+        del table_at(doc, "bus")["spi0"]  # the FRAM chip's bus, which nothing else uses
+        result = generate_device(write_doc(tmp_path, "no_fram_manager", doc), src_dir, ext_dir)
+        assert "is_storage_paused=None," in result.module_source.split("webserver = WebserverService(")[1].split("\n    )\n")[0]
+>       assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
+E       assert False
+
+tests_scripts/test_buildgen_generate.py:1212: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_device_without_a_fram_manager_reads_no_storage_pause
+1 failed, 367 passed in 4.82s

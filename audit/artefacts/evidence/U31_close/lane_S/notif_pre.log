@@ -1,0 +1,61 @@
+== ruff
+All checks passed!
+ruff rc=0
+== mypy main
+src/asy_notification_service.py: note: In member "_monitor_loop" of class "NotificationService":
+src/asy_notification_service.py:275:37: error: Incompatible types in assignment
+(expression has type "float", variable has type "int")  [assignment]
+                    interv, flash_dur = cfg_float
+                                        ^
+tests/test_neopixel_wifi_integration.py: note: In function "test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led":
+tests/test_neopixel_wifi_integration.py:59:5: error: "NeopixelDriver" has no
+attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+Found 2 errors in 2 files (checked 260 source files)
+mypy-main rc=1
+== mypy src tests dev-scripts
+src/asy_notification_service.py: note: In member "_monitor_loop" of class "NotificationService":
+src/asy_notification_service.py:275:37: error: Incompatible types in assignment
+(expression has type "float", variable has type "int")  [assignment]
+                    interv, flash_dur = cfg_float
+                                        ^
+tests/test_neopixel_wifi_integration.py: note: In function "test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led":
+tests/test_neopixel_wifi_integration.py:59:5: error: "NeopixelDriver" has no
+attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+Found 2 errors in 2 files (checked 226 source files)
+mypy-sts rc=1
+== checks
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_notification_service.py:62: notify.min_sleep_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_asy_notification_service.py:42: l1.asy_notification_service_next_sleep_min_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:11436: notify.min_sleep_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11437: notify.cfg_fail_interval_s: Sites list [('src/asy_notification_service.py', '600.0')], the tags say [('src/asy_notification_service.py', '600')]
+E         SPECIFICATION.md:11663: l1.asy_notification_service_next_sleep_min_s is a tuned row, but no file carries its @tunable tag
+E       assert not ['src/asy_notification_service.py:62: notify.min_sleep_ms is tagged but has no SPECIFICATION.md Part N row', 'tests/te...IFICATION.md:11663: l1.asy_notification_service_next_sleep_min_s is a tuned row, but no file carries its @tunable tag']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_asy_notification_service.py', 'test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv', 'time')
+E           ('tests/test_asy_notification_service.py', 'test_next_sleep_s_subtracts_elapsed_time', 'time')
+E       assert not [('tests/test_asy_notification_service.py', 'test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv', 'time'), ('tests/test_asy_notification_service.py', 'test_next_sleep_s_subtracts_elapsed_time', 'time')]
+
+tests_scripts/test_import_placement.py:187: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31s/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+2 failed, 785 passed, 1 warning in 65.49s (0:01:05)
+checks rc=1

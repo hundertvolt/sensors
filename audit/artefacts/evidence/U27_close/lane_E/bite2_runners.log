@@ -1,0 +1,16 @@
+...........F.............................................                [100%]
+=================================== FAILURES ===================================
+___ test_a_failing_flash_step_stops_the_bench_runner_before_the_bench_level ____
+
+tree = PosixPath('/tmp/pytest-of-root/pytest-10326/test_a_failing_flash_step_stop0/repo')
+
+    def test_a_failing_flash_step_stops_the_bench_runner_before_the_bench_level(tree: Path) -> None:
+        result, calls = _run(tree, "run_bench_hardware_suite.sh", STUB_FAIL_PYTEST_ON="tests_hardware/flash")
+>       assert result.returncode == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-10326/test_a_failing_flash_step_stop0/repo/scripts/run...ly on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: PASS\nExit code: 0\n', stderr='').returncode
+
+tests_scripts/test_hardware_runners.py:254: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_runners.py::test_a_failing_flash_step_stops_the_bench_runner_before_the_bench_level
+1 failed, 56 passed in 7.16s

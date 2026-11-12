@@ -1,0 +1,71 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27base
+
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on arzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on dev: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on grkizi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on klkizi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on schlafzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on wozi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+ ✓ |chromium| tests_js/live-backend.test.js (18 tests) 199752ms
+   ✓ live digital-twin backend: arzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 6184ms
+   ✓ live digital-twin backend: dev (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 7121ms
+   ✓ live digital-twin backend: grkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5860ms
+   ✓ live digital-twin backend: klkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5879ms
+   ✓ live digital-twin backend: schlafzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5822ms
+   ✓ live digital-twin backend: wozi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 6255ms
+   ✓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 28334ms
+   ✓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 14509ms
+   ✓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 11629ms
+   ✓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 24555ms
+   ✓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 11746ms
+   ✓ live digital-twin backend, concurrent browser sessions: wozi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 12253ms
+   ✓ live digital-twin backend, device restart: arzi (1)
+     ✓ the page recovers from a device restart without reloading 10632ms
+   ✓ live digital-twin backend, device restart: dev (1)
+     ✓ the page recovers from a device restart without reloading 9030ms
+   ✓ live digital-twin backend, device restart: grkizi (1)
+     ✓ the page recovers from a device restart without reloading 10675ms
+   ✓ live digital-twin backend, device restart: klkizi (1)
+     ✓ the page recovers from a device restart without reloading 10637ms
+   ✓ live digital-twin backend, device restart: schlafzi (1)
+     ✓ the page recovers from a device restart without reloading 10666ms
+   ✓ live digital-twin backend, device restart: wozi (1)
+     ✓ the page recovers from a device restart without reloading 7965ms
+
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+   Start at  04:39:16
+   Duration  211.80s (tests 100%)
+
+== Summary: npm test ==
+Commit: 0c0ad52
+Levels: L0
+Counts (tests): passed 18 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

@@ -1,0 +1,123 @@
+EE.......F.....                                                          [100%]
+==================================== ERRORS ====================================
+______ ERROR at setup of test_every_citation_resolves_or_is_allow_listed _______
+
+    @pytest.fixture(scope="module")
+    def findings() -> Counter[tuple[str, str]]:
+>       return collect_findings()
+               ^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_citations.py:246: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_citations.py:239: in collect_findings
+    findings = Counter({(path, token): n for path, text in scanned.items() for token, n in _file_findings(path, _prose_lines(path, text), ctx).items()})
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_citations.py:239: in <dictcomp>
+    findings = Counter({(path, token): n for path, text in scanned.items() for token, n in _file_findings(path, _prose_lines(path, text), ctx).items()})
+                                                                                                                ^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_citations.py:188: in _prose_lines
+    return [line for block in prose_blocks(path, text) for line in block.lines]
+                              ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = '.gitmodules'
+text = '[submodule "datasheets"]\n\tpath = datasheets\n\turl = https://github.com/hundertvolt/datasheets.git\n'
+
+    def prose_blocks(path: str, text: str) -> list[Block]:
+        suffix = _suffix(path)
+        if suffix in _PLAIN_SUFFIXES:
+            return _markdown_blocks(path, text)
+        if suffix in {".py", ".pyi"}:  # a type stub is Python syntax
+            return _python_blocks(path, text)
+        if suffix in _HASH_SUFFIXES:
+            return _hash_blocks(path, text)
+        if suffix in _SLASH_SUFFIXES or (suffix == ".json" and Path(path).name.startswith("tsconfig")):
+            return _slash_blocks(path, text)
+        if suffix == ".html":
+            return _html_blocks(path, text)
+        if suffix in _NO_PROSE_SUFFIXES or any(fnmatch.fnmatch(Path(path).name, glob) for glob in _NO_PROSE_NAMES):
+            return []
+        msg = f"{path}: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there"
+>       raise ValueError(msg)
+E       ValueError: .gitmodules: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there
+
+tests_scripts/_repo_scan.py:253: ValueError
+______________ ERROR at setup of test_the_allowlist_only_shrinks _______________
+
+    @pytest.fixture(scope="module")
+    def findings() -> Counter[tuple[str, str]]:
+>       return collect_findings()
+               ^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_citations.py:246: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_citations.py:239: in collect_findings
+    findings = Counter({(path, token): n for path, text in scanned.items() for token, n in _file_findings(path, _prose_lines(path, text), ctx).items()})
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_citations.py:239: in <dictcomp>
+    findings = Counter({(path, token): n for path, text in scanned.items() for token, n in _file_findings(path, _prose_lines(path, text), ctx).items()})
+                                                                                                                ^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_citations.py:188: in _prose_lines
+    return [line for block in prose_blocks(path, text) for line in block.lines]
+                              ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = '.gitmodules'
+text = '[submodule "datasheets"]\n\tpath = datasheets\n\turl = https://github.com/hundertvolt/datasheets.git\n'
+
+    def prose_blocks(path: str, text: str) -> list[Block]:
+        suffix = _suffix(path)
+        if suffix in _PLAIN_SUFFIXES:
+            return _markdown_blocks(path, text)
+        if suffix in {".py", ".pyi"}:  # a type stub is Python syntax
+            return _python_blocks(path, text)
+        if suffix in _HASH_SUFFIXES:
+            return _hash_blocks(path, text)
+        if suffix in _SLASH_SUFFIXES or (suffix == ".json" and Path(path).name.startswith("tsconfig")):
+            return _slash_blocks(path, text)
+        if suffix == ".html":
+            return _html_blocks(path, text)
+        if suffix in _NO_PROSE_SUFFIXES or any(fnmatch.fnmatch(Path(path).name, glob) for glob in _NO_PROSE_NAMES):
+            return []
+        msg = f"{path}: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there"
+>       raise ValueError(msg)
+E       ValueError: .gitmodules: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there
+
+tests_scripts/_repo_scan.py:253: ValueError
+=================================== FAILURES ===================================
+___ test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free ____
+
+    def test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free() -> None:
+        for path in repo_files():
+            if not is_shared_excluded(path) and read_text(path) is not None:
+>               prose_blocks(path, "")
+
+tests_scripts/test_citations.py:332: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = '.gitmodules', text = ''
+
+    def prose_blocks(path: str, text: str) -> list[Block]:
+        suffix = _suffix(path)
+        if suffix in _PLAIN_SUFFIXES:
+            return _markdown_blocks(path, text)
+        if suffix in {".py", ".pyi"}:  # a type stub is Python syntax
+            return _python_blocks(path, text)
+        if suffix in _HASH_SUFFIXES:
+            return _hash_blocks(path, text)
+        if suffix in _SLASH_SUFFIXES or (suffix == ".json" and Path(path).name.startswith("tsconfig")):
+            return _slash_blocks(path, text)
+        if suffix == ".html":
+            return _html_blocks(path, text)
+        if suffix in _NO_PROSE_SUFFIXES or any(fnmatch.fnmatch(Path(path).name, glob) for glob in _NO_PROSE_NAMES):
+            return []
+        msg = f"{path}: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there"
+>       raise ValueError(msg)
+E       ValueError: .gitmodules: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there
+
+tests_scripts/_repo_scan.py:253: ValueError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free
+ERROR tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+ERROR tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Valu...
+1 failed, 12 passed, 2 errors in 1.68s

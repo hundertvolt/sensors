@@ -1,0 +1,222 @@
+FFFF.FFFFFFFF.F                                                          [100%]
+=================================== FAILURES ===================================
+________ test_every_needs_edge_is_read_ungated_or_stated_success_gated _________
+
+    def test_every_needs_edge_is_read_ungated_or_stated_success_gated() -> None:
+        # A needs: edge success-gates its job by default: kept only where the job reads the needed job's output or result,
+        # or says so in a comment; an edge for order or cache reuse carries `!cancelled()` (CLAUDE.md). fail-fast never counts.
+        problems = []
+        for name, job in _jobs().items():
+            condition = _field(job, "if")
+            stated = any(_SUCCESS_GATED in comment.lower() for comment in _comments(job))
+            for needed in _needs(job):
+                read = re.search(rf"needs\.{re.escape(needed)}\.(?:outputs|result)\b", condition + _strategy(job))
+                if not (read or "!cancelled()" in condition or stated):
+                    problems.append(f"{name} needs {needed}: add `!cancelled()` to its if:, or a comment inside the job saying it is {_SUCCESS_GATED!r} and why")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: web-unit-tests needs web-lint-and-typecheck: add `!cancelled()` to its if:, or a comment inside the job saying it is 'success-gated on purpose' and why
+E         web-put-matrix needs web-unit-tests: add `!cancelled()` to its if:, or a comment inside the job saying it is 'success-gated on purpose' and why
+E         web-coverage needs web-unit-tests: add `!cancelled()` to its if:, or a comment inside the job saying it is 'success-gated on purpose' and why
+E         web-cross-browser-smoke needs web-unit-tests: add `!cancelled()` to its if:, or a comment inside the job saying it is 'success-gated on purpose' and why
+E       assert not ["web-unit-tests needs web-lint-and-typecheck: add `!cancelled()` to its if:, or a comment inside the job saying it is...nit-tests: add `!cancelled()` to its if:, or a comment inside the job saying it is 'success-gated on purpose' and why"]
+
+tests_scripts/test_ci_workflow.py:110: AssertionError
+__ test_the_order_only_jobs_carry_not_cancelled_and_the_twin_e2e_stays_gated ___
+
+    def test_the_order_only_jobs_carry_not_cancelled_and_the_twin_e2e_stays_gated() -> None:
+        jobs = _jobs()
+        missing = [name for name in _ORDER_ONLY if "!cancelled()" not in _field(jobs[name], "if")]
+>       assert not missing, f"these jobs need their predecessor for order or cache only - add `!cancelled()` to their if: {missing}"
+E       AssertionError: these jobs need their predecessor for order or cache only - add `!cancelled()` to their if: ['web-unit-tests']
+E       assert not ['web-unit-tests']
+
+tests_scripts/test_ci_workflow.py:116: AssertionError
+_ test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit _
+
+    def test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit() -> None:
+        job = _jobs()["web-changes"]
+        listed = re.findall(r"^\s+- '([^']+)'$", job[job.index("filters: |") :], re.MULTILINE)
+        missing = [path for path in _WEB_INPUTS if path not in listed]
+>       assert not missing, f"web-changes: the web filter misses {missing} - a change there would not run the web tier"
+E       AssertionError: web-changes: the web filter misses ['digital_twin/**', 'toolchain/**', 'ext/**', 'tsconfig*.json', 'pyproject.toml', 'uv.lock', '.github/workflows/ci.yml', '.github/actions/**'] - a change there would not run the web tier
+E       assert not ['digital_twin/**', 'toolchain/**', 'ext/**', 'tsconfig*.json', 'pyproject.toml', 'uv.lock', ...]
+
+tests_scripts/test_ci_workflow.py:126: AssertionError
+_____ test_every_third_party_action_is_pinned_to_a_commit_with_its_version _____
+
+    def test_every_third_party_action_is_pinned_to_a_commit_with_its_version() -> None:
+        unpinned = []
+        for path in (_CI, *_ACTIONS.glob("*/action.yml")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                used = re.search(r"uses: (\S+.*)$", line)
+                if used and not used.group(1).startswith(("actions/", "./")) and not _SHA_PIN.search(line):
+                    unpinned.append(f"{path.relative_to(_REPO)}:{number}: {used.group(1)}")
+>       assert not unpinned, f"pin each to its tag's commit with a `# vX.Y.Z` comment: {unpinned}"
+E       AssertionError: pin each to its tag's commit with a `# vX.Y.Z` comment: ['.github/workflows/ci.yml:583: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7', '.github/workflows/ci.yml:590: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7']
+E       assert not ['.github/workflows/ci.yml:583: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7', '.github/workflows/ci.yml:590: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7']
+
+tests_scripts/test_ci_workflow.py:145: AssertionError
+_________ test_no_test_step_hides_its_result_behind_continue_on_error __________
+
+    def test_no_test_step_hides_its_result_behind_continue_on_error() -> None:
+        hidden = []
+        for name, job in _jobs().items():
+            for step in _steps(job, 6):
+                commands = [_ENV_PREFIX.sub("", line) for line in _run_lines(step)]
+                if any(command.startswith(_GATING_RUNS) for command in commands) and re.search(r"^\s+continue-on-error:", step, re.MULTILINE):
+                    hidden.append(f"{name}: {commands[0]}")
+>       assert not hidden, f"a test step's result gates - remove continue-on-error from: {hidden}"
+E       AssertionError: a test step's result gates - remove continue-on-error from: ['web-coverage: npm run test:coverage 2>&1 | tee coverage-output.txt']
+E       assert not ['web-coverage: npm run test:coverage 2>&1 | tee coverage-output.txt']
+
+tests_scripts/test_ci_workflow.py:160: AssertionError
+__________________ test_every_value_reaches_a_run_through_env __________________
+
+    def test_every_value_reaches_a_run_through_env() -> None:
+        # An expression expanded inside the script text is zizmor's template injection; env: passes it as data.
+        found = []
+        for path in (_CI, *_ACTIONS.glob("*/action.yml")):
+            text = path.read_text(encoding="utf-8")
+            found += [f"{path.relative_to(_REPO)}: {line}" for step in _steps(text, 6 if path == _CI else 4) for line in _run_lines(step) if "${{" in line]
+>       assert not found, f"pass each value through the step's env: and read the variable: {found}"
+E       AssertionError: pass each value through the step's env: and read the variable: ['.github/workflows/ci.yml: scripts/run_digital_twin_ci.sh "${{ matrix.device }}" --gc-threshold "${{ matrix.gc_threshold }}" --part "${{ matrix.part }}"', '.github/workflows/ci.yml: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest "tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[${{ matrix.device }}]" -v']
+E       assert not ['.github/workflows/ci.yml: scripts/run_digital_twin_ci.sh "${{ matrix.device }}" --gc-threshold "${{ matrix.gc_thresh...pytest "tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[${{ matrix.device }}]" -v']
+
+tests_scripts/test_ci_workflow.py:169: AssertionError
+_____ test_the_toolchain_action_keys_on_every_input_and_names_every_caller _____
+
+    def test_the_toolchain_action_keys_on_every_input_and_names_every_caller() -> None:
+        key = re.search(r"^\s+key: (.*)$", _TOOLCHAIN_ACTION.read_text(encoding="utf-8"), re.MULTILINE)
+        missing = [part for part in (*_TOOLCHAIN_INPUTS, "steps.ident.outputs.id") if not key or part not in key.group(1)]
+        problems = [f"the toolchain cache key misses {missing}: a change there would restore stale binaries"] if missing else []
+        jobs = _jobs()
+        callers = {name for name, job in jobs.items() if _TOOLCHAIN_USES in job}
+        named = set(re.findall(r"[a-z][\w-]*", _description(_TOOLCHAIN_ACTION))) & set(jobs)
+        if named != callers:
+            problems.append(f"the toolchain action's description names {sorted(named)}, but its callers are {sorted(callers)}")
+        repeated = [name for name, job in jobs.items() if any(part in job for part in _BUILD_BLOCK)]
+        if repeated:
+            problems.append(f"these jobs repeat the build-if-missing block - pass `build-unix-port: 'true'` to the action instead: {repeated}")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: the toolchain cache key misses ['steps.ident.outputs.id']: a change there would restore stale binaries
+E         the toolchain action's description names ['digital-twin-e2e', 'firmware-build-verify', 'unit-tests', 'web-coverage', 'web-cross-browser-smoke', 'web-unit-tests'], but its callers are ['digital-twin-e2e', 'firmware-build-verify', 'unit-tests', 'unit-tests-coverage', 'unit-tests-gc-threshold', 'web-coverage', 'web-cross-browser-smoke', 'web-put-matrix', 'web-unit-tests']
+E         these jobs repeat the build-if-missing block - pass `build-unix-port: 'true'` to the action instead: ['web-unit-tests', 'web-put-matrix', 'web-coverage', 'web-cross-browser-smoke']
+E       assert not ["the toolchain cache key misses ['steps.ident.outputs.id']: a change there would restore stale binaries", "the toolch...-port: 'true'` to the action instead: ['web-unit-tests', 'web-put-matrix', 'web-coverage', 'web-cross-browser-smoke']"]
+
+tests_scripts/test_ci_workflow.py:184: AssertionError
+____ test_the_toolchain_action_syncs_first_and_builds_through_the_one_probe ____
+
+    def test_the_toolchain_action_syncs_first_and_builds_through_the_one_probe() -> None:
+        steps = _action_steps(_TOOLCHAIN_ACTION)
+>       assert steps[0].startswith(f"    - {_UV_SYNC_USES}"), "the toolchain action's first step is the uv-sync action, so every caller syncs first"
+E       AssertionError: the toolchain action's first step is the uv-sync action, so every caller syncs first
+E       assert False
+E        +  where False = <built-in method startswith of str object at 0x7fa6a8fb6b50>('    - uses: ./.github/actions/uv-sync')
+E        +    where <built-in method startswith of str object at 0x7fa6a8fb6b50> = '    - name: Install uv\n      shell: bash\n      run: pip install uv\n    # Retried here for every job that reaches u...onlint-py fetches its binary at build time, so one bad response fails a healthy\n    # lane (SPECIFICATION.md B.10).\n'.startswith
+
+tests_scripts/test_ci_workflow.py:189: AssertionError
+_____ test_every_job_running_uv_or_a_script_syncs_first_through_an_action ______
+
+    def test_every_job_running_uv_or_a_script_syncs_first_through_an_action() -> None:
+        late = []
+        for name, job in _jobs().items():
+            synced = False
+            for step in _steps(job, 6):
+                synced = synced or _UV_SYNC_USES in step or _TOOLCHAIN_USES in step
+                if not synced and any(re.search(r"\buv\b|\bscripts/", line) for line in _run_lines(step)):
+                    late.append(f"{name}: {_run_lines(step)[0]}")
+                    break
+>       assert not late, f"run the uv-sync action (or the toolchain action) before these steps: {late}"
+E       AssertionError: run the uv-sync action (or the toolchain action) before these steps: ['lint-and-typecheck: pip install uv', 'shellcheck: pip install uv', 'actionlint: pip install uv', 'zizmor: pip install uv']
+E       assert not ['lint-and-typecheck: pip install uv', 'shellcheck: pip install uv', 'actionlint: pip install uv', 'zizmor: pip install uv']
+
+tests_scripts/test_ci_workflow.py:209: AssertionError
+__________ test_both_device_matrices_are_derived_from_the_devices_job __________
+
+    def test_both_device_matrices_are_derived_from_the_devices_job() -> None:
+        # A literal list would let a new device generate, build and pass locally while CI kept the old set.
+        text = _ci()
+        matrices = re.findall(r"^\s+device: (.*)$", text, re.MULTILINE)
+>       assert matrices == [_DEVICE_MATRIX, _DEVICE_MATRIX], f"digital-twin-e2e and firmware-build-verify read `device: {_DEVICE_MATRIX}`, found {matrices}"
+E       AssertionError: digital-twin-e2e and firmware-build-verify read `device: ${{ fromJSON(needs.devices.outputs.list) }}`, found ['[wozi, dev, arzi, klkizi, grkizi, schlafzi]', '[wozi, dev, arzi, klkizi, grkizi, schlafzi]']
+E       assert ['[wozi, dev,...i, schlafzi]'] == ['${{ fromJSO...uts.list) }}']
+E         
+E         At index 0 diff: '[wozi, dev, arzi, klkizi, grkizi, schlafzi]' != '${{ fromJSON(needs.devices.outputs.list) }}'
+E         Use -v to get more diff
+
+tests_scripts/test_ci_workflow.py:217: AssertionError
+______________ test_the_cross_browser_smoke_requires_every_engine ______________
+
+    def test_the_cross_browser_smoke_requires_every_engine() -> None:
+        steps = [line for job in _jobs().values() for step in _steps(job, 6) for line in _run_lines(step) if line.startswith("node scripts/cross_browser_smoke.mjs")]
+>       assert steps == ["node scripts/cross_browser_smoke.mjs --require-all-engines"], f"in CI a missing engine fails the smoke: {steps}"
+E       AssertionError: in CI a missing engine fails the smoke: ['node scripts/cross_browser_smoke.mjs']
+E       assert ['node script...er_smoke.mjs'] == ['node script...-all-engines']
+E         
+E         At index 0 diff: 'node scripts/cross_browser_smoke.mjs' != 'node scripts/cross_browser_smoke.mjs --require-all-engines'
+E         Use -v to get more diff
+
+tests_scripts/test_ci_workflow.py:225: AssertionError
+_______________ test_the_web_lint_job_validates_every_built_page _______________
+
+    def test_the_web_lint_job_validates_every_built_page() -> None:
+        runs = [line for step in _steps(_jobs()["web-lint-and-typecheck"], 6) for line in _run_lines(step)]
+>       assert "npm run lint:html:built" in runs, "web-lint-and-typecheck: add a step running npm run lint:html:built"
+E       AssertionError: web-lint-and-typecheck: add a step running npm run lint:html:built
+E       assert 'npm run lint:html:built' in ['npm ci', 'npm run lint', 'npm run typecheck', 'npm run lint:html', 'npm run lint:css']
+
+tests_scripts/test_ci_workflow.py:234: AssertionError
+_________ test_every_playwright_install_is_bounded_and_retried_by_apt __________
+
+    def test_every_playwright_install_is_bounded_and_retried_by_apt() -> None:
+        # A stalled runner mirror otherwise holds the job to its own limit and it ends cancelled, naming nothing.
+        problems = []
+        for name, job in _jobs().items():
+            bounded = False
+            for step in _steps(job, 6):
+                run = "\n".join(_run_lines(step))
+                bounded = bounded or ("/etc/apt/apt.conf.d/" in run and "Acquire::Retries" in run and "Acquire::http::Timeout" in run)
+                if "npx playwright install" not in run:
+                    continue
+                if not bounded:
+                    problems.append(f"{name}: no apt retry and timeout step before {_run_lines(step)[0]!r}")
+                if not re.search(r"^\s+# @tunable ci\.\w+ = \d+\n\s+timeout-minutes: \d+$", step, re.MULTILINE):
+                    problems.append(f"{name}: {_run_lines(step)[0]!r} has no tagged step timeout-minutes")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: web-unit-tests: no apt retry and timeout step before 'npx playwright install --with-deps chromium'
+E         web-unit-tests: 'npx playwright install --with-deps chromium' has no tagged step timeout-minutes
+E         web-unit-tests: no apt retry and timeout step before 'npx playwright install-deps chromium'
+E         web-unit-tests: 'npx playwright install-deps chromium' has no tagged step timeout-minutes
+E         web-put-matrix: no apt retry and timeout step before 'npx playwright install --with-deps chromium'
+E         web-put-matrix: 'npx playwright install --with-deps chromium' has no tagged step timeout-minutes
+E         web-put-matrix: no apt retry and timeout step before 'npx playwright install-deps chromium'
+E         web-put-matrix: 'npx playwright install-deps chromium' has no tagged step timeout-minutes
+E         web-coverage: no apt retry and timeout step before 'npx playwright install --with-deps chromium'
+E         web-coverage: 'npx playwright install --with-deps chromium' has no tagged step timeout-minutes
+E         web-coverage: no apt retry and timeout step before 'npx playwright install-deps chromium'
+E         web-coverage: 'npx playwright install-deps chromium' has no tagged step timeout-minutes
+E         web-cross-browser-smoke: no apt retry and timeout step before 'npx playwright install --with-deps chromium'
+E         web-cross-browser-smoke: 'npx playwright install --with-deps chromium' has no tagged step timeout-minutes
+E         web-cross-browser-smoke: no apt retry and timeout step before 'npx playwright install-deps chromium'
+E         web-cross-browser-smoke: 'npx playwright install-deps chromium' has no tagged step timeout-minutes
+E       assert not ["web-unit-tests: no apt retry and timeout step before 'npx playwright install --with-deps chromium'", "web-unit-tests...ps chromium'", "web-put-matrix: 'npx playwright install --with-deps chromium' has no tagged step timeout-minutes", ...]
+
+tests_scripts/test_ci_workflow.py:260: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests_scripts/test_ci_workflow.py::test_the_checkout_stays_shallow_and_without_submodules
+PASSED tests_scripts/test_ci_workflow.py::test_every_job_budget_is_tagged
+FAILED tests_scripts/test_ci_workflow.py::test_every_needs_edge_is_read_ungated_or_stated_success_gated
+FAILED tests_scripts/test_ci_workflow.py::test_the_order_only_jobs_carry_not_cancelled_and_the_twin_e2e_stays_gated
+FAILED tests_scripts/test_ci_workflow.py::test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit
+FAILED tests_scripts/test_ci_workflow.py::test_every_third_party_action_is_pinned_to_a_commit_with_its_version
+FAILED tests_scripts/test_ci_workflow.py::test_no_test_step_hides_its_result_behind_continue_on_error
+FAILED tests_scripts/test_ci_workflow.py::test_every_value_reaches_a_run_through_env
+FAILED tests_scripts/test_ci_workflow.py::test_the_toolchain_action_keys_on_every_input_and_names_every_caller
+FAILED tests_scripts/test_ci_workflow.py::test_the_toolchain_action_syncs_first_and_builds_through_the_one_probe
+FAILED tests_scripts/test_ci_workflow.py::test_every_job_running_uv_or_a_script_syncs_first_through_an_action
+FAILED tests_scripts/test_ci_workflow.py::test_both_device_matrices_are_derived_from_the_devices_job
+FAILED tests_scripts/test_ci_workflow.py::test_the_cross_browser_smoke_requires_every_engine
+FAILED tests_scripts/test_ci_workflow.py::test_the_web_lint_job_validates_every_built_page
+FAILED tests_scripts/test_ci_workflow.py::test_every_playwright_install_is_bounded_and_retried_by_apt
+13 failed, 2 passed in 0.22s

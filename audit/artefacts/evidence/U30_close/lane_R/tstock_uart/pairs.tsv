@@ -1,0 +1,8 @@
+test_digital_twin_uart_link.py	-1	B	1	wt-u30r2	66.875	9.287	0.740	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	-1	A	1	wt-u30r	68.818	13.188	0.642	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	32768	B	1	wt-u30r2	70.093	15.197	0.695	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	32768	A	1	wt-u30r	78.714	31.759	0.553	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	-1	B	2	wt-u30r	66.625	9.341	0.656	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	-1	A	2	wt-u30r2	68.962	13.455	0.625	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	32768	B	2	wt-u30r	70.565	15.477	0.803	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	32768	A	2	wt-u30r2	80.094	32.907	0.609	0	21/21 passed, 0 failed, 0 skipped	0

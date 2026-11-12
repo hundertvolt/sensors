@@ -1,0 +1,6 @@
+head2 main rc=0 10.9s
+head2 twin rc=0 2.4s
+head2 host rc=0 10.3s
+head2 bench rc=0 2.6s
+head2 network rc=0 0.7s
+head2 conftest rc=0 1.9s

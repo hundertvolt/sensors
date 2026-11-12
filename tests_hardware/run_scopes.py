@@ -1,6 +1,6 @@
 """Named scopes for scripts/run_bench_hardware_suite.sh --scope NAME: the flash and bench tests one change
 reaches, each with the reason, run on their own until the whole of both tiers runs, and the settings groups
-their own writes need (--allow-persistence-writes-to). `run_scopes.py NAME flash|bench|writes` lists one."""
+their own writes need (--allow-persistence-write-to). `run_scopes.py NAME flash|bench|writes` lists one."""
 
 import sys
 from typing import NamedTuple
@@ -19,7 +19,7 @@ _CEILING = "the build's connection ceiling moved 6 -> 5 for the client's own soc
 _NTP = "NTP resolves its host through the changed resolver"
 
 SCOPES: dict[str, Scope] = {
-    # The MQTT PoC (Part A.11) and what its branch reaches (owner, 2026-10-08: "only test MQTT (and whatever is affected
+    # The MQTT PoC (Part A.12) and what its branch reaches (owner, 2026-10-08: "only test MQTT (and whatever is affected
     # by your changes) on the bench. you shall not run the whole bench at this time (will happen lateron when mqtt as such
     # is running)"; "include the ntp tests too, allow networking/ntp"; "include the hotspot role reversal too").
     "mqtt": Scope(
@@ -33,7 +33,7 @@ SCOPES: dict[str, Scope] = {
             # The NTP/DNS tests share the board's NTP state, so they keep the full tier's relative order: the unreachable-server
             # test leaves NTP unsynced and backing off, and runs after every test that needs it synced.
             (f"{_BENCH}test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry", _NTP),
-            (f"{_BENCH}test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot", _NTP),
+            (f"{_BENCH}test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage", _NTP),
             (f"{_BENCH}test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response", _NTP),
             (f"{_BENCH}test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response", _RESOLVER),
             (f"{_BENCH}test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source", _NTP),

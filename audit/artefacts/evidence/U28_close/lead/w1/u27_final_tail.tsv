@@ -1,0 +1,10 @@
+tests_scripts/test_coverage_runner.py	2.55	3.04	0	ok
+tests_scripts/test_digital_twin_boot_contiguity.py	13.15	13.47	0	ok
+tests_scripts/test_no_variant_literals.py	9.28	10.10	0	ok
+tests_scripts/test_script_metadata_pins.py	-	0.76	0	ok
+tests/test_digital_twin_ntp.py@-1	33.65	33.84	0	ok
+tests/test_digital_twin_ntp.py@32768	35.74	34.64	0	ok
+tests/test_digital_twin_run_generic_integration.py@-1	1.15	1.24	0	ok
+tests/test_digital_twin_run_generic_integration.py@32768	1.37	1.50	0	ok
+tests_js/live-backend.test.js	219.82	222.56	0	ok
+tests_js/live-backend-put-matrix.test.js	756.62	767.18	0	ok

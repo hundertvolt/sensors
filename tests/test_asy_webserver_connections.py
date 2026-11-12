@@ -4,7 +4,6 @@ at DebugLevel 0 (SPECIFICATION.md A.5, A.8). Own stream, clock and server double
 
 import asyncio
 import errno
-import json
 import socket
 import sys
 import time
@@ -13,13 +12,19 @@ import time
 sys.path.insert(0, "ext")
 
 import microdot
+from _async_harness import run
+from _cancel_sweep import cancel_at_each_await
 from _error_codes import code
+from _fake_time import DrivenTime
+from _fram_builders import make_fram_manager
+from _src_const import src_int
+from _strict_json import strict_loads
 from microdot import Microdot, Request
 
 import asy_print_log
 import asy_webserver_service
-from asy_print_log import LogConfig
-from asy_webserver_service import RouteSources, ServingLimits, WebserverService
+from asy_print_log import LogConfig, PrintLogHistoryStore
+from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -39,35 +44,22 @@ if TYPE_CHECKING:
     Sleep = Callable[[float], Awaitable[None]]
 
 
-def _src_const(name: str) -> str:
-    # The shipped value's literal, read from the source: a const() name is no module attribute on MicroPython.
-    with open("src/asy_webserver_service.py") as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                literal: str = line.split("const(", 1)[1].split(")", 1)[0]
-                return literal
-    raise AssertionError(name + " not found in src/asy_webserver_service.py")
-
-
-_CHUNK_BYTES = int(_src_const("_DEFAULT_CHUNK_BYTES"))
-_MAX_CONNECTIONS = int(_src_const("_DEFAULT_MAX_CONNECTIONS"))
-_MAX_CONTENT_LENGTH = int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH"))
-_MAX_HEADER_LINES = int(_src_const("_MAX_HEADER_LINES"))
-_MAX_HEAD_BYTES = int(_src_const("_MAX_HEAD_BYTES"))
-_START_RETRIES = int(_src_const("_START_RETRIES"))
-_START_RETRY_S = int(_src_const("_START_RETRY_S"))
+# The shipped values, read from source (tests/_src_const.py).
+_CHUNK_BYTES: int = src_int("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")
+_MAX_CONNECTIONS: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONNECTIONS")
+_MAX_CONTENT_LENGTH: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")
+_MAX_HEADER_LINES: int = src_int("src/asy_webserver_service.py", "_MAX_HEADER_LINES")
+_MAX_HEAD_BYTES: int = src_int("src/asy_webserver_service.py", "_MAX_HEAD_BYTES")
 
 _W_PEER_RESET = code("W", "HTTP_PEER_RESET")
 _W_CALL_TIMEOUT = code("W", "HTTP_CALL_TIMEOUT")
-_W_REQUEST_CAP = code("W", "HTTP_REQUEST_CAP")
 _W_SOCKET_ERROR = code("W", "HTTP_SOCKET_ERROR")
 _W_REFUSED = code("W", "HTTP_REFUSED")
 _W_BAD_HEAD = code("W", "HTTP_BAD_HEAD")
-_W_START_FAILED = code("W", "HTTP_START_FAILED")
 _E_UNEXPECTED = code("E", "UNEXPECTED")
 
-_HOUR_S = 3600  # the drop window's bin width; keep in sync with src/asy_base_classes.py's _HOUR_S
-_STEP_S = 0.005  # the driven clock's advance per scheduler round: a whole request takes well under 0.5 s of it
+_HOUR_S: int = src_int("src/asy_base_classes.py", "_HOUR_S")  # the drop window's bin width
+_VIRTUAL_LIMIT_MS = 60000  # the driven time one scenario may take before run_until() fails it: a whole one takes 10 s
 
 # This file's own TCP block, below the ephemeral range and clear of every other file's base (SPECIFICATION.md E.1):
 # the Unix port has no getsockname(), so a port-0 bind could not be read back.
@@ -75,15 +67,15 @@ _PORT_BASE = 18600
 _next_port = _PORT_BASE
 
 
-def _port() -> int:
-    global _next_port
-    _next_port += 1
-    return _next_port
-
-
-def run(coro: "Coroutine[object, object, T]", limit_s: float = 30.0) -> "T":
-    # Bounded in real time, so a defect under test fails fast instead of stalling the suite.
-    return asyncio.run(asyncio.wait_for(coro, limit_s))
+# Every run() is bounded in real time, so a defect under test fails fast instead of stalling the suite.
+_PER_CALL_S = 1.0  # _make_service()'s per-call timeout for a case that sets none
+_OUTER_CAP_S = 2.0
+_STUCK_PER_CALL_S = 0.5  # what each unsendable response's spinning write waits out
+_REACH_MS = 50  # a started serve task reaches its listen, or its spinning send
+_UNTIL_POLL_MS = 5
+_UNTIL_POLLS = 400
+_FEEDER_TICK_MS = 10
+_REFUSAL_PER_CALL_S = 30.0  # the per-call bound of the refusal, window and reset tests, which no call nears
 
 
 # ---------------------------------------------------------------------------
@@ -245,70 +237,50 @@ class _Uptime:
         return self.now
 
 
-class _Timer:
-    # One pending deadline on the driven clock, and what reaching it does: set a sleep's event or cancel a bounded task.
-    def __init__(self, deadline: float, wake: "Callable[[], object]") -> None:
-        self.deadline = deadline
-        self.wake = wake
-        self.fired = False
+class _SiteFile:
+    # The file the static route opens: a body Microdot reads in pieces, each close() counted.
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._pos = 0
+        self.closes = 0
+
+    def close(self) -> None:
+        self.closes += 1
+
+    def read(self, n: int) -> bytes:
+        piece = self._data[self._pos : self._pos + n]
+        self._pos += len(piece)
+        return piece
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        self._pos = offset + (len(self._data) if whence == 2 else 0)  # whence 2: from the end, as io's seek()
+        return self._pos
 
 
-class _DrivenClock:
-    # The file's own time double: virtual seconds that move only in _driven(), each due sleep or wait_for() bound firing
-    # as they pass, so the order of two deadlines is fixed by the test, never by the host's speed or scheduling.
-    def __init__(self) -> None:
-        self.now = 0.0
-        self._timers: list[_Timer] = []
+class _StaticConnection:
+    # One connection's fixture: a static GET whose route opens a _SiteFile through the module's shadowed open(), and
+    # whether _serve() began (a task cancelled before its first step runs none of its code, so it has nothing to close).
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+        self.files: list[_SiteFile] = []
+        self.reader = _Reader([(0, _head("GET /app.js HTTP/1.1", "Host: device.local"))])
+        self.writer = _Writer()
+        self.service = _make_service(static=StaticSite("/site", "index.html", None))
+        self.started = False
+        asy_webserver_service.open = self.open  # type: ignore[attr-defined]  # shadows the builtin; the test deletes it
 
-    def _add(self, delay: float, wake: "Callable[[], object]") -> _Timer:
-        timer = _Timer(self.now + delay, wake)
-        self._timers.append(timer)
-        return timer
+    def open(self, path: str, mode: str) -> _SiteFile:
+        assert (path, mode) == ("/site/app.js.gz", "rb"), (path, mode)
+        site_file = _SiteFile(self.body)
+        self.files.append(site_file)
+        return site_file
 
-    def _drop(self, timer: _Timer) -> None:
-        if timer in self._timers:
-            self._timers.remove(timer)
-
-    def advance(self, step_s: float) -> None:
-        self.now += step_s
-        for timer in [t for t in self._timers if t.deadline <= self.now]:
-            self._timers.remove(timer)
-            timer.fired = True
-            timer.wake()
-
-    async def sleep(self, t: float) -> None:
-        event = asyncio.Event()
-        timer = self._add(t, event.set)
-        try:
-            await event.wait()
-        finally:
-            self._drop(timer)
-
-    async def wait_for(self, aw: "Coroutine[object, object, T]", timeout: float) -> "T":
-        # asyncio.wait_for()'s contract on this clock: aw's result or exception, else aw cancelled and TimeoutError at the
-        # deadline; a cancel of the caller reaches aw too, as Task.cancel() forwards it (extmod/asyncio/task.py).
-        task = asyncio.create_task(aw)
-        timer = self._add(timeout, task.cancel)
-        try:
-            return await task
-        except asyncio.CancelledError:
-            if timer.fired:
-                raise asyncio.TimeoutError from None
-            raise
-        finally:
-            self._drop(timer)
+    async def serve(self) -> None:
+        self.started = True
+        await self.service._serve(self.reader, self.writer)
 
 
-async def _driven(clock: _DrivenClock, coro: "Coroutine[object, object, T]") -> "T":
-    # Runs coro while the clock advances one step per scheduler round.
-    task = asyncio.create_task(coro)
-    while not task.done():
-        await asyncio.sleep_ms(0)
-        clock.advance(_STEP_S)
-    return await task
-
-
-_ASYNCIO_NAMES = ("CancelledError", "Event", "Task", "TimeoutError", "create_task", "gather", "get_event_loop", "sleep", "sleep_ms", "start_server", "wait_for")
+_ASYNCIO_NAMES = ("CancelledError", "Event", "Task", "TimeoutError", "create_task", "gather", "get_event_loop", "sleep", "sleep_ms", "start_server", "wait_for_ms")
 
 
 class _AsyncioStandIn:
@@ -334,26 +306,17 @@ class _ServerStub:
 
 class _StartServer:
     # asyncio.start_server()'s double: raises each scripted failure in turn, then returns a server whose
-    # wait_closed() ends at once; sleep() records each retry delay and yields one round.
+    # wait_closed() ends at once.
     def __init__(self, failures: "list[Exception]") -> None:
         self._failures = list(failures)
         self.calls = 0
-        self.delays: list[float] = []
         self.server = _ServerStub()
-
-    async def sleep(self, t: float) -> None:
-        self.delays.append(t)
-        await asyncio.sleep_ms(0)
 
     async def start_server(self, cb: object, host: str, port: int, backlog: int = 5) -> _ServerStub:
         self.calls += 1
         if self._failures:
             raise self._failures.pop(0)
         return self.server
-
-
-def _microdot_print_exception() -> object:
-    return microdot.print_exception  # type: ignore[attr-defined]  # the vendored stub declares no print_exception
 
 
 class _Console:
@@ -393,7 +356,7 @@ class _Feeder:
     async def run(self) -> None:
         last = time.ticks_ms()
         while self.running:
-            await asyncio.sleep_ms(10)
+            await asy_webserver_service.asyncio.sleep_ms(_FEEDER_TICK_MS)  # on a DrivenTime block's clock inside one; the gap stays real
             now = time.ticks_ms()
             self.worst_ms = max(self.worst_ms, time.ticks_diff(now, last))
             last = now
@@ -424,22 +387,6 @@ class _RaisingSensor:
         return True
 
 
-def _make_service(
-    *,
-    max_connections: int = _MAX_CONNECTIONS,
-    per_call_timeout_s: float = 1.0,
-    outer_cap_s: float = 2.0,
-    debug: int | None = None,
-    uptime: "_Uptime | None" = None,
-    sensors: "Sequence[_ModuleLike]" = (),
-    port: int = 80,
-) -> WebserverService:
-    routes = RouteSources(sensors, None, None, None, None, None, None, (), ())
-    serving = ServingLimits(_MAX_CONTENT_LENGTH, _CHUNK_BYTES, max_connections, None, per_call_timeout_s, outer_cap_s, "127.0.0.1", port)
-    uptime_s = (uptime or _Uptime()).read
-    return WebserverService(Microdot(), routes, serving, uptime_s, None, LogConfig(None, 10, debug))
-
-
 def _head(*lines: str) -> bytes:
     return ("\r\n".join(lines) + "\r\n\r\n").encode()
 
@@ -447,25 +394,73 @@ def _head(*lines: str) -> bytes:
 _GET_STATUS = _head("GET /status HTTP/1.1", "Host: device.local")
 
 
-def _response(written: bytes) -> "tuple[int, JsonDict]":
-    end = written.find(b"\r\n\r\n")
-    assert end > 0, written
-    envelope: JsonDict = json.loads(written[end + 4 :])
-    return int(written.split(b" ", 2)[1]), envelope
+def _can_listen(port: int) -> bool:
+    # A second listener on the port: Linux refuses its bind with EADDRINUSE while one listens, SO_REUSEADDR or not;
+    # any other failure propagates.
+    probe = socket.socket()
+    try:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind(socket.getaddrinfo("127.0.0.1", port)[0][-1])
+        probe.listen(1)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        return False
+    finally:
+        probe.close()
+    return True
 
 
-async def _log(service: WebserverService) -> "tuple[int, list[tuple[int, str]]]":
-    # WEBSERVER's ErrCount and its used history slots as (code, type), oldest first.
-    entry = (await service.get_error_counter())["WEBSERVER"]
-    nums, types = entry["ErrNum"], entry["ErrType"]
-    return entry["ErrCount"], [(nums[i], types[i]) for i in range(len(nums)) if types[i] != "N"]
+def _check_refused(served: "tuple[list[tuple[bytes, int, int, int]], list[tuple[int, str]]]") -> None:
+    # Each one answered the shaped 400 and left exactly one more bad-head trace and drop, its slot freed.
+    results, used = served
+    for index, (written, count, dropped, open_conns) in enumerate(results, 1):
+        status, envelope = _response(written)
+        assert (status, envelope["code"]) == (400, 400), (index, written)
+        assert (count, dropped, open_conns) == (index, index, 0), (index, count, dropped, open_conns)
+    assert used == [(_W_BAD_HEAD, "W")], used
 
 
-async def _slots(service: WebserverService) -> int:
-    # The open-connection gauge: a LockedCounter reads None only before its first count, and this one starts at 0.
-    value = await service._open_conns.get_value()
-    assert value is not None
-    return value
+def _closed_and_logged(reader: _OneStream, writer: _Writer, *, full: bool) -> "tuple[tuple[int, int, bool, int, bool, int], tuple[int, tuple[int, list[tuple[int, str]]]], tuple[object, object]]":
+    # One connection served on a driven clock (`full`: at the ceiling): when it closed, the per-call timeout, its close,
+    # the open slots, its task ended, its writes; the count and log it left; and the chunk and RAM after its entry.
+    manager, _chip = make_fram_manager()
+    serving = ServingLimits(_MAX_CONTENT_LENGTH, _CHUNK_BYTES, 1, None, 0.3, 2.0, "127.0.0.1", 80)
+    routes = RouteSources((), None, None, None, None, None, None, None, (), ())
+    service = WebserverService(Microdot(), routes, serving, _Uptime().read, None, LogConfig(manager, 10, None))  # its logger on FRAM
+    store = service.pr
+    assert isinstance(store, PrintLogHistoryStore)
+    clock = DrivenTime(asy_webserver_service, sleeps=True)
+
+    async def scenario() -> "tuple[tuple[int, int, bool, int, bool, int], tuple[int, tuple[int, list[tuple[int, str]]]], tuple[object, object]]":
+        await manager.setup()
+        await service.setup()
+        if full:
+            service._open_conns += 1  # the one slot, taken by no connection a per-call timeout would reclaim
+        served = asyncio.create_task(service._serve(reader, writer))
+        took = await clock.run_until(lambda: writer.closed, _VIRTUAL_LIMIT_MS)
+        await clock.run_until(served.done, _VIRTUAL_LIMIT_MS)
+        closing = (took, service._per_call_timeout_ms, writer.closed, await _slots(service), served.done(), len(writer.writes))
+        kept = (await service.get_dropped_count(), await _log(service))
+        await served
+        if full:
+            service._open_conns -= 1
+        return closing, kept, (store._read(), (store._err_count, tuple(store.history)))
+
+    with clock:
+        return run(scenario())  # the scenario drives the clock itself
+
+
+async def _driven(clock: DrivenTime, coro: "Coroutine[object, object, T]") -> "T":
+    # Runs coro while the clock moves from one parked wake to the next, so two deadlines fire in their own order.
+    task = asyncio.create_task(coro)
+    await clock.run_until(task.done, _VIRTUAL_LIMIT_MS)
+    return await task
+
+
+def _driven_sleep(t: float) -> "Coroutine[object, object, None]":
+    # The service's own asyncio.sleep(), read per call: inside a DrivenTime(sleeps=True) block it parks on that clock.
+    return asy_webserver_service.asyncio.sleep(t)
 
 
 async def _hold(service: WebserverService, gate: "asyncio.Event") -> "asyncio.Task[None]":
@@ -476,9 +471,109 @@ async def _hold(service: WebserverService, gate: "asyncio.Event") -> "asyncio.Ta
     return task
 
 
+async def _log(service: WebserverService) -> "tuple[int, list[tuple[int, str]]]":
+    # WEBSERVER's ErrCount and its used history slots as (code, type), oldest first.
+    entry = (await service.get_error_counter())["WEBSERVER"]
+    nums, types = entry["ErrNum"], entry["ErrType"]
+    return entry["ErrCount"], [(nums[i], types[i]) for i in range(len(nums)) if types[i] != "N"]
+
+
+def _make_service(
+    *,
+    max_connections: int = _MAX_CONNECTIONS,
+    per_call_timeout_s: float = _PER_CALL_S,
+    outer_cap_s: float = _OUTER_CAP_S,
+    debug: int | None = None,
+    uptime: "_Uptime | None" = None,
+    sensors: "Sequence[_ModuleLike]" = (),
+    port: int = 80,
+    static: StaticSite | None = None,
+) -> WebserverService:
+    routes = RouteSources(sensors, None, None, None, None, None, None, None, (), ())
+    serving = ServingLimits(_MAX_CONTENT_LENGTH, _CHUNK_BYTES, max_connections, None, per_call_timeout_s, outer_cap_s, "127.0.0.1", port)
+    uptime_s = (uptime or _Uptime()).read
+    return WebserverService(Microdot(), routes, serving, uptime_s, static, LogConfig(None, 10, debug))
+
+
+def _microdot_print_exception() -> object:
+    return microdot.print_exception  # type: ignore[attr-defined]  # the vendored stub declares no print_exception
+
+
+def _port() -> int:
+    global _next_port
+    _next_port += 1
+    return _next_port
+
+
+# Measured on this port: ECONNREFUSED from a closed port, ECONNRESET from a listener closed with the connect in its
+# backlog. EPIPE is not in this build's errno module (py/moderrno.c:38-60), so it is not named here.
+_REFUSED_OR_RESET = (errno.ECONNREFUSED, errno.ECONNRESET)
+
+
+async def _refused_or_eof(port: int) -> bool:
+    # A connect to a closed port fails at once, or, when it went EINPROGRESS, on the first write or read (stream.py);
+    # any error outside the refusal and reset family propagates.
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)  # one Stream on MicroPython
+    except OSError as e:
+        if e.errno not in _REFUSED_OR_RESET:
+            raise
+        return True
+    try:
+        writer.write(_GET_STATUS)
+        await writer.drain()
+        return await reader.read(-1) == b""
+    except OSError as e:
+        if e.errno not in _REFUSED_OR_RESET:
+            raise
+        return True
+    finally:
+        writer.close()
+
+
 async def _release(gate: "asyncio.Event", held: "asyncio.Task[None]") -> None:
     gate.set()
     await held
+
+
+def _response(written: bytes) -> "tuple[int, JsonDict]":
+    end = written.find(b"\r\n\r\n")
+    assert end > 0, written
+    envelope = strict_loads(written[end + 4 :])
+    assert isinstance(envelope, dict), envelope
+    return int(written.split(b" ", 2)[1]), envelope
+
+
+async def _serve_all(service: WebserverService, readers: "list[_Reader]") -> "tuple[list[tuple[bytes, int, int, int]], list[tuple[int, str]]]":
+    # Each connection's written bytes, then ErrCount, the drop count and the open slots once it has ended; and the
+    # used history slots after the last.
+    await service.setup()
+    results = []
+    used: list[tuple[int, str]] = []
+    for reader in readers:
+        writer = _Writer()
+        await service._serve(reader, writer)
+        count, used = await _log(service)
+        results.append((writer.written, count, await service.get_dropped_count(), await _slots(service)))
+    return results, used
+
+
+async def _slots(service: WebserverService) -> int:
+    value = service._open_conns  # the open-connection gauge, a plain int
+    assert value is not None
+    return value
+
+
+def _trickle(data: bytes, delay_s: float) -> "list[tuple[float, bytes]]":
+    return [(delay_s, data[i : i + 1]) for i in range(len(data))]
+
+
+async def _until(predicate: "Callable[[], Awaitable[bool]]") -> bool:
+    for _ in range(_UNTIL_POLLS):
+        if await predicate():
+            return True
+        await asyncio.sleep_ms(_UNTIL_POLL_MS)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -487,8 +582,8 @@ async def _release(gate: "asyncio.Event", held: "asyncio.Task[None]") -> None:
 
 
 def test_seven_refusals_count_seven_and_spend_one_slot() -> None:
-    loud = _make_service(max_connections=1, per_call_timeout_s=30.0, debug=2)
-    quiet = _make_service(max_connections=1, per_call_timeout_s=30.0, debug=0)
+    loud = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S, debug=2)
+    quiet = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S, debug=0)
     console = _Console()
 
     async def refuse_seven(service: WebserverService) -> "tuple[int, int, list[tuple[int, str]], list[_Writer], int]":
@@ -521,11 +616,26 @@ def test_seven_refusals_count_seven_and_spend_one_slot() -> None:
     assert len(console.lines) == loud_lines  # DebugLevel 0 prints none of its seven
 
 
+def test_a_dropped_connection_closes_frees_its_slot_and_its_task_ends_with_its_entry_on_the_chip() -> None:
+    # A refusal, a drop arm and a reclaim arm close, release the count and end their task at once, a silent client at
+    # its per-call timeout; each one's entry is on the chip by then, written inside its call (agent, 2026-11-07, under the owner's option B of that day; SPEC A.8).
+    refused = _closed_and_logged(_Reader([(0, _GET_STATUS)]), _Writer(), full=True)
+    bad_head = _closed_and_logged(_Reader([(0, _head("PUT /status HTTP/1.1", "Content-Length: -1"))]), _Writer(), full=False)
+    unreachable = _closed_and_logged(_Reader([(0, _GET_STATUS)]), _Writer(fail_at=1, fail_with=OSError(errno.EHOSTUNREACH)), full=False)
+    silent = _closed_and_logged(_Reader([], eof=False, sleep=_driven_sleep), _Writer(), full=False)
+    for arm, slots, dropped, wrnno in ((refused, 1, 1, _W_REFUSED), (bad_head, 0, 1, _W_BAD_HEAD), (unreachable, 0, 0, _W_SOCKET_ERROR), (silent, 0, 0, _W_CALL_TIMEOUT)):
+        (took, per_call_ms, closed, open_slots, ended, _writes), kept, (stored, ram) = arm
+        assert (took, closed, open_slots, ended) == (per_call_ms if arm is silent else 0, True, slots, True), (wrnno, took, closed, open_slots, ended)
+        assert kept == (dropped, (1, [(wrnno, "W")])), (wrnno, kept)
+        assert stored == ram, (wrnno, stored, ram)  # the entry is on the chip
+    assert refused[0][5] == 0, refused[0]  # a refusal writes no response
+
+
 def test_dropped_connections_leave_the_count_after_a_day() -> None:
     # The service's own uptime source drives the window; the error log keeps every entry regardless.
     uptime = _Uptime()
     uptime.now = 5000  # not on an hour boundary: the window's edge is the event's hour, 23-24 hours on
-    service = _make_service(max_connections=1, per_call_timeout_s=30.0, uptime=uptime)
+    service = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S, uptime=uptime)
 
     async def refuse(times: int) -> None:
         for _ in range(times):
@@ -556,7 +666,7 @@ def test_dropped_connections_leave_the_count_after_a_day() -> None:
 
 
 def test_reset_errors_clears_the_dropped_count() -> None:
-    service = _make_service(max_connections=1, per_call_timeout_s=30.0)
+    service = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S)
     body = b'{"ResetErrors": true}'
     put = _head("PUT /status HTTP/1.1", "Content-Type: application/json", f"Content-Length: {len(body)}") + body
 
@@ -589,12 +699,10 @@ def test_a_client_gone_mid_response_counts_one_drop() -> None:
     # Microdot mutes the ECONNRESET of a response write (ext/microdot.py Response.write()); the proxy records it. A
     # write-phase timeout is not an OSError (SPECIFICATION.md F.1) and a socket error Microdot does not mute is logged
     # by its own arm: each keeps its one warning, with no peer-reset entry beside it.
-    clock = _DrivenClock()
     gone = _make_service(debug=2)
     stalled = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
     unreachable = _make_service()
     reset_writer = _Writer(fail_at=1, fail_with=OSError(errno.ECONNRESET))  # the head goes out, the first body piece fails
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
     console = _Console()
 
     async def outcome(service: WebserverService, writer: _Writer) -> "tuple[int, tuple[int, list[tuple[int, str]]]]":
@@ -610,10 +718,10 @@ def test_a_client_gone_mid_response_counts_one_drop() -> None:
         ]
 
     try:
-        reset, timed_out, socket_error = run(_driven(clock, scenario()))
+        with DrivenTime(asy_webserver_service, sleeps=True) as clock:
+            reset, timed_out, socket_error = run(_driven(clock, scenario()))
     finally:
         console.restore()
-        stand_in.uninstall()
     assert reset_writer.written.startswith(b"HTTP/1.0 200 "), reset_writer.written
     assert reset_writer.attempts == 2, reset_writer.attempts  # nothing more is written after the failed piece
     assert reset == (1, (1, [(_W_PEER_RESET, "W")])), reset
@@ -637,30 +745,6 @@ def test_a_connection_closed_before_any_byte_is_no_drop() -> None:
 # ---------------------------------------------------------------------------
 # The request head: every client-controlled size bounded before Microdot parses or allocates it.
 # ---------------------------------------------------------------------------
-
-
-async def _serve_all(service: WebserverService, readers: "list[_Reader]") -> "tuple[list[tuple[bytes, int, int, int]], list[tuple[int, str]]]":
-    # Each connection's written bytes, then ErrCount, the drop count and the open slots once it has ended; and the
-    # used history slots after the last.
-    await service.setup()
-    results = []
-    used: list[tuple[int, str]] = []
-    for reader in readers:
-        writer = _Writer()
-        await service._serve(reader, writer)
-        count, used = await _log(service)
-        results.append((writer.written, count, await service.get_dropped_count(), await _slots(service)))
-    return results, used
-
-
-def _check_refused(served: "tuple[list[tuple[bytes, int, int, int]], list[tuple[int, str]]]") -> None:
-    # Each one answered the shaped 400 and left exactly one more bad-head trace and drop, its slot freed.
-    results, used = served
-    for index, (written, count, dropped, open_conns) in enumerate(results, 1):
-        status, envelope = _response(written)
-        assert (status, envelope["code"]) == (400, 400), (index, written)
-        assert (count, dropped, open_conns) == (index, index, 0), (index, count, dropped, open_conns)
-    assert used == [(_W_BAD_HEAD, "W")], used
 
 
 def test_a_negative_content_length_is_refused_before_any_body_is_read() -> None:
@@ -708,19 +792,19 @@ def test_a_non_numeric_or_repeated_content_length_is_a_refused_head() -> None:
     assert (console.lines, console.exceptions) == ([], [])
 
 
-def test_a_body_cut_short_of_its_content_length_is_refused_quietly() -> None:
+def test_a_body_cut_short_of_its_content_length_is_answered_by_microdot() -> None:
     # 20 of 50 bytes, then EOF: the buffered 20 serve first, the stream is asked for the other 30, and its EOFError
-    # becomes the quiet refusal instead of Microdot's printed one.
+    # reaches Microdot, which prints it (through the service's level-gated rebound) and answers 400; no drop.
     service = _make_service()
     reader = _Reader([(0, _head("PUT /status HTTP/1.1", "Content-Type: application/json", "Content-Length: 50") + b"x" * 20)])
     console = _Console(exceptions=True)
     try:
-        served = run(_serve_all(service, [reader]))
+        results, used = run(_serve_all(service, [reader]))
     finally:
         console.restore()
-    _check_refused(served)
+    assert (_response(results[0][0])[0], results[0][1:], used) == (400, (0, 0, 0), []), results
     assert reader.readexactly_sizes == [30], reader.readexactly_sizes
-    assert (console.lines, console.exceptions) == ([], [])
+    assert [type(e) for e in console.exceptions] == [EOFError], console.exceptions
 
 
 def test_an_overlong_header_line_is_refused_within_one_line_of_reads() -> None:
@@ -770,8 +854,9 @@ def test_a_head_past_its_byte_cap_is_refused_though_each_line_fits() -> None:
     assert (console.lines, console.exceptions) == ([], [])
 
 
-def test_malformed_head_lines_are_refused_without_a_traceback() -> None:
-    # Each would raise inside Microdot's Request.create(), which prints it before answering 400.
+def test_malformed_head_lines_reach_microdot_which_answers_400() -> None:
+    # Each raises inside Microdot's Request.create(), which prints it (through the service's level-gated rebound) and
+    # answers 400; no drop is counted. A chunked body reaches the handler empty and answers Invalid (code 1).
     service = _make_service()
     heads = [
         b"GET /\r\n\r\n",  # a request line of two tokens
@@ -782,11 +867,12 @@ def test_malformed_head_lines_are_refused_without_a_traceback() -> None:
     ]
     console = _Console(exceptions=True)
     try:
-        served = run(_serve_all(service, [_Reader([(0, h)]) for h in heads]))
+        results, used = run(_serve_all(service, [_Reader([(0, h)]) for h in heads]))
     finally:
         console.restore()
-    _check_refused(served)
-    assert (console.lines, console.exceptions) == ([], [])
+    answers = [(_response(r[0])[0], _response(r[0])[1]["code"], r[1:]) for r in results]
+    assert answers == [(400, 400, (0, 0, 0))] * 4 + [(200, 1, (0, 0, 0))], answers
+    assert (used, len(console.exceptions)) == ([], 4), (used, console.exceptions)
 
 
 def test_a_long_query_string_within_the_line_bound_is_served() -> None:
@@ -803,56 +889,33 @@ def test_a_long_query_string_within_the_line_bound_is_served() -> None:
 
 def test_expect_100_continue_is_answered_once_the_late_body_arrives() -> None:
     # An HTTP/1.0 server sends no interim response; curl sends the body after its own 1 s wait.
-    clock = _DrivenClock()
     service = _make_service(per_call_timeout_s=2.0, outer_cap_s=5.0)
     body = b'{"ResetErrors": true}'
     head = _head("PUT /status HTTP/1.1", "Expect: 100-continue", "Content-Type: application/json", f"Content-Length: {len(body)}")
-    reader = _Reader([(0, head), (1.0, body)], sleep=clock.sleep)
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
+    reader = _Reader([(0, head), (1.0, body)], sleep=_driven_sleep)
     console = _Console(exceptions=True)
     try:
-        results, used = run(_driven(clock, _serve_all(service, [reader])))
+        with DrivenTime(asy_webserver_service, sleeps=True) as clock:
+            results, used = run(_driven(clock, _serve_all(service, [reader])))
     finally:
         console.restore()
-        stand_in.uninstall()
     status, envelope = _response(results[0][0])
     assert (status, envelope["result"], results[0][1:], used) == (200, {"ResetErrors": "Valid"}, (0, 0, 0), []), results
-    assert clock.now >= 1.0  # the body really came late
+    assert clock.now >= 1000  # the body really came late (virtual ms)
     assert (console.lines, console.exceptions) == ([], [])
 
 
 # ---------------------------------------------------------------------------
-# The server start: a bounded retry, and a cancelled task that closes its listening socket.
+# The server start: one attempt whose failure ends the task, and a cancelled task that closes its listening socket.
 # ---------------------------------------------------------------------------
 
 
-async def _start_then_log(service: WebserverService) -> "tuple[int, list[tuple[int, str]]]":
-    await service.setup()
-    await service._serve_loop()
-    return await _log(service)
-
-
-def test_a_start_that_fails_twice_then_serves() -> None:
-    service = _make_service(debug=2)
-    starter = _StartServer([OSError(errno.ENOMEM), MemoryError("injected for the start")])
-    stand_in = _AsyncioStandIn(start_server=starter.start_server, sleep=starter.sleep)
-    console = _Console()
-    try:
-        log = run(_start_then_log(service))
-    finally:
-        console.restore()
-        stand_in.uninstall()
-    assert (starter.calls, starter.delays, starter.server.waited) == (3, [_START_RETRY_S] * 2, True)
-    assert [line[1] for line in console.lines] == ["Web server start failed, retrying:"] * 2, console.lines
-    assert log == (0, []), log  # a retried failure prints, and persists nothing
-
-
-def test_a_start_that_fails_three_times_logs_once_and_raises() -> None:
+def test_a_failed_start_ends_the_serve_task_for_the_supervisor() -> None:
+    # One start_server() call: its failure raises out of the task, and the supervisor's restart is the retry (the
+    # listener sets SO_REUSEADDR, extmod/asyncio/stream.py, so a restart rebinds at once).
     service = _make_service()
-    failures: list[Exception] = [OSError(errno.EADDRINUSE) for _ in range(_START_RETRIES)]
-    last = failures[-1]
-    starter = _StartServer(failures)
-    stand_in = _AsyncioStandIn(start_server=starter.start_server, sleep=starter.sleep)
+    failure = OSError(errno.EADDRINUSE)
+    starter = _StartServer([failure])
 
     async def scenario() -> "tuple[BaseException | None, tuple[int, list[tuple[int, str]]]]":
         await service.setup()
@@ -863,51 +926,13 @@ def test_a_start_that_fails_three_times_logs_once_and_raises() -> None:
             raised = e
         return raised, await _log(service)
 
+    stand_in = _AsyncioStandIn(start_server=starter.start_server)
     try:
         raised, log = run(scenario())
     finally:
         stand_in.uninstall()
-    assert raised is last  # re-raised, so the task ends and the supervisor's rung takes over
-    assert (starter.calls, starter.delays) == (_START_RETRIES, [_START_RETRY_S] * (_START_RETRIES - 1))
-    assert log == (1, [(_W_START_FAILED, "W")]), log
-
-
-def _can_listen(port: int) -> bool:
-    # A second listener on the port: Linux refuses it while one listens, SO_REUSEADDR or not.
-    probe = socket.socket()
-    try:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        probe.bind(socket.getaddrinfo("127.0.0.1", port)[0][-1])
-        probe.listen(1)
-    except OSError:
-        return False
-    finally:
-        probe.close()
-    return True
-
-
-async def _refused_or_eof(port: int) -> bool:
-    # A connect to a closed port fails at once, or, when it went EINPROGRESS, on the first read (stream.py).
-    try:
-        reader, writer = await asyncio.open_connection("127.0.0.1", port)  # one Stream on MicroPython
-    except OSError:
-        return True
-    try:
-        writer.write(_GET_STATUS)
-        await writer.drain()
-        return await asyncio.wait_for(reader.read(-1), 2.0) == b""
-    except OSError:
-        return True
-    finally:
-        writer.close()
-
-
-async def _until(predicate: "Callable[[], Awaitable[bool]]") -> bool:
-    for _ in range(400):
-        if await predicate():
-            return True
-        await asyncio.sleep_ms(5)
-    return False
+    assert (raised, starter.calls) == (failure, 1), (raised, starter.calls)
+    assert log == (0, []), log  # nothing persisted here: the supervisor records the ended task
 
 
 def test_cancelling_the_serve_task_closes_the_listening_port() -> None:
@@ -925,7 +950,7 @@ def test_cancelling_the_serve_task_closes_the_listening_port() -> None:
     async def scenario() -> "tuple[bool, bool, bytes, bool, bool, bool, bool]":
         await service.setup()
         task = service.start_asy_serve()
-        await asyncio.sleep_ms(50)  # the start's own bind and listen
+        await asyncio.sleep_ms(_REACH_MS)  # the start's own bind and listen
         listening = not _can_listen(port)
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         try:
@@ -937,7 +962,7 @@ def test_cancelling_the_serve_task_closes_the_listening_port() -> None:
                 pass
             writer.write(_GET_STATUS)
             await writer.drain()
-            response = await asyncio.wait_for(reader.read(-1), 5.0)
+            response = await reader.read(-1)
         finally:
             writer.close()
         refused = await _refused_or_eof(port)
@@ -949,19 +974,41 @@ def test_cancelling_the_serve_task_closes_the_listening_port() -> None:
     assert (refused, free, ended, drained) == (True, True, True, True)
 
 
+def test_cancelling_a_connection_at_each_await_frees_its_slot() -> None:
+    # The body spans three chunks, so the response's writes are cancel points too; the control serves it whole.
+    body = bytes(range(256)) * (3 * _CHUNK_BYTES // 256)
+
+    async def build() -> _StaticConnection:
+        return _StaticConnection(body)
+
+    async def serve(conn: _StaticConnection) -> None:
+        await conn.serve()
+
+    def invariants(conn: _StaticConnection) -> None:
+        assert conn.service._open_conns == 0, "the connection's slot is still counted"
+        assert conn.writer.closed or not conn.started, "the writer left open"
+
+    try:
+        counts = cancel_at_each_await(build, serve, invariants)
+        control = _StaticConnection(body)
+        run(control.serve())
+    finally:
+        del asy_webserver_service.open  # type: ignore[attr-defined]
+    invariants(control)
+    assert control.writer.written.startswith(b"HTTP/1.0 200 "), control.writer.written[:64]
+    assert control.writer.written.endswith(body), len(control.writer.written)
+    assert len(control.files) == 1 and control.files[0].closes > 0, control.files  # Microdot's own close after a whole send
+    assert counts > 2, counts  # the path suspended at several awaits, each one a cancel point
+
+
 # ---------------------------------------------------------------------------
 # The console under client faults, and sends the network stack cannot queue.
 # ---------------------------------------------------------------------------
 
 
-def _trickle(data: bytes, delay_s: float) -> "list[tuple[float, bytes]]":
-    return [(delay_s, data[i : i + 1]) for i in range(len(data))]
-
-
 def test_client_faults_print_nothing_at_debug_level_zero() -> None:
     # A host that holds the USB port without reading stalls each print 500 ms (shared/tinyusb/mp_usbd_cdc.c,
     # ports/rp2/mphalport.h); at DebugLevel 0 no client fault may print, or a burst could starve the watchdog.
-    clock = _DrivenClock()
     service = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0, debug=0)
     rebound = _microdot_print_exception() == service._print_exception
     truncated = _head("PUT /status HTTP/1.1", "Content-Type: application/json", "Content-Length: 50") + b"x" * 20
@@ -969,46 +1016,65 @@ def test_client_faults_print_nothing_at_debug_level_zero() -> None:
     feeder = _Feeder()
 
     async def wave() -> None:
-        slow = [asyncio.create_task(service._serve(_Reader(_trickle(_GET_STATUS, 0.25), eof=False, sleep=clock.sleep), _Writer())) for _ in range(_MAX_CONNECTIONS)]
-        await clock.sleep(0.5)
+        slow = [asyncio.create_task(service._serve(_Reader(_trickle(_GET_STATUS, 0.25), eof=False, sleep=_driven_sleep), _Writer())) for _ in range(_MAX_CONNECTIONS)]
+        await _driven_sleep(0.5)
         for _ in range(2):  # the six Slowloris clients hold every slot
             await service._serve(_Reader([(0, _GET_STATUS)]), _Writer())
         for task in slow:
             await task  # each reclaimed by the outer cap
-        # A truncated body ending in EOF is refused quietly; one ending in silence times out, which Microdot prints
-        # through the rebound, level-gated print.
+        # A chunked body answers Invalid; a truncated body ending in EOF, and one ending in silence after its timeout,
+        # reach Microdot, which prints them through the rebound, level-gated print.
         faults = (_Reader([(0, bad_head)]), _Reader([(0, truncated)]), _Reader([(0, truncated)], eof=False), _ResetReader())
         await asyncio.gather(*(service._serve(reader, _Writer()) for reader in faults))
 
     async def load() -> "tuple[tuple[int, list[tuple[int, str]]], int, int]":
         await service.setup()
         feeding = asyncio.create_task(feeder.run())
-        for start in (2.5, 5.0, 7.5, 10.0):  # four waves over a driven 10 s at least
+        for start in (2500, 5000, 7500, 10000):  # four waves over a driven 10 s at least, in virtual ms
             await wave()
-            await clock.sleep(max(0.0, start - clock.now))
+            await _driven_sleep(max(0, start - clock.now) / 1000)
         feeder.running = False
         await feeding
         return await _log(service), await service.get_dropped_count(), await _slots(service)
 
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
     console = _Console(block_ms=500)
     try:
-        (count, used), dropped, open_conns = run(_driven(clock, load()))
+        with DrivenTime(asy_webserver_service, sleeps=True) as clock:
+            (count, used), dropped, open_conns = run(_driven(clock, load()))
     finally:
         console.restore()
-        stand_in.uninstall()
     assert rebound  # Microdot's print_exception() is the service's level-gated one
     assert console.lines == [], console.lines
     assert feeder.worst_ms < 2000, feeder.worst_ms  # the supervisor's 2 s check interval (src/asy_system_service.py)
-    # Per wave: six outer-cap reclaims, two refusals, two refused heads, a read timeout and a reset; all counted, the
-    # five drops among them too, and none printed.
-    assert (count, dropped, open_conns) == (48, 20, 0), (count, dropped, open_conns)
-    assert {c for c, _t in used} <= {_W_REQUEST_CAP, _W_REFUSED, _W_BAD_HEAD, _W_CALL_TIMEOUT, _W_PEER_RESET}, used
+    # Per wave: six outer-cap reclaims, two refusals, a read timeout and a reset; all counted, the three drops among
+    # them too, and none printed.
+    assert (count, dropped, open_conns) == (40, 12, 0), (count, dropped, open_conns)
+    assert {c for c, _t in used} <= {_W_REFUSED, _W_CALL_TIMEOUT, _W_PEER_RESET}, used
+
+
+def test_a_silent_client_prints_two_lines_at_a_raised_level() -> None:
+    # A client that sends nothing: the proxy's read arm traces the per-call timeout (W49), and Microdot prints the same
+    # exception through the service's rebound print, one level-gated line each.
+    service = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0, debug=2)
+
+    async def scenario() -> "tuple[int, list[tuple[int, str]]]":
+        await service.setup()
+        await service._serve(_Reader([], eof=False, sleep=_driven_sleep), _Writer())
+        return await _log(service)
+
+    console = _Console()
+    try:
+        with DrivenTime(asy_webserver_service, sleeps=True) as clock:
+            log = run(_driven(clock, scenario()))
+    finally:
+        console.restore()
+    assert [line[:2] for line in console.lines] == [("WEBSERVER", "Connection reclaimed (per-call timeout):"), ("WEBSERVER", "Microdot caught:")], console.lines
+    assert log == (1, [(_W_CALL_TIMEOUT, "W")]), log
 
 
 def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_above() -> None:
-    # Microdot prints a handler's exception before our catch-all runs; the service rebound that print to its logger,
-    # except a MemoryError's text, which stays on the console for the memory gates (CLAUDE.md memory rule).
+    # Microdot prints a handler's exception before our catch-all runs; the service rebound that print to its logger, so
+    # level 0 prints nothing, a MemoryError included, and level 1 prints both lines with the text (CLAUDE.md memory rule).
     sensor = _RaisingSensor(ValueError("probe"))
     service = _make_service(sensors=[sensor], debug=0)
     rebound = _microdot_print_exception() == service._print_exception
@@ -1030,10 +1096,12 @@ def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_abo
         loud = await serve_once()
         service.pr.set_level(0)
         sensor.exc = MemoryError("injected for the handler")
-        return [quiet, loud, await serve_once()]
+        silent = await serve_once()
+        service.pr.set_level(1)
+        return [quiet, loud, silent, await serve_once()]
 
     try:
-        quiet, loud, exhausted = run(scenario())
+        quiet, loud, silent, exhausted = run(scenario())
     finally:
         console.restore()
     assert rebound
@@ -1043,15 +1111,17 @@ def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_abo
     # One gated line is Microdot's print; the other the catch-all's own entry, both carrying the text.
     assert [line[1] for line in lines] == ["Microdot caught:", "Unhandled exception in route handler:"], lines
     assert all(str(line[2]) == "probe" for line in lines), lines
+    assert silent == (500, 3, []), silent
     status, count, lines = exhausted
-    assert (status, count, [line[:2] for line in lines]) == (500, 3, [("WEBSERVER", "Microdot caught:")]), exhausted
-    assert str(lines[0][2]) == "injected for the handler"
+    # At level 1 a MemoryError prints both, each with its text: Microdot's print and the catch-all's line.
+    assert (status, count, [line[:2] for line in lines]) == (500, 4, [("WEBSERVER", "Microdot caught:"), ("WEBSERVER", "Unhandled exception in route handler:")]), exhausted
+    assert [str(line[-1]) for line in lines] == ["injected for the handler"] * 2, lines
 
 
 def test_sends_the_stack_cannot_queue_end_at_the_per_call_timeout() -> None:
     # lwIP's queue can fail a send with room left (POLLOUT at tcp_sndbuf() > 0): each stuck write spins one round per
     # attempt until the per-call timeout, other tasks served each round (SPECIFICATION.md A.5).
-    service = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
+    service = _make_service(per_call_timeout_s=_STUCK_PER_CALL_S, outer_cap_s=_OUTER_CAP_S)
     stuck = [_EagainWriter(10**9) for _ in range(_MAX_CONNECTIONS - 1)]
     feeder = _Feeder()
 
@@ -1081,7 +1151,7 @@ def test_sends_the_stack_cannot_queue_end_at_the_per_call_timeout() -> None:
 
 
 def test_a_send_refused_a_thousand_times_then_accepted_completes() -> None:
-    service = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
+    service = _make_service(per_call_timeout_s=_STUCK_PER_CALL_S, outer_cap_s=_OUTER_CAP_S)
     writer = _EagainWriter(1000)
 
     async def scenario() -> "tuple[tuple[int, list[tuple[int, str]]], int]":
@@ -1098,13 +1168,13 @@ def test_a_send_refused_a_thousand_times_then_accepted_completes() -> None:
 
 
 def test_slots_held_by_unsendable_responses_come_back() -> None:
-    service = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
+    service = _make_service(per_call_timeout_s=_STUCK_PER_CALL_S, outer_cap_s=_OUTER_CAP_S)
     stuck = [_EagainWriter(10**9) for _ in range(_MAX_CONNECTIONS)]
 
     async def scenario() -> "tuple[_Writer, _Writer, tuple[int, list[tuple[int, str]]], int]":
         await service.setup()
         tasks = [asyncio.create_task(service._serve(_Reader([(0, _GET_STATUS)]), w)) for w in stuck]
-        await asyncio.sleep_ms(50)
+        await asyncio.sleep_ms(_REACH_MS)
         refused = _Writer()
         await service._serve(_Reader([(0, _GET_STATUS)]), refused)  # every slot held by a spinning send
         for task in tasks:

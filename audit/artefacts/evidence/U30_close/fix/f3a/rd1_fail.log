@@ -1,0 +1,288 @@
+........FFFFFFFF......                                                   [100%]
+=================================== FAILURES ===================================
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.items = (x for x in y)\n-1] _
+
+body = '    def poll(self):\n        self.items = (x for x in y)\n'
+expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.items = (x for x in y)\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.pair = (a, b)\n-1] _
+
+body = '    def poll(self):\n        self.pair = (a, b)\n', expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.pair = (a, b)\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.pair = tuple(y)\n-1] _
+
+body = '    def poll(self):\n        self.pair = tuple(y)\n', expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.pair = tuple(y)\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n-1] _
+
+body = '    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n'
+expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.slots = [None] * n\n-1] _
+
+body = '    def poll(self):\n        self.slots = [None] * n\n', expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.slots = [None] * n\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.cache = self.cache or {}\n-1] _
+
+body = '    def poll(self):\n        self.cache = self.cache or {}\n'
+expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.cache = self.cache or {}\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.bus = _Bus(1)\n-1] _
+
+body = '    def poll(self):\n        self.bus = _Bus(1)\n', expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.bus = _Bus(1)\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+_ test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.data = type(old)(*values)\n-1] _
+
+body = '    def poll(self):\n        self.data = type(old)(*values)\n'
+expected = 1
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("    def poll(self):\n        self.buf = bytearray(4)\n", 1),
+            ("    def poll(self):\n        self.task = asyncio.create_task(f())\n", 1),
+            ("    def poll(self):\n        self.data = Reading(1, 2)\n", 1),
+            ("    def poll(self):\n        self.items = [x for x in y]\n", 1),
+            ("    def poll(self):\n        self.items = (x for x in y)\n", 1),
+            ("    def poll(self):\n        self.pair = (a, b)\n", 1),
+            ("    def poll(self):\n        self.pair = tuple(y)\n", 1),
+            ("    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n", 1),
+            ("    def poll(self):\n        self.slots = [None] * n\n", 1),
+            ("    def poll(self):\n        self.cache = self.cache or {}\n", 1),
+            ("    def poll(self):\n        self.bus = _Bus(1)\n", 1),
+            ("    def poll(self):\n        self.data = type(old)(*values)\n", 1),
+            ("    def poll(self):\n        self.pair = (1, -2, 'x', (3.0, None))\n", 0),
+            ("    def poll(self):\n        self.value = self._read() if ok else None\n", 0),
+            ("    def poll(self):\n        self.count = self.count + 1\n", 0),
+            ("    def poll(self):\n        self.view = None\n", 0),
+            ("    def __init__(self):\n        self.cache = {}\n", 0),
+            ("    async def setup(self):\n        self.cache = {}\n", 0),
+        ],
+    )
+    def test_a_fabricated_method_is_judged_by_what_it_stores(body: str, expected: int) -> None:
+>       assert len(_violations("x.py", "class A:\n" + body)) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = _violations('x.py', ('class A:\n' + '    def poll(self):\n        self.data = type(old)(*values)\n'))
+
+tests_scripts/test_memory_catalog.py:137: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.items = (x for x in y)\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.pair = (a, b)\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.pair = tuple(y)\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.rgb = (b,) * 3 if on else (0, 0, 0)\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.slots = [None] * n\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.cache = self.cache or {}\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.bus = _Bus(1)\n-1]
+FAILED tests_scripts/test_memory_catalog.py::test_a_fabricated_method_is_judged_by_what_it_stores[    def poll(self):\n        self.data = type(old)(*values)\n-1]
+8 failed, 14 passed in 1.24s

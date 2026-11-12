@@ -1,0 +1,18 @@
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-root/pytest-10627/test_the_probe_runs_under_its_0/timeout.calls'
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...t_its_bou0/toolchain/micropython/ports/unix/build-standard/micropython'], returncode=0, stdout='standard
+E         ', stderr='')
+E       assert (0, 'standard\n') == (0, 'unusable\n')
+E         
+E         At index 1 diff: 'standard\n' != 'unusable\n'
+E         Use -v to get more diff
+E           AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...pytest-10627/test_a_probe_without_timeout_f0/toolchain/micropython/ports/unix/build-standard/micropython
+E             ', stderr='')
+E           assert (0, '/tmp/pyt...icropython\n') == (1, '')
+E             
+E             At index 0 diff: 0 != 1
+E             Use -v to get more diff
+FAILED tests_scripts/test_unix_port_sh.py::test_the_probe_runs_under_its_kill_bound
+FAILED tests_scripts/test_unix_port_sh.py::test_a_probe_killed_at_its_bound_reads_unusable_and_check_names_the_kill
+FAILED tests_scripts/test_unix_port_sh.py::test_a_probe_without_timeout_fails_naming_it
+3 failed, 52 passed in 6.34s

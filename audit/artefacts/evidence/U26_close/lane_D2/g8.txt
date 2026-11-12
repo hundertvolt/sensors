@@ -1,0 +1,371 @@
+=== test_import_placement
+.......                                                                  [100%]
+7 passed in 7.08s
+
+real	0m7.310s
+user	0m6.992s
+sys	0m0.256s
+rc=0
+=== test_comment_block_cap
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 39%]
+........................................................................ [ 52%]
+........................................................................ [ 65%]
+........................................................................ [ 78%]
+........................................................................ [ 91%]
+..............................................                           [100%]
+550 passed in 3.95s
+
+real	0m4.185s
+user	0m3.956s
+sys	0m0.175s
+rc=0
+=== test_code_conventions
+.........................                                                [100%]
+25 passed in 3.74s
+
+real	0m4.379s
+user	0m4.196s
+sys	0m0.097s
+rc=0
+=== test_hardware_clones
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+____________ test_no_function_body_is_copied_in_the_hardware_levels ____________
+
+>   ???
+E   AssertionError: identical function bodies - one helper (or a device_scripts/_shared include) instead:
+E       bench/test_bus_concurrency_under_api_load.py::_synced = bench/test_network_resilience.py::_synced = bench/test_network_resilience.py::_synced
+E       bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker
+E       bench/test_end_to_end_timing.py::_try_fetch_ok = bench/test_hotspot_role_reversal.py::_dut_reachable_again = bench/test_network_resilience.py::_sta_reconnected = bench/test_wifi_networking.py::_http_ok
+E       conformance.py::parse = isl29125_conformance.py::parse
+E       device_scripts/heap_headroom_after_full_system_build.py::_dump_map = device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map
+E       device_scripts/heap_headroom_after_full_system_build.py::_largest_block = device_scripts/heap_layout_after_full_boot_sequence.py::_largest_block
+E       device_scripts/heap_headroom_after_full_system_build.py::_report_checked = device_scripts/heap_layout_after_full_boot_sequence.py::_report_checked
+E       device_scripts/heap_under_connection_ceiling.py::_dump = device_scripts/serving_at_default_gc.py::_dump
+E       device_scripts/heap_under_connection_ceiling.py::_report_unretrieved = device_scripts/serving_at_default_gc.py::_report_unretrieved
+E   assert not [['bench/test_bus_concurrency_under_api_load.py::_synced', 'bench/test_network_resilience.py::_synced', 'bench/test_ne..._full_system_build.py::_largest_block', 'device_scripts/heap_layout_after_full_boot_sequence.py::_largest_block'], ...]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_hardware_clones.py:32: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_clones.py::test_no_function_body_is_copied_in_the_hardware_levels
+1 failed, 1 passed in 0.50s
+
+real	0m0.725s
+user	0m0.627s
+sys	0m0.085s
+rc=1
+=== test_decision_vocabulary
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+>   ???
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E       tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py	Restore the datasheet/production default (x1, see asy_bmp3xx_driver.py's own _in
+E       tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py	Deliberately discarded - see _SETTLE_S.
+E       tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py	this script must never be called more than once per opt-in run.
+E       tests_hardware/device_scripts/float_boundary_2pow24.py	Deliberately not `coerced == float(above)` - float(above) is recomputed on this
+E       tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from _ORIGINAL_PATTERN
+E       tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from every other pattern above
+E       tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	what the interrupted write attempts, must never land
+E       tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py	Hard requirement: the raced write must never have reached the chip.
+E       tests_hardware/device_scripts/fram_same_device_rw_concurrency.py	deliberately distinct from SEED_PATTERN
+E       tests_hardware/device_scripts/isl29125_lighting_scenarios.py	Deliberately NOT rig.observe(): a switch caused by getting INTO position is not
+E       tests_hardware/device_scripts/isl29125_lighting_scenarios.py	across every scenario - reset_scenario() deliberately leaves it alone
+E       tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Parks the pixel at one STEADY level (the overlay path, never a ramp) and samples
+E       tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Responsiveness, NOT calibration: brighter light must never report dimmer, and th
+E       tests_hardware/device_scripts/isl29125_mechanism_envelope.py	The applied ratio is config now and only a user PUT changes it, so this asserts
+E       tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Two settled holds have no such confound.
+E       tests_hardware/device_scripts/isl29125_real_irq_edge.py	deliberately long: only a real interrupt can beat it
+E       tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py	An IR-compensation-only change: a 2-byte burst at 0x02, which deliberately does
+E       tests_hardware/device_scripts/scd30_plausibility_read.py	Let the sensor's own post-reset response-time settle (see module docstring) befo
+E       tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py	Deliberately discarded - see _SETTLE_S.
+E       tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py	noqa: B007 - deliberately read after the loop (below) to report how many Timers
+E       tests_hardware/device_scripts/uart_crossover_exchange.py	Every wait below is bounded and feeds as it goes: a link that never answers park
+E       tests_hardware/device_scripts/uart_crossover_recovery.py	Isolated-driver device script: the failure half of the crossover-jumper tier - o
+E       tests_hardware/device_scripts/uart_idle_poll_rate.py	The ratio is what the finding is about, so the bound is deliberately loose on ab
+E       tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py	The floor is deliberately far below the unloaded rate - this asserts the link ke
+E       tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py	Isolated-driver device script: the clamped read path must never hold the CPU for
+E       tests_hardware/flash/test_bus_concurrency.py	Deliberately does NOT depend on scd30_continuous_measurement_triggered - this sw
+E       tests_hardware/flash/test_bus_concurrency.py	The SCD30-as-writer half of the same gap, deliberately outside the routine group
+E       tests_hardware/flash/test_bus_electrical_timing.py	Deliberately its own separate marker/flag, never bundled with the long_soak/--so
+E       tests_hardware/flash/test_sensor_accuracy.py	The device script's _scenarios() table sums to ~8.5 minutes of real segment time
+E       tests_hardware/flash/test_uart_crossover.py	The two failure classes that matter on real hardware: the one the design recover
+E   assert not [('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', "Restore the datasheet/production default (x1,..._scripts/fram_cs_hijack_fault_injection_and_recovery.py', 'deliberately distinct from every other pattern above'), ...]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 5 passed in 8.25s
+
+real	0m8.475s
+user	0m8.221s
+sys	0m0.159s
+rc=1
+=== test_citations
+FF.............                                                          [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+>   ???
+E   AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E       tests_hardware/README.md: tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py
+E   assert not [('tests_hardware/README.md', 'tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py')]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_citations.py:251: AssertionError
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+>   ???
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E       tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	measure A
+E       tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	measure A
+E   assert not [('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', 'measure A'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', 'measure A')]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_citations.py:256: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+2 failed, 13 passed in 9.83s
+
+real	0m10.089s
+user	0m9.730s
+sys	0m0.243s
+rc=1
+=== test_level_containment
+...F..................F...                                               [100%]
+=================================== FAILURES ===================================
+________________ test_no_exception_row_names_a_covered_scenario ________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2')
+
+>   ???
+E   AssertionError: E.6.6 rows for scenarios an L3/L4 module now covers: {'uart-hazards-on-jumper': ['uart_comm_hazard', 'uart_field_sweep']}
+E   assert not {'uart-hazards-on-jumper': ['uart_comm_hazard', 'uart_field_sweep']}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_level_containment.py:140: AssertionError
+_ test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_scd30_config_write_does_not_disturb_concurrent_sibling_reads] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2')
+test_name = 'test_scd30_config_write_does_not_disturb_concurrent_sibling_reads'
+
+>   ???
+E   AssertionError: test_scd30_config_write_does_not_disturb_concurrent_sibling_reads names test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load, which tests_hardware/bench/test_bus_concurrency_under_api_load.py does not define
+E   assert 'test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load' in {'_ceiling_retries_noted', '_noted_ceiling_retries', '_report_ceiling_retries', '_schema_sanity_findings', '_take_ceiling_retries', 'fetch', ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_level_containment.py:180: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_level_containment.py::test_no_exception_row_names_a_covered_scenario
+FAILED tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_scd30_config_write_does_not_disturb_concurrent_sibling_reads]
+2 failed, 24 passed in 0.75s
+
+real	0m0.960s
+user	0m0.871s
+sys	0m0.082s
+rc=1
+=== test_device_script_watchdog
+.F..                                                                     [100%]
+=================================== FAILURES ===================================
+___________ test_no_rendered_script_sleeps_longer_than_one_feed_step ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9605/test_no_rendered_script_sleeps0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fad7c86c390>
+
+>   ???
+E   AssertionError: a wait longer than 2000 ms goes through fed_sleep_ms()/fed_wait_ms(): {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling.py': ['line 76: sleep(_BOOT_WAIT_S)'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)']}
+E   assert not {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling.py': ['line 76: sleep(_BOOT_WAIT_S)'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)']}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_watchdog.py:80: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_watchdog.py::test_no_rendered_script_sleeps_longer_than_one_feed_step
+1 failed, 3 passed in 0.92s
+
+real	0m1.137s
+user	0m1.043s
+sys	0m0.080s
+rc=1
+=== test_device_script_facts
+FF.F........                                                             [100%]
+=================================== FAILURES ===================================
+____________________ test_no_device_script_prints_a_verdict ____________________
+
+>   ???
+E   AssertionError: a device script prints RESULT; it reports facts and the host test decides: {'allocation_need_per_source.py': [165, 171], 'config_float_round_trip.py': [70, 75, 87, 89], 'fram_busy_status_lockout.py': [42, 48, 55, 68, 70], 'fram_capacity_after_full_system_build.py': [53, 51, 37], 'fram_command_hold_timing.py': [62, 21, 37, 40, 54, 60], 'fram_error_log_reset_during_boot_window.py': [66, 24, 30, 39, 48, 54, 63], 'fram_error_log_reset_race_seed_and_race.py': [73, 30, 39, 48, 56], 'fram_error_log_reset_race_verify.py': [68, 29, 38, 46, 49, 52, 64], 'fram_error_log_roundtrip.py': [68, 21, 27, 37, 43, 49, 58, 65], 'fram_manager_roundtrip.py': [40, 19, 24, 28, 33, 37], 'fram_pause_unpause_and_gating.py': [178, 183, 196, 198], 'fram_write_protect_roundtrip.py': [115, 83, 88, 113, 96, 99, 108], 'heap_headroom_after_full_system_build.py': [142, 137, 140, 118], 'heap_layout_after_full_boot_sequence.py': [214, 54, 154, 175, 189], 'heap_under_connection_ceiling.py': [83, 89], 'reboot_fallback_starves_the_watchdog.py': [41, 49, 38], 'reboot_persist_read.py': [18, 22, 24, 26], 'reboot_persist_write.py': [25, 19], 'serving_at_default_gc.py': [133, 139], 'sgp40_fram_backup_restore.py': [122, 63, 75, 87, 95, 107, 119], 'system_debug_level_raise_for_boot_log_check.py': [21, 25, 32, 40, 46, 48], 'system_debug_level_restore_after_boot_log_check.py': [19, 23, 33, 35], 'system_service_restarts_a_real_dead_task.py': [54, 56], 'unretrieved_task_exception_handler.py': [186, 190, 192], 'wifi_country_hostname_edge_values.py': [40, 14, 16, 31, 33, 35]}
+E   assert not {'allocation_need_per_source.py': [165, 171], 'config_float_round_trip.py': [70, 75, 87, 89], 'fram_busy_status_lockout.py': [42, 48, 55, 68, 70], 'fram_capacity_after_full_system_build.py': [53, 51, 37], ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_facts.py:52: AssertionError
+_________ test_every_host_function_that_runs_a_script_parses_its_facts _________
+
+>   ???
+E   AssertionError: a script's output must reach harness.parse_facts(): {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and parses no facts'], 'bench/test_serving_heap_at_default_gc.py': ['test_every_source_and_route_fits_a_small_free_run runs a script and parses no facts', 'test_serving_sweep_at_the_reactive_default runs a script and parses no facts'], 'conformance.py': ['run_probe_on_twin runs a script and parses no facts'], 'flash/test_chip_conformance.py': ['_conformance runs a script and parses no facts'], 'flash/test_config_float_round_trip.py': ['test_config_floats_round_trip_unchanged runs a script and parses no facts'], 'flash/test_fram_storage.py': ['_run_and_assert_pass runs a script and parses no facts', 'test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write runs a script and parses no facts'], 'flash/test_memory_stress.py': ['test_real_gc_heap_headroom_survives_a_full_system_build runs a script and parses no facts'], 'flash/test_reboot_persistence.py': ['test_config_value_survives_a_genuine_hard_reset runs a script and parses no facts', 'test_boot_import_mechanism_actually_boots_the_real_system runs a script and parses no facts'], 'flash/test_task_supervisor.py': ['test_the_supervisor_restarts_a_real_dead_task runs a script and parses no facts'], 'flash/test_unretrieved_task_exception_handler.py': ['test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware runs a script and parses no facts'], 'flash/test_watchdog_starvation.py': ['test_watchdog_starvation_triggers_a_real_hardware_reset runs a script and parses no facts', 'test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm runs a script and parses no facts']}
+E   assert not {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and par...cript and parses no facts'], 'flash/test_chip_conformance.py': ['_conformance runs a script and parses no facts'], ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_facts.py:76: AssertionError
+__________ test_every_loop_in_an_async_def_awaits_on_every_path_back ___________
+
+>   ???
+E   AssertionError: loops in an async def that can loop back without an await (script: loop lines): {'allocation_need_per_source.py': [149, 155]}
+E   assert not {'allocation_need_per_source.py': [149, 155]}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_facts.py:164: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_facts.py::test_no_device_script_prints_a_verdict
+FAILED tests_scripts/test_device_script_facts.py::test_every_host_function_that_runs_a_script_parses_its_facts
+FAILED tests_scripts/test_device_script_facts.py::test_every_loop_in_an_async_def_awaits_on_every_path_back
+3 failed, 9 passed in 0.55s
+
+real	0m0.771s
+user	0m0.695s
+sys	0m0.070s
+rc=1
+=== test_tunables_register
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+>   ???
+E   AssertionError: tests_scripts/test_device_script_fram_regions.py:30: l0.fram_regions_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_scripts/test_session_exit_guard.py:31: l0.session_exit_guard_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:43: l4.conftest_provision_put_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:45: l4.conftest_dut_ip_exec_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:47: l4.conftest_http_ready_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:49: l4.conftest_http_ready_poll_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:51: l4.conftest_ip_and_http_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:53: l4.dut_serving_after_sta_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:55: l4.conftest_sta_tail_step_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:57: l4.conftest_vl805_read_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:59: l4.conftest_end_present_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/conftest.py:61: l4.conftest_end_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/harness.py:120: l4.harness_usb_unbind_settle_max_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/harness.py:122: l4.harness_usb_bind_settle_max_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/harness.py:143: l4.observe_during_tail_after_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/harness.py:145: l4.observe_during_tail_step_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/harness.py:153: l3.reflash_present_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/harness.py:155: l3.reflash_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/scd30_prerequisite.py:18: l3.scd30_prerequisite_interval_read_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/scd30_prerequisite.py:20: l3.scd30_prerequisite_wait_margin_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/bench/conftest.py:17: l4.board_image_system_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py:29: l3.bmp3xx_alone_survives_a_general_call_broadcasts is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py:31: l3.bmp3xx_alone_survives_a_general_call_broadcast_step_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py:33: l3.bmp3xx_alone_survives_a_general_call_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bmp3xx_conformance_probe.py:32: l3.bmp3xx_conformance_probe_conversion_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py:37: l3.bmp3xx_same_device_rw_concurrency_rung_margin_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:34: l3.bus_concurrency_cross_device_resume_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:36: l3.bus_concurrency_cross_device_sibling_step_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:38: l3.bus_concurrency_cross_device_rung_traffic_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py:37: l3.bus_concurrency_scd30_write_vs_siblings_writer_delay_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mechanism_envelope.py:37: l3.isl29125_mechanism_envelope_settle_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:31: l3.isl29125_mock_conformance_probe_write_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:34: l3.isl29125_mock_conformance_probe_conversion_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:37: l3.isl29125_mock_conformance_probe_reconfigure_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:40: l3.isl29125_mock_conformance_probe_short_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:43: l3.isl29125_mock_conformance_probe_one_cycle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:45: l3.isl29125_mock_conformance_probe_int_release_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:60: l3.isl29125_mock_conformance_probe_cycle_samples is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:62: l3.isl29125_mock_conformance_probe_cycle_window_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:64: l3.isl29125_mock_conformance_probe_cycle_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_real_irq_edge.py:47: l3.isl29125_real_irq_edge_dark_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:36: l3.isl29125_same_device_rw_concurrency_writer_delay_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:38: l3.isl29125_same_device_rw_concurrency_writer_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_argument_reaction.py:33: l3.scd30_argument_reaction_read_delay_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_argument_reaction.py:35: l3.scd30_argument_reaction_ready_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_argument_reaction.py:38: l3.scd30_argument_reaction_period_slack_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_argument_reaction.py:41: l3.scd30_argument_reaction_loop_writes is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_argument_reaction.py:43: l3.scd30_argument_reaction_loop_step_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_conformance_probe.py:29: l3.scd30_conformance_probe_read_delay_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_conformance_probe.py:31: l3.scd30_conformance_probe_ready_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_conformance_probe.py:34: l3.scd30_conformance_probe_ready_slack_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_conformance_probe.py:38: l3.scd30_conformance_probe_recovery_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_data_ready_wait.py:25: l3.scd30_data_ready_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_data_ready_wait.py:27: l3.scd30_data_ready_wait_margin_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py:38: l3.scd30_same_device_rw_concurrency_writer_delay_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py:40: l3.scd30_same_device_rw_concurrency_writer_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/scheduler_saturation_drop.py:27: l3.scheduler_saturation_drop_busy_step_us is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/sgp40_sample_cadence.py:39: l3.sgp40_sample_cadence_timers_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_comm_hazards.py:50: l3.uart_comm_hazards_quiet_window_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:56: l3.uart_dma_ring_interrupts_off_quiet_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:59: l3.uart_dma_ring_interrupts_off_oe_bound_us is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:62: l3.uart_dma_ring_interrupts_off_untouched_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:65: l3.uart_dma_ring_interrupts_off_reset_stream_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:48: l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:54: l3.uart_driver_read_never_blocks_the_loop_drain_quiet_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_idle_poll_rate.py:37: l3.uart_idle_poll_rate_park_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/uart_idle_poll_rate.py:39: l3.uart_idle_poll_rate_cancel_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/facts.py:7: l3.device_script_errors_kept is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/heap_probe.py:19: l3.heap_probe_min is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/heap_probe.py:21: l3.heap_probe_max_kib is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/heap_probe.py:24: l3.heap_probe_retries is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/settle.py:20: l3.settle_step_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/settle.py:22: l3.settle_budget_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/device_scripts/_shared/watchdog.py:12: l3.device_script_feed_step_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/conftest.py:24: l3.flash_leave_serving_present_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/conftest.py:26: l3.flash_leave_serving_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_bus_concurrency.py:36: l3.bus_concurrency_command_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_bus_electrical_timing.py:22: l3.bus_electrical_timing_arming_span_max_us is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_bus_electrical_timing.py:25: l3.bus_electrical_timing_country_script_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_chip_conformance.py:23: l3.chip_conformance_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_chip_conformance.py:26: l3.chip_conformance_argument_reaction_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_chip_conformance.py:32: l3.chip_conformance_isl29125_cycle_min_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_chip_conformance.py:34: l3.chip_conformance_isl29125_cycle_max_ms is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_sensor_accuracy.py:41: l3.sensor_accuracy_frc_sum_rel_max is tagged but has no SPECIFICATION.md Part N row
+E     tests_hardware/flash/test_uart_crossover.py:42: l3.uart_crossover_hazards_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     scripts/record_twin_instrument_runs.py:31: l3.record_twin_flash_run_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E     SPECIFICATION.md:10428: wdt.timeout_ms: Sites list [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_capacity_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/heap_headroom_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py', '8000'), ('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_sample_cadence.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')], the tags say [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_device_script.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/_shared/watchdog.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/fram_capacity_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/heap_headroom_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py', '8000'), ('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '8000'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')]
+E     SPECIFICATION.md:10550: dev.uart_poll_wait_ms: Sites list [('devices/dev.toml', '2'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '2'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '2'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '2'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '2'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '2')], the tags say [('devices/dev.toml', '2')]
+E     SPECIFICATION.md:10551: dev.uart_poll_idle_ms: Sites list [('devices/dev.toml', '50'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '50'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '50'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '50'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '50')], the tags say [('devices/dev.toml', '50')]
+E     SPECIFICATION.md:10552: dev.uart_rxbuf: Sites list [('devices/dev.toml', '512'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '512'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '512'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '512')], the tags say [('devices/dev.toml', '512')]
+E     SPECIFICATION.md:10610: l1.unix_heapsize: Sites list [('scripts/test.sh', '16M'), ('tests_scripts/test_digital_twin_boot_contiguity.py', '16M')], the tags say [('scripts/test.sh', '16M'), ('tests_scripts/test_device_script_fram_regions.py', '16M'), ('tests_scripts/test_digital_twin_boot_contiguity.py', '16M')]
+E     SPECIFICATION.md:11008: l3.conformance_twin_probe_timeout_s: Sites list [('tests_hardware/isl29125_conformance.py', '180.0')], the tags say [('tests_hardware/conformance.py', '180.0'), ('tests_hardware/isl29125_conformance.py', '180.0')]
+E     SPECIFICATION.md:11009: l4.soak_duration_short_s: Sites list [('tests_hardware/soak_tiers.py', '60.0')], the tags say [('tests_hardware/soak_durations.py', '60.0'), ('tests_hardware/soak_tiers.py', '60.0')]
+E     SPECIFICATION.md:11010: l4.soak_duration_mid_s: Sites list [('tests_hardware/soak_tiers.py', '600.0')], the tags say [('tests_hardware/soak_durations.py', '600.0'), ('tests_hardware/soak_tiers.py', '600.0')]
+E     SPECIFICATION.md:11011: l4.soak_duration_long_h: Sites list [('tests_hardware/soak_tiers.py', '6')], the tags say [('tests_hardware/soak_durations.py', '6'), ('tests_hardware/soak_tiers.py', '6')]
+E     SPECIFICATION.md:11048: l4.hotspot_role_reversal_join_hotspot_timeout_s: Sites list [('tests_hardware/bench/test_hotspot_role_reversal.py', '45.0'), ('tests_hardware/bench/test_network_resilience.py', '45.0')], the tags say [('tests_hardware/bench/test_hotspot_role_reversal.py', '45.0'), ('tests_hardware/bench/test_network_resilience.py', '45.0'), ('tests_hardware/conftest.py', '45.0')]
+E     SPECIFICATION.md:11049: l4.hotspot_role_reversal_hotspot_scan_timeout_s: Sites list [('tests_hardware/bench/test_hotspot_role_reversal.py', '30.0')], the tags say [('tests_hardware/bench/test_hotspot_role_reversal.py', '30.0'), ('tests_hardware/conftest.py', '30.0')]
+E     SPECIFICATION.md:11050: l4.hotspot_role_reversal_hotspot_scan_poll_s: Sites list [('tests_hardware/bench/test_hotspot_role_reversal.py', '2.0')], the tags say [('tests_hardware/bench/test_hotspot_role_reversal.py', '2.0'), ('tests_hardware/conftest.py', '2.0')]
+E     SPECIFICATION.md:11166: l3.uart_crossover_exchange_join_step_ms is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11167: l3.uart_crossover_exchange_join_budget_ms is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11174: l3.uart_idle_poll_rate_sample_step_ms is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11179: l3.uart_idle_poll_rate_stop_poll_tries is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11195: l3.toolchain_flash_boot_load_timeout_s: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '120'), ('tests_hardware/manual/manual_toolchain.py', '120')], the tags say [('tests_hardware/flash/test_toolchain_flash_boot.py', '120'), ('tests_hardware/harness.py', '120'), ('tests_hardware/manual/manual_toolchain.py', '120')]
+E     SPECIFICATION.md:11196: l3.toolchain_flash_boot_load_retry_backoff_s: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '2.0')], the tags say [('tests_hardware/flash/test_toolchain_flash_boot.py', '2.0'), ('tests_hardware/harness.py', '2.0')]
+E     SPECIFICATION.md:11198: l3.toolchain_flash_boot_picotool_load_attempts: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '5')], the tags say [('tests_hardware/flash/test_toolchain_flash_boot.py', '5'), ('tests_hardware/harness.py', '5')]
+E     SPECIFICATION.md:11205: l3.fram_same_device_rw_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11218: l3.scd30_same_device_rw_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11222: l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11223: l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11227: l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11232: l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11235: l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11240: l3.sgp40_general_call_reset_hazard_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11245: l3.isl29125_cross_device_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11249: l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11266: l3.scheduler_saturation_drop_timer_period_ms: Sites list [('tests_hardware/device_scripts/scheduler_saturation_drop.py', '2')], the tags say [('tests_hardware/device_scripts/scheduler_saturation_drop.py', '1')]
+E     SPECIFICATION.md:11267: l3.scheduler_saturation_drop_busy_wait_ms is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11272: l3.bus_electrical_timing_wrap_headroom_h is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11273: l3.bus_electrical_timing_rollover_headroom_s is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11274: l3.bus_electrical_timing_rollover_poll_interval_s is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11315: l3.sgp40_fram_backup_restore_wdt_feed_interval_s: Sites list [('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '2.0'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '2.0')], the tags say [('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '2.0')]
+E     SPECIFICATION.md:11328: l3.isl29125_lighting_scenarios_step_ms is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11342: l3.sensor_accuracy_conformance_script_timeout_s is a tuned row, but no file carries its @tunable tag
+E     SPECIFICATION.md:11344: l3.conftest_scd30_rw_script_timeout_s is a tuned row, but no file carries its @tunable tag
+E   assert not ['tests_scripts/test_device_script_fram_regions.py:30: l0.fram_regions_boot_timeout_s is tagged but has no SPECIFICATI..., 'tests_hardware/conftest.py:49: l4.conftest_http_ready_poll_s is tagged but has no SPECIFICATION.md Part N row', ...]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 3.77s
+
+real	0m4.013s
+user	0m3.869s
+sys	0m0.098s
+rc=1

@@ -1,0 +1,7 @@
+PASS test_initiator_task_starters_include_exercise_loop
+FAIL test_responder_task_starters_are_the_listen_loop_only:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_link_driver.py", line 126, in test_responder_task_starters_are_the_listen_loop_only
+AssertionError: [<bound_method 7f49c7a92ce0 <UARTLinkDriver object at 7f49c7a8f120>.<function start_asy_exercise at 0x7f49c7a62ce0>>]
+1/2 passed, 1 failed, 0 skipped

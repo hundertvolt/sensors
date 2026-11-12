@@ -17,42 +17,36 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/, for the shared summary block
-
-from _summary_block import Summary, from_run_record  # type: ignore[import-not-found]
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # the repo root, for the shared summary block
+from scripts._summary_block import Summary, from_run_record
 
 # Skip-gating marker -> the option (argparse dest) that runs it: its skip is expected only while
 # that option is unset. The wear gates deselect instead and reach the verdict as deselections.
 GATE_OPTIONS = {
     "flash_cycle": "allow_flash_cycle",
-    "long_soak": "soak_tier",
-    "multi_day_rollover": "allow_multi_day_rollover_wait",
+    "soak_duration": "soak_duration",
+    "multi_day_rollover": "allow_multi_day_rollover",
     "neopixel_sweep": "allow_neopixel_sweep",
+    "toolchain_reverify": "allow_toolchain_reverify",
 }
 
 PERMANENT_SKIPS = (
     # A real rogue-NTP spoof needs an off-subnet host the bench lacks (owner, 2026-09-26; attempted on the bench first).
     "tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored",
+    # Silicon's run needs the bench network to reach the script's server, so it is the bench tier's test (twin only here).
+    "tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget",
 )
 
 _NOT_COVERED = "not covered by this run"
 
 
-def _flag(dest: str) -> str:
-    return "--" + dest.replace("_", "-")
-
-
-def _load(path: Path) -> "dict[str, object]":
-    try:
-        record = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-    return record if isinstance(record, dict) else {}
-
-
 def _entries(record: "dict[str, object]", key: str) -> "list[dict[str, object]]":
     value = record.get(key)
     return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+
+
+def _flag(dest: str) -> str:
+    return "--" + dest.replace("_", "-")
 
 
 def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[str, object]") -> "tuple[str, str]":
@@ -68,8 +62,25 @@ def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[s
     return "failed", f"unexpected skip: {reason}"
 
 
+def _load(path: Path) -> "dict[str, object]":
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
+    # A collection pass ran nothing: its deselections are listed, nothing is judged.
+    block = _CollectionOnly(runner=summary.runner, levels=summary.levels)
+    for entry in _entries(record, "deselected"):
+        block.add("deselected", str(entry.get("nodeid")), str(entry.get("by") or "runner selection"))
+    block.print(0)
+    return 0
+
+
 @dataclass
-class _Verdict(Summary):  # type: ignore[misc]  # Summary is Any to mypy: scripts/ is not on host_typecheck.ini's mypy_path
+class _Verdict(Summary):
     # pytest's own nonzero exit is propagated unchanged, so its Result names it rather than reading
     # pytest's 2 (interrupted) or 4 (its usage error) as this block's usage-error or NOT CLEAN code.
     pytest_exit: int = 0
@@ -127,18 +138,9 @@ def judge(record_path: Path, pytest_exit: int, runner: str, levels: str, not_cle
     return exit_code
 
 
-class _CollectionOnly(Summary):  # type: ignore[misc]
-    def result(self, exit_code: int) -> str:  # noqa: ARG002 - the same verdict whatever the code
+class _CollectionOnly(Summary):
+    def result(self, exit_code: int) -> str:
         return "NOT A RUN (collection only)"
-
-
-def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
-    # A collection pass ran nothing: its deselections are listed, nothing is judged.
-    block = _CollectionOnly(runner=summary.runner, levels=summary.levels)
-    for entry in _entries(record, "deselected"):
-        block.add("deselected", str(entry.get("nodeid")), str(entry.get("by") or "runner selection"))
-    block.print(0)
-    return 0
 
 
 def main(argv: "list[str] | None" = None) -> int:

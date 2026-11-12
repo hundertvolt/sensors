@@ -1,0 +1,177 @@
+FAIL test_a_fault_or_hang_naming_a_chip_this_run_never_wired_is_refused_by_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 303, in test_a_fault_or_hang_naming_a_chip_this_run_never_wired_is_refused_by_name
+  File "tests/test_digital_twin_launch.py", line 75, in _refused
+TypeError: _apply_fault() takes 5 positional arguments but 3 were given
+FAIL test_apply_fault_arms_wlan_with_its_times_and_bypasses_the_wiring_check:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 296, in test_apply_fault_arms_wlan_with_its_times_and_bypasses_the_wiring_check
+TypeError: _apply_fault() takes 5 positional arguments but 3 were given
+FAIL test_apply_fault_queues_a_fresh_oserror_with_times_and_match:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 272, in test_apply_fault_queues_a_fresh_oserror_with_times_and_match
+TypeError: _apply_fault() takes 5 positional arguments but 3 were given
+FAIL test_apply_fault_sets_each_mode_and_counted_knob:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 281, in test_apply_fault_sets_each_mode_and_counted_knob
+  File "digital_twin/launch.py", line 59, in parse_fault_spec
+ValueError: --fault op 'int_stuck_high' not recognized for device 'isl29125' - expected one of ('readfrom_mem', 'writeto_mem', 'writeto')
+Warning: exception chaining not supported
+FAIL test_apply_fault_stack_queues_one_stack_exhaustion:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 289, in test_apply_fault_stack_queues_one_stack_exhaustion
+  File "digital_twin/launch.py", line 70, in parse_fault_spec
+ValueError: --fault TIMES 'stack' is not an integer
+FAIL test_collect_chips_keys_each_wired_chip_by_its_instance_key_through_peripheral:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 267, in test_collect_chips_keys_each_wired_chip_by_its_instance_key_through_peripheral
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_launch.py", line 262, in scenario
+AttributeError: module 'launch' has no attribute '_collect_chips'
+FAIL test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 351, in test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary
+  File "tests/test_digital_twin_launch.py", line 327, in _config
+  File "tests/test_digital_twin_launch.py", line 63, in _in_memory
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+FAIL test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 360, in test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading
+  File "tests/test_digital_twin_launch.py", line 327, in _config
+  File "tests/test_digital_twin_launch.py", line 63, in _in_memory
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+FAIL test_main_runs_end_to_end_and_returns_a_summary:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 331, in test_main_runs_end_to_end_and_returns_a_summary
+  File "tests/test_digital_twin_launch.py", line 327, in _config
+  File "tests/test_digital_twin_launch.py", line 63, in _in_memory
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+FAIL test_main_with_scripted_faults_and_wifi_outcome_still_completes:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 342, in test_main_with_scripted_faults_and_wifi_outcome_still_completes
+  File "tests/test_digital_twin_launch.py", line 327, in _config
+  File "tests/test_digital_twin_launch.py", line 63, in _in_memory
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+FAIL test_parse_args_combines_every_flag_together:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 199, in test_parse_args_combines_every_flag_together
+  File "digital_twin/launch.py", line 183, in parse_args
+ValueError: unrecognized argument: '--wiring-plan'
+FAIL test_parse_args_defaults_persist_and_an_empty_path_means_in_memory:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 161, in test_parse_args_defaults_persist_and_an_empty_path_means_in_memory
+  File "digital_twin/launch.py", line 183, in parse_args
+ValueError: unrecognized argument: '--wiring-plan'
+Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0
+Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0
+Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0
+PASS test_parse_args_help_exits_zero_before_parsing_anything_else
+PASS test_parse_args_rejects_an_unrecognized_flag_a_missing_value_or_an_unknown_wifi_outcome
+FAIL test_parse_args_requires_a_wiring_plan:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 157, in test_parse_args_requires_a_wiring_plan
+  File "tests/test_digital_twin_launch.py", line 78, in _refused
+AssertionError: expected ValueError for ([],)
+FAIL test_parse_fault_spec_accepts_every_documented_device_and_op:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 106, in test_parse_fault_spec_accepts_every_documented_device_and_op
+AssertionError: ('scd30', 'writeto')
+FAIL test_parse_fault_spec_accepts_times_for_wlan_and_refuses_its_match:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 118, in test_parse_fault_spec_accepts_times_for_wlan_and_refuses_its_match
+  File "digital_twin/launch.py", line 64, in parse_fault_spec
+ValueError: --fault wlan:... does not support :TIMES - network.WLAN.raise_on has no repeat limit of its own, the fault stays armed until cleared
+FAIL test_parse_fault_spec_addresses_an_instance_by_its_instance_key:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 110, in test_parse_fault_spec_addresses_an_instance_by_its_instance_key
+AttributeError: module 'launch' has no attribute '_driver_of'
+FAIL test_parse_fault_spec_defaults_times_to_one_with_no_match:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 87, in test_parse_fault_spec_defaults_times_to_one_with_no_match
+AssertionError: 
+FAIL test_parse_fault_spec_has_no_fram_write_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 129, in test_parse_fault_spec_has_no_fram_write_fault
+  File "tests/test_digital_twin_launch.py", line 78, in _refused
+AssertionError: expected ValueError for ('fram:write',)
+FAIL test_parse_fault_spec_honors_an_explicit_times_and_a_hex_match:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 91, in test_parse_fault_spec_honors_an_explicit_times_and_a_hex_match
+AssertionError: 
+Warning: exception chaining not supported
+PASS test_parse_fault_spec_refuses_a_bad_device_op_shape_times_or_match
+FAIL test_parse_fault_spec_refuses_times_and_match_for_a_persistent_mode:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 124, in test_parse_fault_spec_refuses_times_and_match_for_a_persistent_mode
+AssertionError: fram:silent:2
+Warning: exception chaining not supported
+FAIL test_parse_fault_spec_stack_queues_one_stack_exhaustion_on_a_queued_fault_only:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 134, in test_parse_fault_spec_stack_queues_one_stack_exhaustion_on_a_queued_fault_only
+  File "digital_twin/launch.py", line 70, in parse_fault_spec
+ValueError: --fault TIMES 'stack' is not an integer
+FAIL test_parse_hang_spec_covers_each_bus_write_op_and_refuses_wlan:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 145, in test_parse_hang_spec_covers_each_bus_write_op_and_refuses_wlan
+  File "digital_twin/launch.py", line 99, in parse_hang_spec
+ValueError: --hang op 'writeto' not recognized for device 'bmp3xx' - expected one of ('readfrom_mem', 'writeto_mem')
+FAIL test_require_wired_names_the_entry_point_it_was_given:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_launch.py", line 314, in test_require_wired_names_the_entry_point_it_was_given
+TypeError: unexpected keyword argument 'source'
+3/26 passed, 23 failed, 0 skipped

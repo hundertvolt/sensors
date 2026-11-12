@@ -1,0 +1,17 @@
+U30 fix F3a: the static guards see more (allocation catalog, await-depth site, gc-sites lines, stage form, unreadable files)
+
+- tests_scripts/test_memory_catalog.py: _allocates() now counts a tuple display MicroPython
+  cannot fold (py/parse.c build_tuple_from_stack()), tuple(), either branch of a conditional or
+  boolean, an operand of a binary operation, a private _Class(...) and a call through an
+  expression (type(x)(...)). Ten run-phase sites showed; each verified against the code and
+  listed with SPECIFICATION.md I.2's wording, whose rows now name them (I2C/SPI/UART bus
+  objects static on rp2: ports/rp2/machine_i2c.c:87, machine_spi.c:167, machine_uart.c:469).
+- tests_scripts/_await_depth.py: an await site holding both a project coroutine and an
+  asyncio awaitable counts the deeper of the two (no site on the tree changes).
+- scripts/_check_gc_collect_sites.py: lines numbered as ast numbers them (\r\n, \r, \n only);
+  a device script's gc.threshold set allowed only in the tree's two forms (a module-level
+  literal before the first definition, or a set read back by the next statement), never in
+  _shared/; an unreadable or undecodable file is an error naming it (exit 2).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

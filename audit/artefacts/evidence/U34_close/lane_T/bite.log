@@ -1,0 +1,3 @@
+pyproject.toml BITTEN: pyproject.toml exempts ['planted_module'] from disallow_any_explicit, which its residual list does not name - clear the module's explicit Any instead
+digital_twin/typecheck.ini BITTEN: digital_twin/typecheck.ini exempts ['planted_twin'] from disallow_any_explicit, which its residual list does not name - clear the module's explicit Any instead
+host_typecheck.ini PASSED

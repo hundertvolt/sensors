@@ -1,0 +1,5 @@
+group 0 rc=1 wall=171s heavy_at_start=1 10 failed, 889 passed in 169.80s (0:02:49)
+group 1 rc=1 wall=112s heavy_at_start=1 1 failed, 1745 passed in 110.02s (0:01:50)
+group 2 rc=1 wall=175s heavy_at_start=1 2 failed, 1390 passed, 6 skipped in 170.65s (0:02:50)
+group 3 rc=0 wall=119s heavy_at_start=1 2191 passed in 117.36s (0:01:57)
+ALL DONE

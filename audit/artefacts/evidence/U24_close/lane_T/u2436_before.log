@@ -1,0 +1,64 @@
+FFFFF                                                                    [100%]
+=================================== FAILURES ===================================
+_________________ test_a_get_route_the_service_gains_is_smoked _________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7987/test_a_get_route_the_service_g0')
+
+    def test_a_get_route_the_service_gains_is_smoked(tmp_path: Path) -> None:
+        source = (_REPO_ROOT / "src" / "asy_webserver_service.py").read_text(encoding="utf-8")
+        anchor = '    ("GET", "/measurements", "_get_measurements"),\n'
+        assert source.count(anchor) == 1
+        planted = tmp_path / "asy_webserver_service.py"
+        planted.write_text(source.replace(anchor, anchor + '    ("GET", "/zz_planted", "_get_zz_planted"),\n'), encoding="utf-8")
+>       assert "/zz_planted" in _get_routes(planted)
+E       AssertionError: assert '/zz_planted' in ('/measurements', '/sensors', '/networking', '/system', '/status')
+E        +  where ('/measurements', '/sensors', '/networking', '/system', '/status') = _get_routes(PosixPath('/tmp/pytest-of-root/pytest-7987/test_a_get_route_the_service_g0/asy_webserver_service.py'))
+
+tests_scripts/test_digital_twin_generated_boot.py:196: AssertionError
+_______ test_a_body_that_is_no_strict_json_is_refused[{"a": 1, "a": 2}] ________
+
+raw = b'{"a": 1, "a": 2}'
+
+    @pytest.mark.parametrize("raw", [b'{"a": 1, "a": 2}', b'{"a": {"b": 1, "b": 1}}', b'{"a": NaN}', b"[Infinity]"])
+    def test_a_body_that_is_no_strict_json_is_refused(raw: bytes) -> None:
+>       with pytest.raises(ValueError, match="strict JSON"):
+E       Failed: DID NOT RAISE ValueError
+
+tests_scripts/test_digital_twin_generated_boot.py:201: Failed
+____ test_a_body_that_is_no_strict_json_is_refused[{"a": {"b": 1, "b": 1}}] ____
+
+raw = b'{"a": {"b": 1, "b": 1}}'
+
+    @pytest.mark.parametrize("raw", [b'{"a": 1, "a": 2}', b'{"a": {"b": 1, "b": 1}}', b'{"a": NaN}', b"[Infinity]"])
+    def test_a_body_that_is_no_strict_json_is_refused(raw: bytes) -> None:
+>       with pytest.raises(ValueError, match="strict JSON"):
+E       Failed: DID NOT RAISE ValueError
+
+tests_scripts/test_digital_twin_generated_boot.py:201: Failed
+__________ test_a_body_that_is_no_strict_json_is_refused[{"a": NaN}] ___________
+
+raw = b'{"a": NaN}'
+
+    @pytest.mark.parametrize("raw", [b'{"a": 1, "a": 2}', b'{"a": {"b": 1, "b": 1}}', b'{"a": NaN}', b"[Infinity]"])
+    def test_a_body_that_is_no_strict_json_is_refused(raw: bytes) -> None:
+>       with pytest.raises(ValueError, match="strict JSON"):
+E       Failed: DID NOT RAISE ValueError
+
+tests_scripts/test_digital_twin_generated_boot.py:201: Failed
+__________ test_a_body_that_is_no_strict_json_is_refused[[Infinity]] ___________
+
+raw = b'[Infinity]'
+
+    @pytest.mark.parametrize("raw", [b'{"a": 1, "a": 2}', b'{"a": {"b": 1, "b": 1}}', b'{"a": NaN}', b"[Infinity]"])
+    def test_a_body_that_is_no_strict_json_is_refused(raw: bytes) -> None:
+>       with pytest.raises(ValueError, match="strict JSON"):
+E       Failed: DID NOT RAISE ValueError
+
+tests_scripts/test_digital_twin_generated_boot.py:201: Failed
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_a_get_route_the_service_gains_is_smoked
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_a_body_that_is_no_strict_json_is_refused[{"a": 1, "a": 2}]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_a_body_that_is_no_strict_json_is_refused[{"a": {"b": 1, "b": 1}}]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_a_body_that_is_no_strict_json_is_refused[{"a": NaN}]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_a_body_that_is_no_strict_json_is_refused[[Infinity]]
+5 failed, 13 deselected in 0.19s

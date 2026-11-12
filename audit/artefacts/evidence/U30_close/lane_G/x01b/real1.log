@@ -1,0 +1,25 @@
+X01F crc -1 300 [2336, 2144, 2144]
+FAIL test_a_host_stall_cannot_fail_the_faulted_hammer_crc16:
+AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+X01F nocrc -1 300 [2336, 2144, 2144]
+FAIL test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc:
+AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+X01C crc -1 300 2016
+FAIL test_a_host_stall_cannot_fail_the_sustained_hammer_crc16:
+AssertionError: 2016 bytes over 99 transactions = 20.36 B/transaction
+X01C nocrc -1 300 2016
+FAIL test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc:
+AssertionError: 2016 bytes over 99 transactions = 20.36 B/transaction
+X01F crc -1 0 [2336, 2144, 2144]
+FAIL test_hammering_a_faulted_link_never_raises_and_still_recovers_crc16:
+AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+X01F nocrc -1 0 [2336, 2144, 2144]
+FAIL test_hammering_a_faulted_link_never_raises_and_still_recovers_nocrc:
+AssertionError: [2336, 2144, 2144] bytes over 30 failures a window = 71.5 B/failure at the least
+X01C crc -1 0 2016
+FAIL test_sustained_hammering_never_degrades_or_grows_the_heap_crc16:
+AssertionError: 2016 bytes over 99 transactions = 20.36 B/transaction
+X01C nocrc -1 0 2016
+FAIL test_sustained_hammering_never_degrades_or_grows_the_heap_nocrc:
+AssertionError: 2016 bytes over 99 transactions = 20.36 B/transaction
+0/8 passed, 8 failed, 0 skipped

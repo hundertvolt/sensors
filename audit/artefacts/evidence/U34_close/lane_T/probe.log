@@ -1,0 +1,15 @@
+== main-flag
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneT/probe/probe_unimp.py:4:1: error:
+Found 1 error in 1 file (checked 1 source file)
+== main-head
+Success: no issues found in 1 source file
+== twin-flag
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneT/probe/probe_unimp.py:4:1: error:
+Found 1 error in 1 file (checked 1 source file)
+== twin-head
+Success: no issues found in 1 source file
+== host-flag
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneT/probe/probe_unimp.py:4:1: error:
+Found 1 error in 1 file (checked 1 source file)
+== host-head
+Success: no issues found in 1 source file

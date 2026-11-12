@@ -1,6 +1,6 @@
 """Records a generated device's boot from outside, in run order: each module's construction and setup unit,
-SystemService's phase marks and feeds, and every step main() awaits. Entering supervise_tasks() stops the run;
-restore() undoes every wrap. It imports no fake, so every test tier can use it."""
+SystemService's phase marks and feeds, and every step main() awaits; expected_entries() is the same view of buildgen's
+expected sequence. Entering supervise_tasks() stops the run; it imports no fake, so every test tier can use it."""
 
 try:
     from typing import TYPE_CHECKING
@@ -36,7 +36,7 @@ class BootRecorder:
         classes: list[type[_SetUp]] = []
         for name in dir(module):
             obj = getattr(module, name)
-            if not name.startswith("_") and not isinstance(obj, type) and hasattr(obj, "setup") and hasattr(obj, "get_loggers") and type(obj) not in classes:
+            if not name.startswith("_") and not isinstance(obj, type) and hasattr(obj, "get_loggers") and type(obj) not in classes:
                 classes.append(type(obj))
         if not classes:
             raise ValueError(f"{module.__name__} holds no constructed module yet: build it once before recording")
@@ -60,7 +60,7 @@ class BootRecorder:
     def _wrap_module_class(self, cls: "type[_SetUp]") -> None:
         # Both originals are read before either wrap, so neither wrapper ever calls the other.
         real_init = cls.__init__
-        real_setup = cls.setup
+        real_setup = getattr(cls, "setup", None)  # a module with no setup unit (the LED) is constructed only
 
         def init(obj: "_SetUp", *args: object, **kwargs: object) -> None:
             self._record("construct", obj)
@@ -68,10 +68,13 @@ class BootRecorder:
 
         async def setup(obj: "_SetUp") -> bool:
             self._record("setup", obj)
-            return await real_setup(obj)
+            assert real_setup is not None
+            done: bool = await real_setup(obj)
+            return done
 
         self._replace(cls, "__init__", init)
-        self._replace(cls, "setup", setup)
+        if real_setup is not None:
+            self._replace(cls, "setup", setup)
 
     def _wrap_service(self, service: "type[SystemService]") -> None:
         real_phase = service.boot_phase
@@ -120,3 +123,22 @@ class BootRecorder:
 
     def stopped_by(self, exc: BaseException) -> bool:
         return isinstance(exc, _StopError)
+
+
+def expected_entries(sequence: "dict[str, list[str]]") -> "list[tuple[str, str]]":
+    # The recorder's view of a build's boot sequence (its expected-facts "boot_sequence"): a step's inner entries
+    # between its call and its return, the webserver built last; the last step, the supervisor, never returns.
+    entries: list[tuple[str, str]] = []
+    for step in sequence["phases"]:
+        if step.startswith("BOOT_"):
+            entries.append(("phase", step))
+            continue
+        entries.append(("call", step))
+        if step == "build_system":
+            entries += [("construct", name) for name in sequence["construction"] + ["webserver"]]
+        elif step == "run_setups":
+            for name in sequence["setups"]:
+                entries += [("setup", name), ("feed", "")]
+        if step != sequence["phases"][-1]:
+            entries.append(("return", step))
+    return entries

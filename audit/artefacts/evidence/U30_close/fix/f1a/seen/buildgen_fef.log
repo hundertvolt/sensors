@@ -1,0 +1,243 @@
+FFFFFFFFFFFFF                                                            [100%]
+=================================== FAILURES ===================================
+_ test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[arzi] _
+
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+        source = _real(device).module_source
+        call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "is_storage_paused", "static", "log"]
+E       AssertionError: assert ['routes', 's...tatic', 'log'] == ['routes', 's...tatic', 'log']
+E         
+E         At index 3 diff: 'static' != 'is_storage_paused'
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:880: AssertionError
+_ test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[dev] __
+
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+        source = _real(device).module_source
+        call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "is_storage_paused", "static", "log"]
+E       AssertionError: assert ['routes', 's...tatic', 'log'] == ['routes', 's...tatic', 'log']
+E         
+E         At index 3 diff: 'static' != 'is_storage_paused'
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:880: AssertionError
+_ test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[grkizi] _
+
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+        source = _real(device).module_source
+        call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "is_storage_paused", "static", "log"]
+E       AssertionError: assert ['routes', 's...tatic', 'log'] == ['routes', 's...tatic', 'log']
+E         
+E         At index 3 diff: 'static' != 'is_storage_paused'
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:880: AssertionError
+_ test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[klkizi] _
+
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+        source = _real(device).module_source
+        call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "is_storage_paused", "static", "log"]
+E       AssertionError: assert ['routes', 's...tatic', 'log'] == ['routes', 's...tatic', 'log']
+E         
+E         At index 3 diff: 'static' != 'is_storage_paused'
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:880: AssertionError
+_ test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[schlafzi] _
+
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+        source = _real(device).module_source
+        call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "is_storage_paused", "static", "log"]
+E       AssertionError: assert ['routes', 's...tatic', 'log'] == ['routes', 's...tatic', 'log']
+E         
+E         At index 3 diff: 'static' != 'is_storage_paused'
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:880: AssertionError
+_ test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[wozi] _
+
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+        source = _real(device).module_source
+        call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "is_storage_paused", "static", "log"]
+E       AssertionError: assert ['routes', 's...tatic', 'log'] == ['routes', 's...tatic', 'log']
+E         
+E         At index 3 diff: 'static' != 'is_storage_paused'
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:880: AssertionError
+____ test_real_device_reset_errors_reads_the_fram_managers_own_pause[arzi] _____
+
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_reset_errors_reads_the_fram_managers_own_pause(device: str) -> None:
+        # The pause where it lives, the FRAM manager's get_pause(), not a copy: ResetErrors clears nothing while it holds.
+        result = _real(device)
+        call = next(n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "is_storage_paused") == f"{_fram_var(result)}.get_pause"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests_scripts/test_buildgen_generate.py:889: StopIteration
+_____ test_real_device_reset_errors_reads_the_fram_managers_own_pause[dev] _____
+
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_reset_errors_reads_the_fram_managers_own_pause(device: str) -> None:
+        # The pause where it lives, the FRAM manager's get_pause(), not a copy: ResetErrors clears nothing while it holds.
+        result = _real(device)
+        call = next(n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "is_storage_paused") == f"{_fram_var(result)}.get_pause"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests_scripts/test_buildgen_generate.py:889: StopIteration
+___ test_real_device_reset_errors_reads_the_fram_managers_own_pause[grkizi] ____
+
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_reset_errors_reads_the_fram_managers_own_pause(device: str) -> None:
+        # The pause where it lives, the FRAM manager's get_pause(), not a copy: ResetErrors clears nothing while it holds.
+        result = _real(device)
+        call = next(n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "is_storage_paused") == f"{_fram_var(result)}.get_pause"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests_scripts/test_buildgen_generate.py:889: StopIteration
+___ test_real_device_reset_errors_reads_the_fram_managers_own_pause[klkizi] ____
+
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_reset_errors_reads_the_fram_managers_own_pause(device: str) -> None:
+        # The pause where it lives, the FRAM manager's get_pause(), not a copy: ResetErrors clears nothing while it holds.
+        result = _real(device)
+        call = next(n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "is_storage_paused") == f"{_fram_var(result)}.get_pause"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests_scripts/test_buildgen_generate.py:889: StopIteration
+__ test_real_device_reset_errors_reads_the_fram_managers_own_pause[schlafzi] ___
+
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_reset_errors_reads_the_fram_managers_own_pause(device: str) -> None:
+        # The pause where it lives, the FRAM manager's get_pause(), not a copy: ResetErrors clears nothing while it holds.
+        result = _real(device)
+        call = next(n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "is_storage_paused") == f"{_fram_var(result)}.get_pause"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests_scripts/test_buildgen_generate.py:889: StopIteration
+____ test_real_device_reset_errors_reads_the_fram_managers_own_pause[wozi] _____
+
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_reset_errors_reads_the_fram_managers_own_pause(device: str) -> None:
+        # The pause where it lives, the FRAM manager's get_pause(), not a copy: ResetErrors clears nothing while it holds.
+        result = _real(device)
+        call = next(n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+>       assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "is_storage_paused") == f"{_fram_var(result)}.get_pause"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests_scripts/test_buildgen_generate.py:889: StopIteration
+__________ test_device_without_a_fram_manager_reads_no_storage_pause ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11427/test_device_without_a_fram_man0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1a/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1a/ext')
+
+    def test_device_without_a_fram_manager_reads_no_storage_pause(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+        doc = base_doc()
+        doc["instance"] = [i for i in instances(doc) if i["driver"] != "fram"]
+        wiring = table_at(doc, "device", "wiring")
+        for name in ("fram_target", "led_target"):
+            del wiring[name]
+        del table_at(doc, "bus")["spi0"]  # the FRAM chip's bus, which nothing else uses
+>       result = generate_device(write_doc(tmp_path, "no_fram_manager", doc), src_dir, ext_dir)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_buildgen_generate.py:1208: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+buildgen/generate.py:154: in generate_device
+    model = build_model(toml_path, src_dir)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+buildgen/validate.py:1454: in build_model
+    _check_instance_wiring(model)
+buildgen/validate.py:753: in _check_instance_wiring
+    _check_wiring_reference(model, wf, value, spec.label, toml_field)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+model = DeviceModel(device='no_fram_manager', path=PosixPath('/tmp/pytest-of-root/pytest-11427/test_device_without_a_fram_man0...s_tags=(), limits_schema=(), value_wiring_schema=(), resolved_name='NOTIFY')}, construction_order=[], device_wiring={})
+wf = WiringField(toml_field='fram_target', producer_class='FRAMManager', target='log', required=False, mode='kwarg')
+target_key_str = 'fram', consumer_label = 'scd30', toml_field = 'fram_target'
+
+    def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str: str, consumer_label: str, toml_field: str) -> None:
+        target_key = resolve_instance_key(model, target_key_str)
+        target = model.instances.get(target_key)
+        if target is None:
+>           raise BuildError(
+                model.device,
+                f"{consumer_label}'s wiring.{toml_field}={target_key_str!r} does not resolve to any declared instance",
+                rule="wiring.target-unresolved",
+                fix='point it at a declared instance, written "<driver>" or "<driver>_<name_ext>"',
+                instance=consumer_label,
+                field=toml_field,
+            )
+E           buildgen.errors.BuildError: [no_fram_manager/scd30.fram_target] scd30's wiring.fram_target='fram' does not resolve to any declared instance - fix: point it at a declared instance, written "<driver>" or "<driver>_<name_ext>"
+
+buildgen/validate.py:1243: BuildError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_reset_errors_reads_the_fram_managers_own_pause[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_reset_errors_reads_the_fram_managers_own_pause[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_reset_errors_reads_the_fram_managers_own_pause[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_reset_errors_reads_the_fram_managers_own_pause[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_reset_errors_reads_the_fram_managers_own_pause[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_reset_errors_reads_the_fram_managers_own_pause[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_device_without_a_fram_manager_reads_no_storage_pause
+13 failed, 355 deselected in 2.07s

@@ -1,0 +1,13 @@
+test_decision_vocabulary rc=0 6 passed in 7.42s
+test_citations rc=0 15 passed in 9.08s
+test_comment_block_cap rc=0 458 passed in 3.44s
+test_tunables_register rc=0 15 passed in 11.15s
+test_legacy_paths rc=0 3 passed in 1.55s
+test_import_placement rc=0 7 passed in 6.96s
+test_code_conventions rc=0 23 passed in 3.71s
+test_error_catalog rc=0 38 passed in 16.38s
+test_host_annotations rc=0 12 passed in 1.63s
+test_lint_ceilings rc=0 19 passed in 8.63s
+test_mypy_any_baseline rc=0 7 passed in 0.07s
+test_memory_error_gate_agreement rc=0 13 passed in 3.50s
+ALLDONE

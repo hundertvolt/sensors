@@ -1,6 +1,6 @@
-"""The runner summary block (SPECIFICATION.md E.10) has three emitters - scripts/_summary_block.sh,
-scripts/_summary_block.py and tests_js/_summary_layout.js - and one layout: each renders the same
-canned input byte for byte, and the block's rules hold in every one."""
+"""The runner summary block (SPECIFICATION.md E.10) has one emitter, scripts/_summary_block.py: the shell accumulator
+(scripts/_summary_block.sh) and the JS one (tests_js/_summary_layout.js) hand it their records, so the same canned
+input prints byte for byte the block it prints in process, and the block's rules hold through every route."""
 
 import json
 import os
@@ -155,6 +155,7 @@ _CASES: list[tuple[int, list[tuple[str, str, str]], Opts]] = [
     (1, _ITEMS, _FULL),
     (2, [("failed", "usage", "unknown argument --x")], {}),
     (3, [("passed", "a", "")], {"gc_stage": "coverage run (settrace)"}),
+    (3, [("passed", "a", "")], {"gc_stage": "coverage run (settrace)", "reason": "coverage incomplete in 1 job(s), listed under Notes"}),
     (4, [("passed", "a", "")], {"levels": "L3", "reason": "lower levels skipped: L0 L1 L2"}),
     (4, [("passed", "a", "")], {}),
     (130, [("failed", "t", "aborted by operator"), ("skipped", "u", "not run (run aborted)")], {"unit": "manual steps"}),
@@ -172,35 +173,29 @@ def test_bash_and_python_render_the_same_input_byte_for_byte(emitter: ModuleType
     assert bash_out.encode() == py_out.encode()
 
 
-def _js_input(runner: str, exit_code: int, items: list[tuple[str, str, str]], commit: str, kwargs: Opts) -> str:
-    # The canned-input contract of `node tests_js/_summary_layout.js <json>`: one JSON argument, the
-    # block on stdout. `commit` is passed in because the layout is pure (no git, no Node built-ins).
-    extra = kwargs.get("extra") or []
-    return json.dumps(
-        {
-            "runner": runner,
-            "unit": kwargs.get("unit", "tests"),
-            "levels": kwargs.get("levels"),
-            "gc_stage": kwargs.get("gc_stage"),
-            "not_clean_reason": kwargs.get("reason"),
-            "commit": commit,
-            "items": [list(item) for item in items],
-            "extra_counts": [[u, list(v)] for u, v in extra],  # type: ignore[attr-defined]
-            "notes": [list(note) for note in kwargs.get("notes") or []],  # type: ignore[attr-defined]
-            "exit_code": exit_code,
-        },
-    )
+# The JS accumulator in a fresh Node, filled from one JSON argument, its records piped to the one emitter.
+_JS_RECORDS = """
+const { createSummary, summaryRecords } = await import(process.argv[1]);
+const input = JSON.parse(process.argv[2]);
+const summary = createSummary(input.runner, input.unit);
+Object.assign(summary, { levels: input.levels, gcStage: input.gc_stage, notCleanReason: input.reason, extraCounts: input.extra });
+for (const [kind, name, detail] of input.items) summary.add(kind, name, detail);
+for (const [name, text] of input.notes) summary.note(name, text);
+process.stdout.write(summaryRecords(summary));
+"""
 
 
 @pytest.mark.parametrize(("exit_code", "items", "kwargs"), _CASES)
-def test_the_js_layout_renders_the_same_input_byte_for_byte(emitter: ModuleType, tmp_path: Path, exit_code: int, items: list[tuple[str, str, str]], kwargs: Opts) -> None:
+def test_the_js_records_print_the_same_block_byte_for_byte(emitter: ModuleType, tmp_path: Path, exit_code: int, items: list[tuple[str, str, str]], kwargs: Opts) -> None:
     node = shutil.which("node")
     assert node is not None, "node is a hard prerequisite of the host tier (scripts/test.sh runs npm's toolchain)"
-    assert _JS.is_file(), f"{_JS} is missing"
     py_out = _py_render(emitter, tmp_path, "runner", exit_code, items, kwargs)
-    result = subprocess.run([node, str(_JS), _js_input("runner", exit_code, items, "unknown", kwargs)], capture_output=True, text=True, check=False)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.encode() == py_out.encode()
+    extra = [[u, list(v)] for u, v in kwargs.get("extra") or []]  # type: ignore[attr-defined]
+    notes = [list(note) for note in kwargs.get("notes") or []]  # type: ignore[attr-defined]
+    argument = json.dumps({"runner": "runner", "unit": kwargs.get("unit", "tests"), "levels": kwargs.get("levels"), "gc_stage": kwargs.get("gc_stage"), "reason": kwargs.get("reason"), "extra": extra, "items": [list(item) for item in items], "notes": notes})
+    records = subprocess.run([node, "--input-type=module", "-e", _JS_RECORDS, _JS.as_uri(), argument], capture_output=True, check=True)
+    printed = subprocess.run([sys.executable, str(_PY), "--print", "runner", str(exit_code)], input=records.stdout, cwd=tmp_path, env=_env(tmp_path), capture_output=True, check=False)
+    assert printed.stdout == py_out.encode()
 
 
 def test_a_missing_verdict_counts_as_failed(emitter: ModuleType, tmp_path: Path) -> None:
@@ -212,7 +207,7 @@ def test_a_missing_verdict_counts_as_failed(emitter: ModuleType, tmp_path: Path)
 def test_a_missing_run_record_counts_as_failed(emitter: ModuleType, tmp_path: Path) -> None:
     summary = emitter.from_run_record(tmp_path / "absent.json")
     assert summary.failed == [(str(tmp_path / "absent.json"), "no verdict (run record missing or unreadable)")]
-    (tmp_path / "garbled.json").write_text("{not json")
+    (tmp_path / "garbled.json").write_text("{not json", encoding="utf-8")
     assert emitter.from_run_record(tmp_path / "garbled.json").failed[0][1] == "no verdict (run record missing or unreadable)"
 
 
@@ -235,9 +230,15 @@ def test_a_nonzero_failure_code_is_never_changed(emitter: ModuleType, tmp_path: 
         assert out.endswith(f"Exit code: {given}\n"), out
 
 
-@pytest.mark.parametrize(("exit_code", "result"), [(0, "PASS"), (1, "FAIL"), (2, "USAGE ERROR"), (3, "PASS (coverage report not rendered)"), (4, "NOT CLEAN (why)"), (124, "FAIL")])
+@pytest.mark.parametrize(("exit_code", "result"), [(0, "PASS"), (1, "FAIL"), (2, "USAGE ERROR"), (3, "PASS (why)"), (4, "NOT CLEAN (why)"), (124, "FAIL")])
 def test_the_result_and_exit_code_lines_follow_the_given_code(emitter: ModuleType, tmp_path: Path, exit_code: int, result: str) -> None:
     for out in (_bash_render(tmp_path, "r", exit_code, [], {"reason": "why"}), _py_render(emitter, tmp_path, "r", exit_code, [], {"reason": "why"})):
+        assert out.endswith(f"Result: {result}\nExit code: {exit_code}\n")
+
+
+@pytest.mark.parametrize(("exit_code", "result"), [(3, "PASS (coverage report not rendered)"), (4, "NOT CLEAN")])
+def test_a_code_with_a_reason_reads_its_default_without_one(emitter: ModuleType, tmp_path: Path, exit_code: int, result: str) -> None:
+    for out in (_bash_render(tmp_path, "r", exit_code, [], {}), _py_render(emitter, tmp_path, "r", exit_code, [], {})):
         assert out.endswith(f"Result: {result}\nExit code: {exit_code}\n")
 
 
@@ -253,13 +254,13 @@ def test_the_commit_line_names_the_commit_and_uncommitted_changes(emitter: Modul
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
-    (repo / "f").write_text("x\n")
+    (repo / "f").write_text("x\n", encoding="utf-8")
     _git(repo, "add", "f")
     _git(repo, "commit", "-q", "-m", "c")
     sha = _git(repo, "rev-parse", "--short", "HEAD")
     for out in (_bash_render(repo, "r", 0, []), _py_render(emitter, repo, "r", 0, [])):
         assert f"\nCommit: {sha}\n" in out
-    (repo / "g").write_text("y\n")
+    (repo / "g").write_text("y\n", encoding="utf-8")
     for out in (_bash_render(repo, "r", 0, []), _py_render(emitter, repo, "r", 0, [])):
         assert f"\nCommit: {sha} (uncommitted changes)\n" in out
 
@@ -278,9 +279,9 @@ def test_the_bash_emitter_refuses_to_run_as_a_command(tmp_path: Path) -> None:
     assert "error: source scripts/_summary_block.sh, do not run it" in result.stderr
 
 
-@pytest.mark.parametrize("argv", [[], ["--bogus"], ["--from-run-record"], ["--from-run-record", "x.json"], ["--from-run-record", "x.json", "--list", "nope"]])
+@pytest.mark.parametrize("argv", [[], ["--bogus"], ["--print", "r"], ["--print", "r", "x"], ["--from-run-record"], ["--from-run-record", "x.json"], ["--from-run-record", "x.json", "--list", "nope"]])
 def test_the_python_cli_exits_2_on_a_usage_error(tmp_path: Path, argv: list[str]) -> None:
-    result = subprocess.run([sys.executable, str(_PY), *argv], cwd=tmp_path, capture_output=True, text=True, check=False)
+    result = subprocess.run([sys.executable, str(_PY), *argv], cwd=tmp_path, input="", capture_output=True, text=True, check=False)
     assert result.returncode == 2, result.stdout + result.stderr
 
 
@@ -300,7 +301,7 @@ def test_the_python_cli_prints_counts_and_lists_from_a_run_record(tmp_path: Path
         "exitstatus": 1,
     }
     path = tmp_path / "r.json"
-    path.write_text(json.dumps(record))
+    path.write_text(json.dumps(record), encoding="utf-8")
     counts = subprocess.run([sys.executable, str(_PY), "--from-run-record", str(path), "--counts-only"], capture_output=True, text=True, check=True)
     assert counts.stdout == "1 1 2 1\n"
     skipped = subprocess.run([sys.executable, str(_PY), "--from-run-record", str(path), "--list", "skipped"], capture_output=True, text=True, check=True)
@@ -310,14 +311,14 @@ def test_the_python_cli_prints_counts_and_lists_from_a_run_record(tmp_path: Path
 @pytest.mark.parametrize(("exitstatus", "kind"), [(2, "failed"), (3, "failed"), (4, "failed"), (5, "vacuous")])
 def test_an_aborted_or_empty_pytest_session_is_never_read_as_clean(emitter: ModuleType, tmp_path: Path, exitstatus: int, kind: str) -> None:
     path = tmp_path / "r.json"
-    path.write_text(json.dumps({"tests": [], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": exitstatus}))
+    path.write_text(json.dumps({"tests": [], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": exitstatus}), encoding="utf-8")
     assert getattr(emitter.from_run_record(path), kind), f"exit status {exitstatus} left no {kind} item"
 
 
 def test_a_nonzero_exit_with_no_failed_test_recorded_is_a_failure(emitter: ModuleType, tmp_path: Path) -> None:
     path = tmp_path / "r.json"
     tests = [{"nodeid": "t.py::a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}]
-    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": 1}))
+    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": 1}), encoding="utf-8")
     assert emitter.from_run_record(path).failed
 
 
@@ -325,7 +326,7 @@ def test_recovery_notes_count_apart_from_passes(emitter: ModuleType, tmp_path: P
     path = tmp_path / "r.json"
     tests = [{"nodeid": "t.py::a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": [["recovery", "hard reset fallback"]]}]
     notes = [{"text": "restored SSID", "recovery": True, "source": "joined_hotspot"}]
-    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 0}))
+    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 0}), encoding="utf-8")
     summary = emitter.from_run_record(path)
     assert summary.passed == []
     assert summary.recovered == [("t.py::a", "hard reset fallback"), ("joined_hotspot", "restored SSID")]
@@ -349,7 +350,7 @@ def test_every_result_note_and_plain_session_note_reaches_the_notes_list(emitter
         {"nodeid": "t.py::c", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": [["recovery", "hard reset"], ["recovery", "second reset"], ["result_note", "after the reset"]]},
     ]
     notes = [{"text": "restored SSID", "recovery": True, "source": "joined_hotspot"}, {"text": "bench idle", "recovery": False, "source": "bench"}, {"text": "unsourced", "recovery": False, "source": ""}]
-    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 1}))
+    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 1}), encoding="utf-8")
     summary = emitter.from_run_record(path)
     assert summary.notes == [("t.py::a", "3 answered"), ("t.py::a", "1 refused"), ("t.py::b", "recovery: reset once"), ("t.py::b", "graceful wait 9.0s"), ("t.py::c", "after the reset"), ("session (bench)", "bench idle"), ("session", "unsourced")]
     # A recovery note is never dropped: a second one joins the pass's item, a failed test's becomes a note.
@@ -359,4 +360,4 @@ def test_every_result_note_and_plain_session_note_reaches_the_notes_list(emitter
 
 def test_no_emitter_writes_the_github_step_summary() -> None:
     for path in (_SH, _PY):
-        assert "GITHUB_STEP_SUMMARY" not in path.read_text(), path
+        assert "GITHUB_STEP_SUMMARY" not in path.read_text(encoding="utf-8"), path

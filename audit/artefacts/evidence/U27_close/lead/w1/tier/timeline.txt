@@ -1,0 +1,4 @@
+g0 rc=1 102s 9 failed, 1939 passed, 6 skipped in 99.62s (0:01:39)
+g1 rc=1 112s 6 failed, 1515 passed in 107.83s (0:01:47)
+g2 rc=1 202s 6 failed, 1284 passed in 200.10s (0:03:20)
+done 10:45:35

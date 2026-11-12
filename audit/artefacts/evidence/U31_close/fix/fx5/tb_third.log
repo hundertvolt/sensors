@@ -1,0 +1,69 @@
+F................F....                                                   [100%]
+=================================== FAILURES ===================================
+__________________ test_the_code_derived_rows_match_the_code ___________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+
+    def test_the_code_derived_rows_match_the_code(spec_text: str, repo_root: Path) -> None:
+        problems = check_table(spec_text, repo_root / "src")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: F.3 `hold.wifi_lock`: 5000000 µs is a term of its derivation and missing from '10 s, the longest hold (the STA disconne'
+E         F.3 `hold.wifi_lock`: 4000000 µs is a term of its derivation and missing from '10 s, the longest hold (the STA disconne'
+E         F.3 `stall.flash_program`: its value opens '400 ms per sector erase (typ. 45 ms), 3 ', the code gives 2129000 µs
+E         F.3 `stall.uart_call`: 4600 µs is a term of its derivation and missing from '1,533 µs: `_WIRE_US // 3` at 115200 baud'
+E       assert not ["F.3 `hold.wifi_lock`: 5000000 µs is a term of its derivation and missing from '10 s, the longest hold (the STA disco....3 `stall.uart_call`: 4600 µs is a term of its derivation and missing from '1,533 µs: `_WIRE_US // 3` at 115200 baud'"]
+
+tests_scripts/test_timing_budget.py:202: AssertionError
+_ test_each_failure_class_bites[| 2129 ms-| 400 ms-`stall.flash_program`: its value opens] _
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+old = '| 2129 ms', new = '| 400 ms'
+expected = '`stall.flash_program`: its value opens'
+
+    @pytest.mark.parametrize(
+        ("old", "new", "expected"),
+        [
+            ("| 50 ms per session", "| 60 ms per session", "the code gives 50000 µs"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frame`", "past it, and not marked crossed"),
+            ("`con.uart_reply` (its floor holds it)", "`con.uart_reply` (crossed: its floor holds it)", "a stale crossing"),
+            ("`scd30.cmd_response_wait_ms` |", "`scd30.cmd_wait_ms` |", "`scd30.cmd_wait_ms`, which is not a Part N row"),
+            ("| `hold.i2c_probe` |", "| `hold.i2c_probe_settle` |", "no `hold.i2c_probe` row"),
+            ("`con.led_frame` (crossed: a stutter)", "`con.led_frames` (crossed: a stutter)", "which the consumer table lacks"),
+            ("4 task ends", "5 task ends", "makes 4 task ends"),
+            ("50,000 µs (`_DEFAULT_TIMEOUT_US`", "the rp2 default (`_DEFAULT_TIMEOUT_US`", "50000 µs is a term of its derivation"),
+            ("| `hold.scd30_snapshot` |", "| `hold.scd30_command` |", "is unnamed or named twice"),
+            ("| `rate.trigger_spacing` |", "| rate.trigger_spacing |", "is unnamed or named twice"),
+            ("| Consumer | Tolerance |", "| Item | Tolerance |", "needs both its consumer table and its budget table"),
+            ("| 500 ms per server", "| 900 ms per server", "`con.dns_query`: its value opens"),
+            ("| 5 s per stream call", "| 7 s per stream call", "`con.http_call`: its value opens"),
+            ("| 1,533 µs:", "| 9,533 µs:", "`stall.uart_call`: its value opens"),
+            ("| 5 µs per wait", "| 50 µs per wait", "`stall.sync_wait`: its value opens"),
+            ("| 10 s, the longest hold", "| 20 s, the longest hold", "`hold.wifi_lock`: its value opens"),
+            ("| 2129 ms", "| 400 ms", "`stall.flash_program`: its value opens"),
+        ],
+    )
+    def test_each_failure_class_bites(spec_text: str, repo_root: Path, old: str, new: str, expected: str) -> None:
+>       problems = check_table(_bitten(spec_text, old, new), repo_root / "src")
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_timing_budget.py:228: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+old = '| 2129 ms', new = '| 400 ms'
+
+    def _bitten(spec_text: str, old: str, new: str) -> str:
+        table = spec_text[spec_text.index(_BEGIN) : spec_text.index(_END)]
+>       assert table.count(old) == 1, f"the bite's anchor {old!r} must occur once in F.3's tables"
+E       AssertionError: the bite's anchor '| 2129 ms' must occur once in F.3's tables
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x5327830>('| 2129 ms')
+E        +    where <built-in method count of str object at 0x5327830> = '<!-- timing-budget:begin -->\nConsumers, each with its tolerance to one stretch of the event loop (one non-yielding s...e bench round) | `l2.loop_lag_load_s`, `l2.loop_lag_settle_s`, `l2.loop_lag_recovered_ms`, `l2.loop_lag_period_ms` |\n'.count
+
+tests_scripts/test_timing_budget.py:38: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_timing_budget.py::test_the_code_derived_rows_match_the_code
+FAILED tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 2129 ms-| 400 ms-`stall.flash_program`: its value opens]
+2 failed, 20 passed in 1.02s

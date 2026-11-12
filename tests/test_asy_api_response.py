@@ -1,8 +1,12 @@
-import asyncio
+"""The REST envelope and setter dispatch: make_response()'s one code catalog, each code with a producer and its text, and
+handle_set_cmd()'s per-field result, its post-write hooks and a raising hook failing its group, logged."""
+
 import os
 from collections import namedtuple
 
+from _async_harness import run
 from _error_codes import code
+from _src_const import src_const
 from _tmp_scratch import TmpScratch
 
 import asy_api_response as ar
@@ -10,61 +14,17 @@ from asy_base_classes import SensorReaderConfig
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
     import asy_config_manager as cm
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("asy_api_response")
 Meas = namedtuple("Meas", ["temp", "hum"])
-_VAL_SI: "cm.ConfigSchema" = (("SampleInterval", "int", 2, 1, 3600, None),)
-
-
-def _remove(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass  # already gone
-
-
-class _FakeRequest:
-    # Minimal stand-in for microdot.Request, mocking only the one boundary parse_cmd_request
-    # actually touches (the .json property) - same mocking-boundary convention tests/machine.py
-    # uses for real hardware buses.
-    def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
-        self._json_value = json_value
-        self._raise_instead = raise_instead
-        self.sock = (_NoopHolder(), _NoopHolder())
-
-    @property
-    def json(self) -> object:  # matches asy_api_response.py's own _RequestLike Protocol
-        if self._raise_instead:
-            raise ValueError("malformed body")
-        return self._json_value
-
-
-class _NoopHolder:
-    # The writer side of Request.sock as the static routes use it; nothing here opens a stream.
-    def hold(self, closable: object) -> None:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# make_response - envelope/catalog primitive
-# ---------------------------------------------------------------------------
+_TEST_SCHEMA_SI: "cm.ConfigSchema" = (("SampleInterval", "int", 2, 1, 3600, None),)
 
 
 def _catalogued_codes() -> list[int]:
@@ -80,6 +40,20 @@ def _catalogued_codes() -> list[int]:
             elif inside:
                 codes.append(int(line.split(":", 1)[0]))
     raise AssertionError("_STANDARD_CODES block not found in src/asy_api_response.py")
+
+
+def _entries(reader: "SensorReaderConfig") -> "list[tuple[int, str]]":
+    # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]
+
+
+def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _TEST_SCHEMA_SI) -> "tuple[SensorReaderConfig, str]":
+    path = _scratch.path("config_" + name + ".cfg")
+    path_prefix = path.rsplit("/", 1)[0] + "/"
+    reader = SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3, cfg_path=path_prefix)
+    run(reader.cfgmgr.setup())
+    return reader, path
 
 
 def _produced_codes() -> list[int]:
@@ -105,6 +79,18 @@ def _produced_codes() -> list[int]:
     return codes
 
 
+def _remove(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # already gone
+
+
+# ---------------------------------------------------------------------------
+# make_response - envelope/catalog primitive
+# ---------------------------------------------------------------------------
+
+
 def test_make_response_standard_success_code_uses_catalog_text() -> None:
     assert ar.make_response(0) == {"res": "OK", "code": 0, "descr": "Command executed", "result": {}}
 
@@ -128,8 +114,6 @@ def test_make_response_every_standard_code_present() -> None:
     catalog = {
         0: "Command executed",
         1: "Invalid JSON request",
-        2: "Command specifier missing",
-        3: "Invalid command",
         400: "Bad request",
         404: "Not found",
         405: "Method not allowed",
@@ -150,16 +134,6 @@ def test_every_catalogued_code_has_a_producer_and_every_produced_code_is_catalog
     assert never_produced == [] and uncatalogued == [], (never_produced, uncatalogued)
 
 
-def _src_string_const(name: str) -> str:
-    # A `NAME = const("<text>")` line of the source: an underscore const() is not a module attribute on MicroPython.
-    with open("src/asy_api_response.py") as f:
-        for line in f:
-            if line.startswith(name + ' = const("'):
-                text: str = line.split('const("', 1)[1].split('")', 1)[0]
-                return text
-    raise AssertionError(name + " not found in src/asy_api_response.py")
-
-
 def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() -> None:
     resp = ar.make_response(999)
     assert resp == {"res": "ERR", "code": 999, "descr": "Unknown error", "result": {}}
@@ -167,7 +141,7 @@ def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() 
 
 def test_the_unknown_code_text_is_the_one_constant_beside_the_catalog() -> None:
     # Guard: the fallback descr the REST reference and the mock mirror is _UNKNOWN_DESCR's text, never a second literal.
-    assert _src_string_const("_UNKNOWN_DESCR") == "Unknown error" == ar.make_response(-1)["descr"]
+    assert src_const("src/asy_api_response.py", "_UNKNOWN_DESCR") == "Unknown error" == ar.make_response(-1)["descr"]
 
 
 def test_make_response_unknown_code_with_descr_keeps_the_given_descr() -> None:
@@ -195,84 +169,16 @@ def test_make_response_result_can_carry_partial_failures_under_an_overall_ok() -
 
 
 # ---------------------------------------------------------------------------
-# parse_cmd_request
+# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result; a
+# raising hook (the Wi-Fi reconnect, the NTP force sync) answers its group's fields "Failed" and logs CALLBACK, instead
+# of Microdot's bare 500 after the values were already saved (agent, 2026-08-03).
 # ---------------------------------------------------------------------------
-
-
-def test_parse_cmd_request_valid_command_returns_the_json_and_no_error() -> None:
-    req = _FakeRequest({"cmd": "setThing", "Value": 1})
-    data, err = ar.parse_cmd_request(req, ["setThing", "getThing"])
-    assert data == {"cmd": "setThing", "Value": 1}
-    assert err is None
-
-
-def test_parse_cmd_request_body_raises_returns_invalid_json_error() -> None:
-    req = _FakeRequest(None, raise_instead=True)
-    data, err = ar.parse_cmd_request(req, ["setThing"])
-    assert data is None
-    assert err == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
-
-
-def test_parse_cmd_request_body_is_none_returns_invalid_json_error() -> None:
-    req = _FakeRequest(None)
-    data, err = ar.parse_cmd_request(req, ["setThing"])
-    assert data is None
-    assert err is not None
-    assert err["code"] == 1
-
-
-def test_parse_cmd_request_body_is_a_non_dict_json_value_returns_invalid_json_error() -> None:
-    # More precise than treating a valid-but-non-dict JSON body (e.g. a bare list) as merely
-    # "missing cmd field" - it's a fundamentally wrong-shaped request.
-    for bad_body in ([1, 2, 3], "just a string", 42, True):
-        req = _FakeRequest(bad_body)
-        data, err = ar.parse_cmd_request(req, ["setThing"])
-        assert data is None
-        assert err is not None
-        assert err["code"] == 1
-
-
-def test_parse_cmd_request_missing_cmd_key_returns_missing_error() -> None:
-    req = _FakeRequest({"Value": 1})
-    data, err = ar.parse_cmd_request(req, ["setThing"])
-    assert data is None
-    assert err == {"res": "ERR", "code": 2, "descr": "Command specifier missing", "result": {}}
-
-
-def test_parse_cmd_request_cmd_not_in_allowed_keys_returns_invalid_command_error() -> None:
-    req = _FakeRequest({"cmd": "unknownCmd"})
-    data, err = ar.parse_cmd_request(req, ["setThing", "getThing"])
-    assert data is None
-    assert err == {"res": "ERR", "code": 3, "descr": "Invalid command", "result": {}}
-
-
-def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
-    req = _FakeRequest({"cmd": "anything"})
-    data, err = ar.parse_cmd_request(req, [])
-    assert data is None
-    assert err is not None
-    assert err["code"] == 3
-
-
-# ---------------------------------------------------------------------------
-# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result;
-# a raising hook turns its group's fields "Failed", caught as defense in depth on top of Microdot's own
-# per-request catch (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
-# ---------------------------------------------------------------------------
-
-
-def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[SensorReaderConfig, str]":
-    path = _scratch.path("config_" + name + ".cfg")
-    path_prefix = path.rsplit("/", 1)[0] + "/"
-    reader = SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3, cfg_path=path_prefix)
-    run(reader.cfgmgr.setup())
-    return reader, path
 
 
 def test_handle_set_cmd_valid_change_returns_its_per_field_result() -> None:
     reader, path = _make_reader("handleok")
     try:
-        assert run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI)) == {"SampleInterval": "Valid"}
+        assert run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI)) == {"SampleInterval": "Valid"}
     finally:
         _remove(path)
 
@@ -280,7 +186,7 @@ def test_handle_set_cmd_valid_change_returns_its_per_field_result() -> None:
 def test_handle_set_cmd_partial_failure_returns_the_mixed_result() -> None:
     reader, path = _make_reader("handlepartial")
     try:
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 9999, "Ghost": 1}, _VAL_SI))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 9999, "Ghost": 1}, _TEST_SCHEMA_SI))
         assert result == {"SampleInterval": "Invalid", "Ghost": "Invalid"}
     finally:
         _remove(path)
@@ -290,7 +196,7 @@ def test_handle_set_cmd_sync_post_fct_fires_only_when_something_actually_changed
     reader, path = _make_reader("handlepostfct")
     try:
         calls = []
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: calls.append(1)))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=lambda: calls.append(1)))
         assert result == {"SampleInterval": "Valid"}
         assert calls == [1]
     finally:
@@ -301,7 +207,7 @@ def test_handle_set_cmd_sync_post_fct_does_not_fire_when_unchanged() -> None:
     reader, path = _make_reader("handlepostfctunchanged")
     try:
         calls = []
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 2}, _VAL_SI, post_fct=lambda: calls.append(1)))  # 2 is the default already
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 2}, _TEST_SCHEMA_SI, post_fct=lambda: calls.append(1)))  # 2 is the default already
         assert result == {"SampleInterval": "Unchanged"}
         assert calls == []
     finally:
@@ -316,7 +222,7 @@ def test_handle_set_cmd_async_post_fct_fires_only_when_something_actually_change
         async def post() -> None:
             calls.append(1)
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_asy_fct=post))
         assert result == {"SampleInterval": "Valid"}
         assert calls == [1]
     finally:
@@ -334,7 +240,7 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
 
         result = run(
             ar.handle_set_cmd(
-                reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+                reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
             ),
         )
         assert result == {"SampleInterval": "Valid"}
@@ -342,12 +248,6 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
         assert async_calls == [1]
     finally:
         _remove(path)
-
-
-def _entries(reader: "SensorReaderConfig") -> "list[tuple[int, str]]":
-    # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
-    log = run(reader.pr.get_log())[reader.pr.name]
-    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
 
 
 def test_handle_set_cmd_sync_post_fct_raising_fails_its_group() -> None:
@@ -358,7 +258,7 @@ def test_handle_set_cmd_sync_post_fct_raising_fails_its_group() -> None:
         def bad_post() -> None:
             raise RuntimeError("reconnect failed")
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=bad_post))
         assert result == {"SampleInterval": "Failed"}
         assert reader.pr._err_count == 1
         assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
@@ -373,7 +273,7 @@ def test_handle_set_cmd_async_post_fct_raising_fails_its_group() -> None:
         async def bad_post() -> None:
             raise RuntimeError("ntp sync failed")
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=bad_post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_asy_fct=bad_post))
         assert result == {"SampleInterval": "Failed"}
         assert reader.pr._err_count == 1
         assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
@@ -395,7 +295,7 @@ def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -
         async def post() -> None:
             async_calls.append(1)
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post, post_asy_fct=post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=bad_post, post_asy_fct=post))
         assert result == {"SampleInterval": "Failed"}
         assert async_calls == []  # never invoked - post_fct raised before it could be awaited
         assert reader.pr._err_count == 1
@@ -411,7 +311,7 @@ def test_handle_set_cmd_hook_raising_after_a_mixed_result_fails_every_key() -> N
         def bad_post() -> None:
             raise RuntimeError("reconnect failed")
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42, "Ghost": 1}, _VAL_SI, post_fct=bad_post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42, "Ghost": 1}, _TEST_SCHEMA_SI, post_fct=bad_post))
         assert result == {"SampleInterval": "Failed", "Ghost": "Failed"}
         assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
     finally:
@@ -429,7 +329,7 @@ def test_handle_set_cmd_never_calls_a_hook_when_nothing_is_valid() -> None:
 
         result = run(
             ar.handle_set_cmd(
-                reader, {"SampleInterval": 9999}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+                reader, {"SampleInterval": 9999}, _TEST_SCHEMA_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
             ),
         )
         assert result == {"SampleInterval": "Invalid"}
@@ -453,7 +353,7 @@ def test_handle_set_cmd_whole_persist_failure_marks_every_field_failed() -> None
 def test_handle_set_cmd_empty_data_returns_an_empty_result() -> None:
     reader, path = _make_reader("handleempty")
     try:
-        assert run(ar.handle_set_cmd(reader, {}, _VAL_SI)) == {}
+        assert run(ar.handle_set_cmd(reader, {}, _TEST_SCHEMA_SI)) == {}
     finally:
         _remove(path)
 

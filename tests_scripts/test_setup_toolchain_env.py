@@ -48,7 +48,7 @@ def _no_real_side_effects(setup_toolchain: ModuleType, request: pytest.FixtureRe
     shims = tmp_path_factory.mktemp("shims")
     for name in _SHIMMED:
         shim = shims / name
-        shim.write_text(f'#!/bin/sh\necho "{request.node.nodeid}: {name} is shimmed out of the L0 tier" >&2\nexit 97\n')
+        shim.write_text(f'#!/bin/sh\necho "{request.node.nodeid}: {name} is shimmed out of the L0 tier" >&2\nexit 97\n', encoding="utf-8")
         shim.chmod(0o755)
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
@@ -119,15 +119,15 @@ def _make_usb_tty(tmp_path: Path, sys_tty_dir: Path, dev_dir: Path, tty_name: st
     usb_device_dir = tmp_path / "sys_bus" / f"usb-device-{tty_name}"
     usb_interface_dir = usb_device_dir / f"{tty_name}:1.0"
     usb_interface_dir.mkdir(parents=True)
-    (usb_device_dir / "idVendor").write_text(f"{id_vendor}\n")
+    (usb_device_dir / "idVendor").write_text(f"{id_vendor}\n", encoding="utf-8")
 
     tty_dir = sys_tty_dir / tty_name
     tty_dir.mkdir(parents=True)
-    os.symlink(usb_interface_dir, tty_dir / "device")
+    (tty_dir / "device").symlink_to(usb_interface_dir)
 
     if create_dev_node:
         dev_dir.mkdir(parents=True, exist_ok=True)
-        (dev_dir / tty_name).write_text("")
+        (dev_dir / tty_name).write_text("", encoding="utf-8")
 
 
 def test_detect_pico_serial_devices_matches_only_the_pico_vendor_id(tmp_path: Path, setup_toolchain: ModuleType) -> None:
@@ -164,7 +164,7 @@ _MICROPYTHON_BY_ID = "usb-MicroPython_Board_in_FS_mode_e6614c311b7e6f35-if00"
 def _by_id_link(by_id_dir: Path, name: str, target: Path) -> Path:
     by_id_dir.mkdir(parents=True, exist_ok=True)
     link = by_id_dir / name
-    os.symlink(target, link)
+    link.symlink_to(target)
     return link
 
 
@@ -188,7 +188,7 @@ def test_a_micropython_link_on_another_vendor_is_not_the_board(tmp_path: Path, s
 def test_without_a_readable_sys_the_micropython_link_alone_names_the_board(tmp_path: Path, setup_toolchain: ModuleType) -> None:
     dev_dir, by_id = tmp_path / "dev", tmp_path / "by-id"
     dev_dir.mkdir()
-    (dev_dir / "ttyACM0").write_text("")
+    (dev_dir / "ttyACM0").write_text("", encoding="utf-8")
     board = _by_id_link(by_id, _MICROPYTHON_BY_ID, dev_dir / "ttyACM0")
     assert setup_toolchain.resolve_board_serial(by_id_dir=by_id, sys_tty_dir=tmp_path / "no-sys", dev_dir=dev_dir) == [board]
 
@@ -220,12 +220,6 @@ def test_resolve_pico_device_raises_on_ambiguous_match(setup_toolchain: ModuleTy
     monkeypatch.setattr(setup_toolchain, "resolve_board_serial", lambda: candidates)
     with pytest.raises(setup_toolchain.SetupError, match=r"multiple MicroPython boards found \(/dev/serial/by-id/a, /dev/serial/by-id/b\)"):
         setup_toolchain.resolve_pico_device(None)
-
-
-def test_the_installer_and_the_bench_harness_look_for_one_board_name(setup_toolchain: ModuleType, repo_root: Path) -> None:
-    # tests_hardware/harness.py still carries its own copy of the glob; until it reads this one, they must agree.
-    harness = load_script_module(repo_root / "tests_hardware" / "harness.py", "harness")
-    assert setup_toolchain.BOARD_BY_ID_GLOB == harness._BOARD_BY_ID_GLOB
 
 
 def test_board_prints_the_resolved_path_without_a_lock_or_a_versions_read(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -356,6 +350,30 @@ def test_the_sudo_probe_names_only_the_refused_command(setup_toolchain: ModuleTy
     assert "nmcli" not in str(raised.value)
 
 
+def test_the_spoof_s_sudo_rule_is_probed_with_the_venv_interpreter(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The off-subnet spoof test runs `sudo -n <venv python> tests_hardware/spoof_udp.py ...`; a bench host without that
+    # rule passed setup and failed the test at its first send, so the bench tier probes the very command.
+    monkeypatch.setattr(setup_toolchain.os, "geteuid", lambda: 1000)
+    fake = _FakeRun()
+    monkeypatch.setattr(setup_toolchain, "run", fake)
+    setup_toolchain.check_spoof_sudo()
+    python, script = str(setup_toolchain.REPO_ROOT / ".venv" / "bin" / "python"), str(setup_toolchain.REPO_ROOT / "tests_hardware" / "spoof_udp.py")
+    assert fake.argvs() == [["sudo", "-k", "-n", python, script, "--help"]]
+
+
+def test_a_refused_spoof_rule_fails_the_bench_tier_naming_it(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(setup_toolchain.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(setup_toolchain, "run", _FakeRun({("sudo", "-k", "-n"): setup_toolchain.SetupError("command failed (exit 1)")}))
+    with pytest.raises(setup_toolchain.SetupError, match=r"passwordless sudo missing for the off-subnet spoof: sudo -n .*/\.venv/bin/python .*tests_hardware/spoof_udp\.py .*tests_hardware/README\.md Prerequisites"):
+        setup_toolchain.check_spoof_sudo()
+
+
+def test_root_needs_no_spoof_sudo_probe(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
+    monkeypatch.setattr(setup_toolchain.os, "geteuid", lambda: 0)
+    setup_toolchain.check_spoof_sudo()
+    assert recorded_run == []
+
+
 def test_root_needs_no_sudo_probe(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain.os, "geteuid", lambda: 0)
     setup_toolchain.check_passwordless_sudo(setup_toolchain._BENCH_SUDO_COMMANDS)
@@ -376,6 +394,7 @@ def test_the_bench_tier_checks_commands_then_sudo_then_builds_the_bridge(setup_t
     monkeypatch.setattr(setup_toolchain, "resolve_pico_device", lambda device: step("device", Path("/dev/ttyACM0")))
     monkeypatch.setattr(setup_toolchain, "ensure_commands", lambda pairs, *, skip_apt: steps.append(f"commands:{len(pairs)}"))
     monkeypatch.setattr(setup_toolchain, "check_passwordless_sudo", lambda commands: steps.append("sudo"))
+    monkeypatch.setattr(setup_toolchain, "check_spoof_sudo", lambda: steps.append("spoof sudo"))
     monkeypatch.setattr(setup_toolchain, "ensure_bench_bridge", lambda uplink, wifi, ssid, password: step(f"bridge:{password}", "ssid"))
     args = argparse.Namespace(
         tier="bench", toolchain_dir=tmp_path, skip_npm=True, skip_apt=True, device=None, uplink_iface=None, wifi_iface=None, ssid=None,
@@ -383,11 +402,11 @@ def test_the_bench_tier_checks_commands_then_sudo_then_builds_the_bridge(setup_t
     )
     assert setup_toolchain.run_env(args, setup_toolchain.VERSIONS_PATH, setup_toolchain.load_versions(setup_toolchain.VERSIONS_PATH)) == 0
     bench_commands = len(setup_toolchain._TIER_COMMANDS["bench"])
-    assert steps == ["setup:bench", "deps", "dialout", "device", f"commands:{bench_commands}", "sudo", "bridge:throwaway-psk"]
+    assert steps == ["setup:bench", "deps", "dialout", "device", f"commands:{bench_commands}", "sudo", "spoof sudo", "bridge:throwaway-psk"]
 
 
 def test_the_bench_tier_installs_avahi_for_the_mqtt_bench_hosts_local_name(setup_toolchain: ModuleType) -> None:
-    # The DUT resolves the bench host's `.local` name through its mDNS responder (SPECIFICATION.md A.11).
+    # The DUT resolves the bench host's `.local` name through its mDNS responder (SPECIFICATION.md A.12).
     assert ("avahi-daemon", "avahi-daemon") in setup_toolchain._TIER_COMMANDS["bench"]
 
 
@@ -720,8 +739,8 @@ def test_the_bench_suite_derives_the_connection_names_from_this_module(setup_too
     # here rather than carry its own literals: a rename would otherwise leave the bench tier looking
     # for a connection nobody creates, and its skip gate deselects rather than fails.
     harness_path = repo_root / "tests_hardware" / "harness.py"
-    harness_src = harness_path.read_text()
-    harness = load_script_module(harness_path, "harness")
+    harness_src = harness_path.read_text(encoding="utf-8")
+    harness = load_script_module(harness_path, "harness_for_toolchain_env")
     for attr in ("BENCH_BRIDGE_CONN", "BENCH_ETH_CONN", "BENCH_AP_CONN"):
         assert f"{attr} = setup_toolchain.{attr}" in harness_src, (
             f"tests_hardware/harness.py declares {attr} itself instead of reading it from this module - "
@@ -734,7 +753,7 @@ def test_the_bench_suite_derives_the_connection_names_from_this_module(setup_too
 
 
 def test_run_project_dependency_install_skips_npm_when_flag_set(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
-    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
     setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
@@ -749,18 +768,51 @@ def test_run_project_dependency_install_skips_npm_when_none_can_be_installed(
 ) -> None:
     # No .nvmrc to pin a version and no npm on PATH: nothing to install and nothing to run, so the
     # soft skip is still the right outcome - it is only the *silent* skip on a pinned repo that was wrong.
-    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: None)
     setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
 def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
-    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: f"/usr/bin/{name}")
     setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     # The Node in use is named by its own --version, whichever install it is.
     assert recorded_run == [["uv", "sync"], ["/usr/bin/node", "--version"], ["npm", "ci"], ["npx", "playwright", "install", "chromium"]]
+
+
+_CHROMIUM_INSTALL = ("npx", "playwright", "install", "chromium")
+_CHROMIUM_DEPS = ("npx", "playwright", "install-deps", "chromium")
+
+
+def test_a_failed_chromium_install_stops_env_naming_skip_npm(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRun({_CHROMIUM_INSTALL: setup_toolchain.SetupError("command failed (exit 1): npx playwright install chromium")})
+    monkeypatch.setattr(setup_toolchain, "run", fake)
+    with pytest.raises(setup_toolchain.SetupError, match="--skip-npm") as raised:
+        setup_toolchain.ensure_playwright_browser(tmp_path, None, skip_apt=False)
+    assert "npx playwright install chromium" in str(raised.value)
+    assert [tuple(argv) for argv in fake.argvs()] == [_CHROMIUM_INSTALL], "install-deps ran after the browser itself failed to install"
+
+
+def test_a_failed_install_deps_stops_env_naming_the_manual_command_and_skip_apt(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRun({_CHROMIUM_DEPS: setup_toolchain.SetupError("command failed (exit 1): npx playwright install-deps chromium")})
+    monkeypatch.setattr(setup_toolchain, "run", fake)
+    with pytest.raises(setup_toolchain.SetupError, match="--skip-apt") as raised:
+        setup_toolchain.ensure_playwright_browser(tmp_path, None, skip_apt=False)
+    assert "sudo npx playwright install-deps chromium" in str(raised.value)
+    assert [tuple(argv) for argv in fake.argvs()] == [_CHROMIUM_INSTALL, _CHROMIUM_DEPS]
+
+
+def test_env_reports_the_generic_tier_ready_only_once_the_browser_installed(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(setup_toolchain, "run_setup", lambda args, versions_path, versions, *, tier: 0)
+    monkeypatch.setattr(setup_toolchain, "ensure_node", lambda toolchain_dir, repo_root, *, skip_apt: None)
+    monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(setup_toolchain, "run", _FakeRun({_CHROMIUM_INSTALL: setup_toolchain.SetupError("command failed (exit 1): npx playwright install chromium")}))
+    args = argparse.Namespace(tier="generic", toolchain_dir=tmp_path, skip_npm=False, skip_apt=True, device=None, uplink_iface=None, wifi_iface=None, ssid=None, micropython_ref=None, latest=False, clean=False, jobs=1)
+    with pytest.raises(setup_toolchain.SetupError, match="--skip-npm"):
+        setup_toolchain.run_env(args, setup_toolchain.VERSIONS_PATH, setup_toolchain.load_versions(setup_toolchain.VERSIONS_PATH))
+    assert "environment ready" not in capsys.readouterr().out
 
 
 def _flaky_run(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, failures: int) -> "tuple[list[list[str]], list[float]]":
@@ -804,9 +856,9 @@ def test_uv_sync_that_succeeds_first_time_never_pauses(setup_toolchain: ModuleTy
 
 
 def test_pinned_node_major_reads_nvmrc(setup_toolchain: ModuleType, tmp_path: Path) -> None:
-    (tmp_path / ".nvmrc").write_text("22\n")
+    (tmp_path / ".nvmrc").write_text("22\n", encoding="utf-8")
     assert setup_toolchain.pinned_node_major(tmp_path) == "22"
-    (tmp_path / ".nvmrc").write_text("v20.11.1\n")
+    (tmp_path / ".nvmrc").write_text("v20.11.1\n", encoding="utf-8")
     assert setup_toolchain.pinned_node_major(tmp_path) == "20"
 
 
@@ -819,7 +871,7 @@ def test_ensure_node_defers_to_a_matching_node_already_on_path(
 ) -> None:
     # The installer exists to make a bare machine work, never to override a correct Node the caller
     # already manages (nvm, a system install, CI's own setup-node).
-    (tmp_path / ".nvmrc").write_text("22\n")
+    (tmp_path / ".nvmrc").write_text("22\n", encoding="utf-8")
     monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: True)
     assert setup_toolchain.ensure_node(tmp_path, tmp_path, skip_apt=True) is None
     assert recorded_run == []
@@ -834,17 +886,17 @@ def test_ensure_node_reuses_an_already_installed_tree(
     setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
 ) -> None:
     # Idempotence: a second `env` run must not re-download a Node that is already extracted.
-    (tmp_path / ".nvmrc").write_text("22\n")
+    (tmp_path / ".nvmrc").write_text("22\n", encoding="utf-8")
     monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: False)
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
     monkeypatch.setattr(setup_toolchain, "_node_release", lambda major, env: ("node-v22.0.0-linux-arm64.tar.xz", "a" * 64))
     bindir = tmp_path / "node" / "node-v22.0.0-linux-arm64" / "bin"
     bindir.mkdir(parents=True)
-    (bindir / "node").write_text("#!/bin/sh\n")
+    (bindir / "node").write_text("#!/bin/sh\n", encoding="utf-8")
     assert setup_toolchain.ensure_node(tmp_path, tmp_path, skip_apt=True) == bindir
     assert recorded_run == [], "an already-installed Node was re-downloaded"
     # Recorded even when reused, so the tree in use is known to the leftover clean-up from now on.
-    assert json.loads((tmp_path / "node" / "node-record.json").read_text()) == {"major": "22", "tarball": "node-v22.0.0-linux-arm64.tar.xz", "sha256": "a" * 64}
+    assert json.loads((tmp_path / "node" / "node-record.json").read_text(encoding="utf-8")) == {"major": "22", "tarball": "node-v22.0.0-linux-arm64.tar.xz", "sha256": "a" * 64}
 
 
 # --- CLI wiring ---------------------------------------------------------------------------------
@@ -886,7 +938,7 @@ def test_every_apt_call_times_out_and_retries_a_stalled_fetch(setup_toolchain: M
     timeout = str(setup_toolchain.APT_ACQUIRE_TIMEOUT_S)
     expected = ["-o", f"Acquire::Retries={setup_toolchain.NETWORK_ATTEMPTS - 1}", "-o", f"Acquire::http::Timeout={timeout}", "-o", f"Acquire::https::Timeout={timeout}"]
     apt_calls = [cmd for cmd in recorded_run if "apt-get" in cmd]
-    assert len(apt_calls) == 3, recorded_run  # the list update, the download, the install from the cache
+    assert len(apt_calls) == 2, recorded_run  # the list update and the install
     for cmd in apt_calls:
         at = cmd.index("apt-get") + 1
         assert cmd[at : at + len(expected)] == expected, cmd
@@ -898,7 +950,7 @@ def test_every_apt_call_times_out_and_retries_a_stalled_fetch(setup_toolchain: M
 def _alive(pid: int) -> bool:
     # Whether a process still runs; a zombie waiting for its reaper runs nothing, so it counts as gone.
     try:
-        state = Path(f"/proc/{pid}/stat").read_text().rpartition(")")[2].split()[0]
+        state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rpartition(")")[2].split()[0]
     except FileNotFoundError:
         return False
     return state != "Z"
@@ -922,7 +974,7 @@ def test_run_ends_a_stalled_command_with_its_whole_process_group(setup_toolchain
     with pytest.raises(setup_toolchain.SetupError, match=r"timed out after 0\.5 s: sh -c"):
         setup_toolchain.run([*_BACKGROUNDED_SLEEP, str(pid_file)], timeout_s=0.5)
     assert time.monotonic() - started < 7
-    assert _gone_within(int(pid_file.read_text()), 5), "the grandchild outlived its step's limit"
+    assert _gone_within(int(pid_file.read_text(encoding="utf-8")), 5), "the grandchild outlived its step's limit"
 
 
 class _FlagOnLine:
@@ -931,14 +983,14 @@ class _FlagOnLine:
     def __init__(self, line: str, flag: Path) -> None:
         self.line, self.flag, self.text = line, flag, ""
 
+    def flush(self) -> None:
+        pass
+
     def write(self, text: str) -> int:
         self.text += text
         if self.line in self.text:
             self.flag.touch()
         return len(text)
-
-    def flush(self) -> None:
-        pass
 
 
 def test_run_streams_each_line_while_the_command_still_runs(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -990,21 +1042,38 @@ with st._stop_commands_on_termination():
     st.run(["sh", "-c", 'sleep 30 & echo $! > "$1"; wait', "sh", sys.argv[2]], timeout_s=60)
 """
 
+# Holds run()'s output reader at its start (a command running, run() not yet able to stop it) until the signal is sent.
+_HOLD_THE_START = """import sys, threading, time
+from pathlib import Path
+start, held, sent = threading.Thread.start, Path(sys.argv[2] + ".held"), Path(sys.argv[2] + ".sent")
+def held_start(thread):
+    held.write_text("")
+    while not sent.exists():
+        time.sleep(0.01)
+    start(thread)
+threading.Thread.start = held_start
+"""
 
+
+@pytest.mark.parametrize("when", ["running", "starting"])
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP, signal.SIGINT])
-def test_a_signalled_installer_takes_its_running_command_down_with_it(repo_root: Path, tmp_path: Path, sig: signal.Signals) -> None:
+def test_a_signalled_installer_takes_its_running_command_down_with_it(repo_root: Path, tmp_path: Path, sig: signal.Signals, when: str) -> None:
     # A command in its own session misses the signal sent to the installer's group (Ctrl-C, timeout(1), a
-    # cancelled job), so the installer stops it on its way out instead of leaving it running unlocked.
+    # cancelled job), so the installer stops it on its way out instead of leaving it running unlocked - also when
+    # the signal lands while run() is still starting it.
     pid_file = tmp_path / "grandchild.pid"
-    script = [sys.executable, "-c", _RUN_THEN_WAIT_FOR_A_SIGNAL, str(repo_root / "toolchain"), str(pid_file)]
+    held, sent, starting = Path(f"{pid_file}.held"), Path(f"{pid_file}.sent"), when == "starting"
+    script = [sys.executable, "-c", (_HOLD_THE_START if starting else "") + _RUN_THEN_WAIT_FOR_A_SIGNAL, str(repo_root / "toolchain"), str(pid_file)]
     proc = subprocess.Popen(script, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     deadline = time.monotonic() + 30
-    while not (pid_file.exists() and pid_file.read_text().strip()) and time.monotonic() < deadline:
+    while not (pid_file.exists() and pid_file.read_text(encoding="utf-8").strip() and (held.exists() or not starting)) and time.monotonic() < deadline:
         time.sleep(0.05)
+    assert held.exists() == starting, "run() never started its output reader"
     proc.send_signal(sig)
+    sent.write_text("", encoding="utf-8")
     _, err = proc.communicate(timeout=30)
     assert proc.returncode != 0, err
-    assert _gone_within(int(pid_file.read_text()), 10), f"the command survived its installer's {sig.name}"
+    assert _gone_within(int(pid_file.read_text(encoding="utf-8")), 10), f"the command survived its installer's {sig.name}"
 
 
 def test_run_retried_hands_every_attempt_the_same_env_limit_and_secrets(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1029,20 +1098,20 @@ def test_the_last_failed_attempt_names_the_step_and_the_fix(setup_toolchain: Mod
         setup_toolchain.run_retried(["git", "fetch"], timeout_s=1)
 
 
-def test_node_on_path_matches_treats_a_hung_probe_as_no_match(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A node that never answers --version must not hold the installer forever.
-    def hung(cmd: list[str], **kwargs: object) -> NoReturn:
-        assert kwargs.get("timeout") == setup_toolchain._REMOTE_QUERY_TIMEOUT_S
-        raise subprocess.TimeoutExpired(cmd, 1)
+def test_node_on_path_matches_waits_for_a_slow_probe_rather_than_reinstalling(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A local `node --version` has no outside party: a slow answer is still the answer, never a silent reinstall.
+    def answered(cmd: list[str], **kwargs: object) -> "subprocess.CompletedProcess[str]":
+        assert "timeout" not in kwargs, kwargs
+        return subprocess.CompletedProcess(cmd, 0, stdout="v22.1.0\n", stderr="")
 
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(setup_toolchain.subprocess, "run", hung)
-    assert setup_toolchain.node_on_path_matches("22") is False
+    monkeypatch.setattr(setup_toolchain.subprocess, "run", answered)
+    assert setup_toolchain.node_on_path_matches("22") is True
 
 
 # --- versions.toml as a typed table ------------------------------------------------------------------
 
-_VALID_VERSIONS = '[micropython]\nref = "v1.29.0"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n'
+_VALID_VERSIONS = '[micropython]\nref = "v1.29.0"\n\n[stubs]\nboard = "1.29.0.post1"\nstdlib = "1.29.0.post2"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n'
 
 
 @pytest.mark.parametrize(
@@ -1053,12 +1122,15 @@ _VALID_VERSIONS = '[micropython]\nref = "v1.29.0"\n\n[toolchain]\nboard = "RPI_P
         (_VALID_VERSIONS.replace('board = "RPI_PICO_W"\n', ""), r"\[toolchain\] board is missing"),
         (_VALID_VERSIONS.replace('apt_packages = ["git"]', 'apt_packages = "git"'), r"\[toolchain\] apt_packages must be a list of strings"),
         (_VALID_VERSIONS.partition("[lwip]")[0], r"\[lwip\] is missing"),
+        (_VALID_VERSIONS.replace('[stubs]\nboard = "1.29.0.post1"\nstdlib = "1.29.0.post2"\n\n', ""), r"\[stubs\] is missing"),
+        (_VALID_VERSIONS.replace('stdlib = "1.29.0.post2"\n', ""), r"\[stubs\] stdlib is missing"),
+        (_VALID_VERSIONS.replace('board = "1.29.0.post1"', "board = 1.29"), r"\[stubs\] board must be a non-empty string"),
         ('[micropython\nref = "v1.29.0"\n', r"cannot be read"),
     ],
 )
 def test_load_versions_names_the_file_and_its_first_defect(setup_toolchain: ModuleType, tmp_path: Path, text: str, message: str) -> None:
     path = tmp_path / "versions.toml"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     with pytest.raises(setup_toolchain.SetupError, match=message) as raised:
         setup_toolchain.load_versions(path)
     assert str(path) in str(raised.value)
@@ -1078,6 +1150,7 @@ def test_the_pinned_versions_file_loads_as_tomllib_reads_it(setup_toolchain: Mod
         "micropython": {"ref": raw["micropython"]["ref"]},
         "toolchain": {"board": raw["toolchain"]["board"], "apt_packages": raw["toolchain"]["apt_packages"]},
         "lwip": raw["lwip"],
+        "stubs": {"board": raw["stubs"]["board"], "stdlib": raw["stubs"]["stdlib"]},
     }
     assert setup_toolchain.load_versions(path) == expected
 
@@ -1088,7 +1161,7 @@ def test_the_pinned_versions_file_loads_as_tomllib_reads_it(setup_toolchain: Mod
 def _lock_held(setup_toolchain: ModuleType, toolchain_dir: Path) -> bool:
     # Whether any open file holds the toolchain lock: flock() on a fresh descriptor conflicts even
     # with one held by this same process.
-    with (toolchain_dir / setup_toolchain.TOOLCHAIN_LOCK).open("a") as f:
+    with (toolchain_dir / setup_toolchain.TOOLCHAIN_LOCK).open("a", encoding="utf-8") as f:
         try:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -1126,10 +1199,44 @@ def test_a_second_run_on_one_toolchain_fails_at_once_naming_the_first(setup_tool
     assert not _lock_held(setup_toolchain, toolchain_dir)
 
 
+_HOLD_IT_SHARED = """import fcntl, sys
+from pathlib import Path
+lock = (Path(sys.argv[1]) / ".toolchain.lock").open("a", encoding="utf-8")
+fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+print("held", flush=True)
+sys.stdin.read()
+"""
+
+
+def test_a_run_holding_the_lock_shared_is_named_as_such_never_by_a_stale_pid(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    # A test run holds the lock shared (scripts/_unix_port.sh) and writes no pid: the pid in the file is the last
+    # exclusive holder's, long gone, so the refusal says what holds it instead of naming that pid.
+    toolchain_dir = tmp_path / "toolchain"
+    toolchain_dir.mkdir()
+    (toolchain_dir / setup_toolchain.TOOLCHAIN_LOCK).write_text("4242\n", encoding="utf-8")
+    holder = subprocess.Popen([sys.executable, "-c", _HOLD_IT_SHARED, str(toolchain_dir)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout is not None and holder.stdout.readline() == "held\n"
+        with pytest.raises(setup_toolchain.SetupError, match=rf"^a test run is using the Unix ports of {toolchain_dir} \(it holds the toolchain lock shared\) - wait for it to finish, or use another --toolchain-dir$") as raised, setup_toolchain.toolchain_lock(toolchain_dir):
+            pytest.fail("the lock was taken over a shared holder")
+        assert "4242" not in str(raised.value)
+    finally:
+        holder.kill()
+        holder.communicate(timeout=10)
+
+
+def test_main_prints_a_setup_error_as_one_line_and_exits_1(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # A user error is one stderr line naming the tool, never a traceback; the exit code is main()'s own.
+    monkeypatch.setattr(setup_toolchain, "run_test", lambda *_a, **_k: (_ for _ in ()).throw(setup_toolchain.SetupError("the planted cause - fix: the planted fix")))
+    monkeypatch.setattr(sys, "argv", ["setup_toolchain.py", "test", "--toolchain-dir", str(tmp_path)])
+    assert setup_toolchain.main() == 1
+    assert capsys.readouterr().err == "setup_toolchain: the planted cause - fix: the planted fix\n"
+
+
 def test_the_lock_creates_its_toolchain_directory(setup_toolchain: ModuleType, tmp_path: Path) -> None:
     toolchain_dir = tmp_path / "not" / "there" / "yet"
     with setup_toolchain.toolchain_lock(toolchain_dir):
-        assert (toolchain_dir / setup_toolchain.TOOLCHAIN_LOCK).read_text().strip() == str(os.getpid())
+        assert (toolchain_dir / setup_toolchain.TOOLCHAIN_LOCK).read_text(encoding="utf-8").strip() == str(os.getpid())
 
 
 def test_main_runs_a_test_under_the_lock(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1192,7 +1299,7 @@ def test_the_toolchain_record_round_trips_every_key(setup_toolchain: ModuleType,
     record = _a_record()
     setup_toolchain.write_toolchain_record(tmp_path, record)
     assert setup_toolchain.read_toolchain_record(tmp_path) == record
-    assert list(json.loads((tmp_path / setup_toolchain.TOOLCHAIN_RECORD).read_text())) == sorted(record)
+    assert list(json.loads((tmp_path / setup_toolchain.TOOLCHAIN_RECORD).read_text(encoding="utf-8"))) == sorted(record)
     assert [p.name for p in tmp_path.iterdir()] == [setup_toolchain.TOOLCHAIN_RECORD], "the write left its temporary file behind"
 
 
@@ -1200,7 +1307,7 @@ def test_the_toolchain_record_round_trips_every_key(setup_toolchain: ModuleType,
 def test_a_missing_or_malformed_record_reads_as_none(setup_toolchain: ModuleType, tmp_path: Path, text: str | None) -> None:
     # Anything but a complete record means a toolchain nobody verified: the consumers then rebuild or refuse.
     if text is not None:
-        (tmp_path / setup_toolchain.TOOLCHAIN_RECORD).write_text(text)
+        (tmp_path / setup_toolchain.TOOLCHAIN_RECORD).write_text(text, encoding="utf-8")
     assert setup_toolchain.read_toolchain_record(tmp_path) is None
 
 
@@ -1334,7 +1441,7 @@ def test_build_mpy_cross_fails_on_a_diagnostic_even_at_exit_0(setup_toolchain: M
 def test_build_mpy_cross_returns_its_binary_after_a_clean_build(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     binary = tmp_path / "mpy-cross" / "build" / "mpy-cross"
     binary.parent.mkdir(parents=True)
-    binary.write_text("")
+    binary.write_text("", encoding="utf-8")
     monkeypatch.setattr(setup_toolchain, "run", lambda cmd, cwd=None, **_kwargs: "CC main.c\n" if cmd[0] == "make" else "MicroPython v1.29.0\n")
     assert setup_toolchain.build_mpy_cross(tmp_path, 1) == binary
 
@@ -1382,7 +1489,7 @@ def test_the_summary_names_all_three_unix_binaries(setup_toolchain: ModuleType, 
         assert str(unix_dir / name / "micropython") in shown, name
 
 
-# --- apt: a bounded list update, a retried download, one install from the cache -------------------
+# --- apt: a list update and one install, each run once ---------------------------------------------
 
 
 def _only_these_network_variables(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType, **values: str) -> None:
@@ -1401,9 +1508,9 @@ def test_apt_keeps_the_proxy_in_the_environment_through_sudo(setup_toolchain: Mo
     setup_toolchain.ensure_apt_packages(["git", "cmake"], skip=False)
     sudo = ["sudo", "--preserve-env=DEBIAN_FRONTEND,HTTPS_PROXY,SSL_CERT_FILE", "apt-get", *setup_toolchain.apt_options()]
     tail = ["-y", "--no-install-recommends", "git", "cmake"]
-    assert fake.argvs() == [[*sudo, "update"], [*sudo, "install", "--download-only", *tail], [*sudo, "install", *tail]]
-    budgets = [call["timeout_s"] for call in fake.calls]
-    assert budgets == [setup_toolchain._APT_STEP_TIMEOUT_S, setup_toolchain._APT_STEP_TIMEOUT_S, setup_toolchain._BUILD_STEP_TIMEOUT_S]
+    assert fake.argvs() == [[*sudo, "update"], [*sudo, "install", *tail]]
+    budgets = [call.get("timeout_s") for call in fake.calls]
+    assert budgets == [None, None], "no wall-clock limit: apt's own fetch timeout ends a stalled read, a slow live one finishes"
     assert fake.calls[0]["check"] is False, "an unrelated broken source must not stop the install"
     for call in fake.calls:
         env = call["env"]
@@ -1420,32 +1527,13 @@ def test_apt_without_proxy_variables_preserves_only_the_frontend(setup_toolchain
     assert {tuple(argv[:2]) for argv in fake.argvs()} == {("sudo", "--preserve-env=DEBIAN_FRONTEND")}
 
 
-def test_a_stalled_download_is_retried_but_the_install_never_is(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Only the download is retried, and it never reaches dpkg: a retry that killed dpkg mid-configure would leave
-    # the host's package database interrupted until someone runs `dpkg --configure -a`.
-    timed_out = setup_toolchain.SetupError("timed out after 150 s: apt-get install --download-only")
-    fake = _FakeRun({("sudo",): ""})
-    calls: list[list[str]] = []
-
-    def stalls_twice(cmd: list[str], cwd: Path | None = None, **kwargs: object) -> str:
-        calls.append(cmd)
-        if "--download-only" in cmd and sum("--download-only" in c for c in calls) < setup_toolchain.NETWORK_ATTEMPTS:
-            raise timed_out
-        return fake(cmd, cwd, **kwargs)
-
-    monkeypatch.setattr(setup_toolchain, "run", stalls_twice)
-    monkeypatch.setattr(setup_toolchain.time, "sleep", lambda _s: None)
-    setup_toolchain.ensure_apt_packages(["git"], skip=False)
-    assert sum("--download-only" in c for c in calls) == setup_toolchain.NETWORK_ATTEMPTS
-    assert sum("install" in c and "--download-only" not in c for c in calls) == 1
-
-
 def test_a_failed_install_runs_once_and_names_the_ways_out(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # apt retries each failed fetch itself (apt_options()), so the command runs once and names the remedy.
     failed = setup_toolchain.SetupError("command failed (exit 100): sudo apt-get install")
     fake = _FakeRun()
 
     def install_fails(cmd: list[str], cwd: Path | None = None, **kwargs: object) -> str:
-        if "install" in cmd and "--download-only" not in cmd:
+        if "install" in cmd:
             fake(cmd, cwd, **kwargs)
             raise failed
         return fake(cmd, cwd, **kwargs)
@@ -1453,15 +1541,8 @@ def test_a_failed_install_runs_once_and_names_the_ways_out(setup_toolchain: Modu
     monkeypatch.setattr(setup_toolchain, "run", install_fails)
     with pytest.raises(setup_toolchain.SetupError, match=r"exit 100.*env_keep.*--skip-apt"):
         setup_toolchain.ensure_apt_packages(["git"], skip=False)
-    assert sum("install" in argv and "--download-only" not in argv for argv in fake.argvs()) == 1
+    assert sum("install" in argv for argv in fake.argvs()) == 1
 
-
-def test_a_stalled_list_update_is_logged_and_the_install_goes_on(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    fake = _FakeRun({("sudo",): [setup_toolchain.SetupError("timed out after 150 s: sudo apt-get update"), ""]})
-    monkeypatch.setattr(setup_toolchain, "run", fake)
-    setup_toolchain.ensure_apt_packages(["git"], skip=False)
-    assert len(fake.calls) == 3
-    assert "apt-get update did not finish" in capsys.readouterr().out
 
 
 # --- clones, fetches and submodules: retried, an interrupted clone named --------------------------------
@@ -1488,10 +1569,10 @@ def test_clone_full_refuses_a_directory_that_is_already_there(setup_toolchain: M
     # Its retry removes what a failed attempt created; a directory that was already there is never its to remove.
     dest = tmp_path / "micropython"
     dest.mkdir()
-    (dest / "work.txt").write_text("mine")
+    (dest / "work.txt").write_text("mine", encoding="utf-8")
     with pytest.raises(setup_toolchain.SetupError, match="already exists"):
         setup_toolchain.clone_full("https://example.invalid/micropython.git", dest)
-    assert (dest / "work.txt").read_text() == "mine"
+    assert (dest / "work.txt").read_text(encoding="utf-8") == "mine"
     assert recorded_run == []
 
 
@@ -1500,7 +1581,7 @@ def test_an_interrupted_clone_is_named_and_left_alone(setup_toolchain: ModuleTyp
     # A real git against a fabricated clone with no HEAD (or no .git at all): never fetched into, never deleted.
     dest = tmp_path / "micropython"
     dest.mkdir()
-    (dest / "partial.c").write_text("x")
+    (dest / "partial.c").write_text("x", encoding="utf-8")
     if ".git" in left_behind:
         (dest / ".git").mkdir()
     with pytest.raises(setup_toolchain.SetupError, match=r"is not a complete clone \(an interrupted clone\?\) - remove it and re-run setup"):
@@ -1543,7 +1624,7 @@ def test_every_network_step_rides_out_one_failed_attempt(setup_toolchain: Module
 
 # --- the MicroPython pin: written only as one exact line -------------------------------------------------
 
-_PINNED = '# a comment\n[micropython]\nref = "v1.29.0"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n'
+_PINNED = '# a comment\n[micropython]\nref = "v1.29.0"\n\n[stubs]\nboard = "1.29.0.post1"\nstdlib = "1.29.0.post2"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n'
 
 
 @pytest.mark.parametrize(
@@ -1556,18 +1637,18 @@ _PINNED = '# a comment\n[micropython]\nref = "v1.29.0"\n\n[toolchain]\nboard = "
 )
 def test_the_pin_writer_refuses_a_missing_duplicate_or_misplaced_ref(setup_toolchain: ModuleType, tmp_path: Path, text: str, message: str) -> None:
     path = tmp_path / "versions.toml"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     with pytest.raises(setup_toolchain.SetupError, match=message):
         setup_toolchain.write_micropython_ref(path, "v1.30.0")
-    assert path.read_text() == text, "a refused write changed the file"
+    assert path.read_text(encoding="utf-8") == text, "a refused write changed the file"
     assert [p.name for p in tmp_path.iterdir()] == ["versions.toml"]
 
 
 def test_the_pin_writer_changes_the_one_ref_line_and_nothing_else(setup_toolchain: ModuleType, tmp_path: Path) -> None:
     path = tmp_path / "versions.toml"
-    path.write_text(_PINNED)
+    path.write_text(_PINNED, encoding="utf-8")
     setup_toolchain.write_micropython_ref(path, "v1.30.0")
-    assert path.read_text() == _PINNED.replace('ref = "v1.29.0"', 'ref = "v1.30.0"')
+    assert path.read_text(encoding="utf-8") == _PINNED.replace('ref = "v1.29.0"', 'ref = "v1.30.0"')
     assert [p.name for p in tmp_path.iterdir()] == ["versions.toml"]
 
 
@@ -1592,18 +1673,18 @@ def _setup_args(toolchain_dir: Path, *, latest: bool = False, micropython_ref: s
 
 def _pinned_copy(tmp_path: Path, repo_root: Path) -> Path:
     path = tmp_path / "versions.toml"
-    path.write_text((repo_root / "toolchain" / "versions.toml").read_text())
+    path.write_text((repo_root / "toolchain" / "versions.toml").read_text(encoding="utf-8"), encoding="utf-8")
     return path
 
 
 def test_latest_on_the_newest_tag_already_writes_nothing_and_says_nothing(setup_toolchain: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     path = _pinned_copy(tmp_path, repo_root)
-    before = path.read_text()
+    before = path.read_text(encoding="utf-8")
     pinned = setup_toolchain.load_versions(path)["micropython"]["ref"]
     _quiet_setup(setup_toolchain, monkeypatch)
     monkeypatch.setattr(setup_toolchain, "latest_stable_micropython_ref", lambda: pinned)
     setup_toolchain.run_setup(_setup_args(tmp_path / "toolchain", latest=True), path, setup_toolchain.load_versions(path))
-    assert path.read_text() == before
+    assert path.read_text(encoding="utf-8") == before
     out = capsys.readouterr().out
     assert "already on the newest stable tag" in out
     assert "platform re-check" not in out
@@ -1626,11 +1707,11 @@ def test_latest_on_a_newer_tag_moves_the_pin_and_names_the_re_check(setup_toolch
 
 def test_an_off_pin_build_names_the_re_check_and_leaves_the_pin(setup_toolchain: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     path = _pinned_copy(tmp_path, repo_root)
-    before = path.read_text()
+    before = path.read_text(encoding="utf-8")
     pinned = setup_toolchain.load_versions(path)["micropython"]["ref"]
     _quiet_setup(setup_toolchain, monkeypatch)
     assert setup_toolchain.run_setup(_setup_args(tmp_path / "toolchain", micropython_ref="v1.28.0"), path, setup_toolchain.load_versions(path)) == 0
-    assert path.read_text() == before
+    assert path.read_text(encoding="utf-8") == before
     out = capsys.readouterr().out
     assert f"MicroPython v1.28.0 is not the version this tree was verified against ({pinned})" in out
     assert "now pins" not in out
@@ -1690,7 +1771,7 @@ def _node_download_fake(tmp_path: Path, payload: bytes) -> _FakeRun:
         if cmd[0] == "tar":
             bindir = Path(cmd[cmd.index("-C") + 1]) / "node-v22.5.1-linux-x64" / "bin"
             bindir.mkdir(parents=True)
-            (bindir / "node").write_text("#!/bin/sh\n")
+            (bindir / "node").write_text("#!/bin/sh\n", encoding="utf-8")
         return fake(cmd, cwd, **kwargs)
 
     fake.wrapped = downloading  # type: ignore[attr-defined]
@@ -1698,7 +1779,7 @@ def _node_download_fake(tmp_path: Path, payload: bytes) -> _FakeRun:
 
 
 def _prepare_node_install(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: bytes) -> _FakeRun:
-    (tmp_path / ".nvmrc").write_text("22\n")
+    (tmp_path / ".nvmrc").write_text("22\n", encoding="utf-8")
     _on_x64(setup_toolchain, monkeypatch)
     monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: False)
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
@@ -1712,7 +1793,7 @@ def test_a_node_install_checks_the_download_and_records_the_tree(setup_toolchain
     bindir = setup_toolchain.ensure_node(tmp_path, tmp_path, skip_apt=True)
     assert bindir == tmp_path / "node" / "node-v22.5.1-linux-x64" / "bin"
     assert sum("SHASUMS256.txt" in " ".join(argv) for argv in fake.argvs()) == 1, "the list the name and hash come from is fetched once"
-    record = json.loads((tmp_path / "node" / "node-record.json").read_text())
+    record = json.loads((tmp_path / "node" / "node-record.json").read_text(encoding="utf-8"))
     assert record == {"major": "22", "tarball": "node-v22.5.1-linux-x64.tar.xz", "sha256": _NODE_SHA}
 
 
@@ -1725,7 +1806,7 @@ def test_a_node_download_that_fails_its_checksum_is_never_unpacked(setup_toolcha
 
 
 def test_a_node_install_asks_for_curl_before_downloading(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
-    (tmp_path / ".nvmrc").write_text("22\n")
+    (tmp_path / ".nvmrc").write_text("22\n", encoding="utf-8")
     monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: False)
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name, path=None: None)
     with pytest.raises(setup_toolchain.SetupError, match="'curl' not on PATH and --skip-apt is set - install curl by hand"):
@@ -1744,7 +1825,7 @@ def _installed_picotool(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyP
     prefix = tmp_path / "usr-local"
     binary = prefix / "bin" / "picotool"
     binary.parent.mkdir(parents=True)
-    binary.write_text("")
+    binary.write_text("", encoding="utf-8")
     (tmp_path / "picotool").mkdir()
     monkeypatch.setattr(setup_toolchain, "PICOTOOL_INSTALL_PREFIX", str(prefix))
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name, path=None: first_on_path or str(binary))
@@ -1826,7 +1907,7 @@ def _tree(root: Path) -> list[str]:
 
 def test_setup_removes_only_its_own_outdated_leftovers(setup_toolchain: ModuleType, tmp_path: Path) -> None:
     toolchain_dir = _leftover_tree(tmp_path)
-    (toolchain_dir / "node" / "node-record.json").write_text(json.dumps({"major": "22", "tarball": "node-v22.2.0-linux-x64.tar.xz", "sha256": "a" * 64}))
+    (toolchain_dir / "node" / "node-record.json").write_text(json.dumps({"major": "22", "tarball": "node-v22.2.0-linux-x64.tar.xz", "sha256": "a" * 64}), encoding="utf-8")
     before = _tree(toolchain_dir)
     setup_toolchain.remove_outdated_leftovers(toolchain_dir)
     gone = sorted(set(before) - set(_tree(toolchain_dir)))
@@ -1845,11 +1926,11 @@ def test_a_leftover_linking_outside_the_toolchain_is_kept(setup_toolchain: Modul
     toolchain_dir = _leftover_tree(tmp_path)
     outside = tmp_path / "someone-elses"
     outside.mkdir()
-    (outside / "keep.txt").write_text("x")
-    os.symlink(outside, toolchain_dir / "build_overrides" / "linked_override")
+    (outside / "keep.txt").write_text("x", encoding="utf-8")
+    (toolchain_dir / "build_overrides" / "linked_override").symlink_to(outside)
     setup_toolchain.remove_outdated_leftovers(toolchain_dir)
     assert (toolchain_dir / "build_overrides" / "linked_override").is_symlink()
-    assert (outside / "keep.txt").read_text() == "x"
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "x"
     assert "resolves outside" in capsys.readouterr().out
 
 

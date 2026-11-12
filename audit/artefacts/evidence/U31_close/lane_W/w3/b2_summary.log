@@ -1,0 +1,77 @@
+tests/test_asy_wifi_service.py gc -1 rc=0 time=24.42
+PASS test_write_config_via_public_cfg_schema_round_trips_a_real_value
+268/268 passed, 0 failed, 0 skipped
+tests/test_asy_wifi_service.py gc 32768 rc=0 time=24.80
+PASS test_write_config_via_public_cfg_schema_round_trips_a_real_value
+268/268 passed, 0 failed, 0 skipped
+tests/test_asy_udp_socket.py gc -1 rc=0 time=7.22
+PASS test_write_returns_none_sentinel_on_memoryerror
+70/70 passed, 0 failed, 0 skipped
+tests/test_asy_udp_socket.py gc 32768 rc=0 time=7.23
+PASS test_write_returns_none_sentinel_on_memoryerror
+70/70 passed, 0 failed, 0 skipped
+tests/test_asy_captive_dns.py gc -1 rc=0 time=25.58
+PASS test_run_yields_once_per_datagram_while_the_socket_stays_ready
+64/64 passed, 0 failed, 0 skipped
+tests/test_asy_captive_dns.py gc 32768 rc=0 time=25.58
+PASS test_run_yields_once_per_datagram_while_the_socket_stays_ready
+64/64 passed, 0 failed, 0 skipped
+tests/test_neopixel_wifi_integration.py gc -1 rc=0 time=2.71
+PASS test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark
+8/8 passed, 0 failed, 0 skipped
+tests/test_neopixel_wifi_integration.py gc 32768 rc=0 time=2.85
+PASS test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark
+8/8 passed, 0 failed, 0 skipped
+tests/test_asy_dns_client.py gc -1 rc=0 time=0.88
+PASS test_resolve_ipv4_with_no_servers_returns_none_and_opens_no_socket
+46/46 passed, 0 failed, 0 skipped
+tests/test_asy_dns_client.py gc 32768 rc=0 time=0.88
+PASS test_resolve_ipv4_with_no_servers_returns_none_and_opens_no_socket
+46/46 passed, 0 failed, 0 skipped
+tests/test_asy_ntp_client.py gc -1 rc=0 time=23.66
+PASS test_write_config_round_trips_a_real_value
+188/188 passed, 0 failed, 0 skipped
+tests/test_asy_ntp_client.py gc 32768 rc=0 time=24.06
+PASS test_write_config_round_trips_a_real_value
+188/188 passed, 0 failed, 0 skipped
+tests/test_ntp_wifi_dns_integration.py gc -1 rc=0 time=1.49
+PASS test_wifi_mode_lock_is_the_same_instance_on_both_real_objects
+13/13 passed, 0 failed, 0 skipped
+tests/test_ntp_wifi_dns_integration.py gc 32768 rc=0 time=1.54
+PASS test_wifi_mode_lock_is_the_same_instance_on_both_real_objects
+13/13 passed, 0 failed, 0 skipped
+tests/test_setter_microdot_integration.py gc -1 rc=0 time=0.39
+PASS test_system_put_of_an_out_of_range_offset_is_refused_without_a_resync
+34/34 passed, 0 failed, 0 skipped
+tests/test_setter_microdot_integration.py gc 32768 rc=0 time=0.49
+PASS test_system_put_of_an_out_of_range_offset_is_refused_without_a_resync
+34/34 passed, 0 failed, 0 skipped
+tests/test_website_build_integration.py gc -1 rc=0 time=0.18
+PASS test_style_css_and_definitions_json_are_not_served_as_separate_files
+7/7 passed, 0 failed, 0 skipped
+tests/test_website_build_integration.py gc 32768 rc=0 time=0.21
+PASS test_style_css_and_definitions_json_are_not_served_as_separate_files
+7/7 passed, 0 failed, 0 skipped
+tests/test_digital_twin_wifi_modes.py gc -1 rc=0 time=27.69
+2:WIFI Error counter increased to 1
+3:WIFI Error counter back to 0
+5:WIFI Error counter increased to 1
+6:WIFI Error counter back to 0
+PASS test_stations_rule_settings_change_and_silent_mode_in_one_boot
+1/1 passed, 0 failed, 0 skipped
+tests/test_digital_twin_wifi_modes.py gc 32768 rc=0 time=27.78
+2:WIFI Error counter increased to 1
+3:WIFI Error counter back to 0
+5:WIFI Error counter increased to 1
+6:WIFI Error counter back to 0
+PASS test_stations_rule_settings_change_and_silent_mode_in_one_boot
+1/1 passed, 0 failed, 0 skipped
+pytest scans rc=1 time=69s 1 failed, 868 passed, 1 warning in 68.52s (0:01:08)
+pytest readers rc=0 time=153s 2572 passed in 147.32s (0:02:27)
+pytest collect rc=0 time=1s 196/226 tests collected (30 deselected) in 0.57s
+mypy host rc=0 Success: no issues found in 302 source files
+mypy twin rc=0 Success: no issues found in 52 source files
+mypy main rc=0 Success: no issues found in 260 source files
+mypy sts rc=0 Success: no issues found in 226 source files
+ruff rc=0 All checks passed!
+ALL DONE

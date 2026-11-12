@@ -1,0 +1,12 @@
+PASS test_a_base_exception_ending_a_loop_leaves_no_running_task_for_the_next_test
+PASS test_a_failed_test_that_also_parks_a_task_is_counted_once
+PASS test_a_hook_runs_after_every_test_and_one_that_raises_fails_the_test_it_follows
+PASS test_a_test_leaving_tasks_parked_fails_and_the_next_test_finds_the_scheduler_empty
+PASS test_sys_path_and_the_gc_threshold_are_back_after_each_test_in_either_order
+FAIL test_the_fatal_report_flag_is_back_to_its_boot_value_after_each_test:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30c/tests/microtest.py", line 38, in _call
+  File "tests/test_microtest_hooks.py", line 122, in test_the_fatal_report_flag_is_back_to_its_boot_value_after_each_test
+AssertionError: ['PASS test_a_records', 'FAIL test_b_sees_boot_state:', 'Traceback (most recent call last):', '  File "tests/microtest.py", line 38, in _call', '  File "tests/_tmp/microtest_hooks/7/case.py", line 17, in test_b_sees_boot_state', 'AssertionError: ', '1/2 passed, 1 failed, 0 skipped', '']
+PASS test_the_pre_sync_timestamp_flag_is_back_to_its_boot_value_after_each_test
+6/7 passed, 1 failed, 0 skipped

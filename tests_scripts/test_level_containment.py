@@ -11,6 +11,7 @@ from _devices import DEVICE_NAMES
 
 _TWIN_PREFIX = "test_digital_twin_"
 _CI_SUITE = "scripts/_digital_twin_ci_suite.py"
+_HARNESS = "scripts/_digital_twin_scenarios.py"
 _FLASH_HAZARDS = "tests_hardware/flash/test_bus_concurrency.py"
 _BENCH_HAZARDS = "tests_hardware/bench/test_bus_concurrency_under_api_load.py"
 _BENCH_RUNNER = "scripts/run_bench_hardware_suite.sh"
@@ -31,16 +32,25 @@ def _families(repo_root: Path) -> "dict[str, set[str]]":
 
 
 def _ci_suite_ids(repo_root: Path) -> "set[str]":
-    # Every function run_suite() calls, read from its body: one scenario each.
-    tree = ast.parse((repo_root / _CI_SUITE).read_text())
-    run_suite = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_suite")
-    ids = {f"ci_suite.{node.func.id}" for node in ast.walk(run_suite) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id.startswith("_run_")}
-    assert len(ids) >= 10, f"run_suite() calls only {sorted(ids)} - the scan has stopped seeing its runs"
+    # Every _run_<n> function that checks something: one cell each, a run's parts cells of their own.
+    tree = ast.parse((repo_root / _CI_SUITE).read_text(encoding="utf-8"))
+    ids = {f"ci_suite.{n.name}" for n in tree.body if isinstance(n, ast.FunctionDef) and re.match(r"_run_\d", n.name) and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "_check" for c in ast.walk(n))}
+    assert len(ids) >= 10, f"{_CI_SUITE} holds only {sorted(ids)} - the scan has stopped seeing its cells"
     return ids
 
 
+def _harness_scenarios(repo_root: Path) -> "set[str]":
+    # The host-side harness's scenarios, each by its own @scenario name literal as scenarios.<name>, never by its family.
+    decorators = [deco for node in ast.walk(ast.parse((repo_root / _HARNESS).read_text(encoding="utf-8"))) if isinstance(node, ast.FunctionDef) for deco in node.decorator_list]
+    names = [deco.args[0] if deco.args else None for deco in decorators if isinstance(deco, ast.Call) and isinstance(deco.func, ast.Name) and deco.func.id == "scenario"]
+    assert len(names) >= 40, f"{_HARNESS} holds only {len(names)} scenarios - the scan has stopped seeing them"
+    bare = [ast.unparse(name) if name else "?" for name in names if not (isinstance(name, ast.Constant) and isinstance(name.value, str))]
+    assert not bare, f"harness scenarios naming no name literal: {bare}"
+    return {f"scenarios.{name.value}" for name in names if isinstance(name, ast.Constant) and isinstance(name.value, str)}
+
+
 def _twin_ids(repo_root: Path) -> "set[str]":
-    return set(_families(repo_root)) | _ci_suite_ids(repo_root)
+    return set(_families(repo_root)) | _ci_suite_ids(repo_root) | _harness_scenarios(repo_root)
 
 
 def _level_modules(repo_root: Path) -> "list[Path]":
@@ -48,7 +58,7 @@ def _level_modules(repo_root: Path) -> "list[Path]":
 
 
 def _declared(path: Path) -> "tuple[str, ...] | None":
-    for node in ast.parse(path.read_text()).body:
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
         target: ast.expr
         if isinstance(node, ast.AnnAssign):
             target, value = node.target, node.value
@@ -73,7 +83,7 @@ def _covered(repo_root: Path) -> "dict[str, list[str]]":
 
 def _exception_rows(repo_root: Path) -> "list[dict[str, str]]":
     # E.6.6's table, cells keyed by header; the section ends at the next heading.
-    text = (repo_root / "SPECIFICATION.md").read_text()
+    text = (repo_root / "SPECIFICATION.md").read_text(encoding="utf-8")
     start = re.search(r"^### E\.6\.6 .*$", text, re.MULTILINE)
     assert start is not None, "SPECIFICATION.md has no E.6.6 section"
     section = text[start.end() :]
@@ -96,7 +106,7 @@ def _row_id(row: "dict[str, str]") -> str:
 def _named_scenarios(row: "dict[str, str]", twin_ids: "set[str]") -> "set[str]":
     # A row names a scenario by a code span holding its ID or its test file's stem.
     spans = set(re.findall(r"`([^`]+)`", row.get("Scenario/behaviour", "")))
-    return {s.removeprefix(_TWIN_PREFIX) for s in spans if s.removeprefix(_TWIN_PREFIX) in twin_ids or s.startswith((_TWIN_PREFIX, "ci_suite."))}
+    return {s.removeprefix(_TWIN_PREFIX) for s in spans if s.removeprefix(_TWIN_PREFIX) in twin_ids or s.startswith((_TWIN_PREFIX, "ci_suite.", "scenarios."))}
 
 
 def test_every_level_module_declares_the_twin_scenarios_it_covers(repo_root: Path) -> None:
@@ -128,20 +138,22 @@ def test_no_exception_row_names_a_covered_scenario(repo_root: Path) -> None:
 
 
 def test_every_per_device_family_spans_the_device_set(repo_root: Path) -> None:
+    # A family is per device as one wrapper per device, or as one PER_DEVICE file scripts/test.sh runs for every device.
     families = {name: devices for name, devices in _families(repo_root).items() if devices}
-    assert families, "no per-device twin family found - the collapse has stopped seeing them"
+    per_device_files = [p for p in (repo_root / "tests").glob(f"{_TWIN_PREFIX}*.py") if "PER_DEVICE = True" in p.read_text(encoding="utf-8").splitlines()]
+    assert families or per_device_files, "no per-device twin family found - the collapse has stopped seeing them"
     short = {name: sorted(set(DEVICE_NAMES) - devices) for name, devices in families.items() if devices != set(DEVICE_NAMES)}
     assert not short, f"per-device twin families missing devices of devices/*.toml: {short}"
 
 
 def test_the_bench_runner_runs_the_flash_level_too(repo_root: Path) -> None:
-    text = (repo_root / _BENCH_RUNNER).read_text()
+    text = (repo_root / _BENCH_RUNNER).read_text(encoding="utf-8")
     assert "tests_hardware/flash" in text, f"{_BENCH_RUNNER} no longer runs tests_hardware/flash - bench must contain flash"
 
 
 def _flash_hazard_tests(repo_root: Path) -> "dict[str, list[str]]":
     # test name -> the comment lines directly above its decorators and def.
-    lines = (repo_root / _FLASH_HAZARDS).read_text().splitlines()
+    lines = (repo_root / _FLASH_HAZARDS).read_text(encoding="utf-8").splitlines()
     found: dict[str, list[str]] = {}
     for node in ast.parse("\n".join(lines)).body:
         if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
@@ -156,7 +168,7 @@ def _flash_hazard_tests(repo_root: Path) -> "dict[str, list[str]]":
 
 @pytest.mark.parametrize("test_name", sorted(_flash_hazard_tests(Path(__file__).resolve().parent.parent)))
 def test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row(repo_root: Path, test_name: str) -> None:
-    bench = {n.name for n in ast.parse((repo_root / _BENCH_HAZARDS).read_text()).body if isinstance(n, ast.FunctionDef)}
+    bench = {n.name for n in ast.parse((repo_root / _BENCH_HAZARDS).read_text(encoding="utf-8")).body if isinstance(n, ast.FunctionDef)}
     rows = {_row_id(row) for row in _exception_rows(repo_root)}
     named = [m.groups() for line in _flash_hazard_tests(repo_root)[test_name] if (m := _COUNTERPART_RE.search(line))]
     assert len(named) == 1, f"{test_name} must carry exactly one '# Bench counterpart:' line above it, found {named}"

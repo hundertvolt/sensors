@@ -1,0 +1,5 @@
+BITTEN test_every_ruff_per_file_glob_matches_a_tracked_file | pyproject.toml [tool.ruff.lint.per-file-ignores]: 'scripts/no_such_script.py' matches no tracked file
+BITTEN test_every_mypy_path_entry_resolves_in_all_three_passes | pyproject.toml [tool.mypy] files: 'no_such_dir' resolves to nothing tracked / host_typecheck.ini files: 'gone_dir' resolves to nothing tracked
+BITTEN test_every_tsconfig_include_exclude_and_extends_entry_resolves | tsconfig.json include: 'gone/**/*.js' resolves to nothing tracked
+BITTEN test_every_repo_script_a_workflow_action_or_npm_script_names_exists | .github/workflows/ci.yml: scripts/no_such_test.sh is not a tracked file
+BITTEN test_every_relative_import_of_vitest_config_exists | vitest.config.js imports files that are not tracked: ['./tests_js/_gone_command.js']

@@ -8,24 +8,31 @@ import subprocess
 import sys
 from pathlib import Path
 
-_FLOOR = "not long_soak and not multi_day_rollover"
+_FLOOR = "not soak_duration and not multi_day_rollover"
+# The conftest's session note for a run whose session fixtures act on no board, whatever is attached to the host.
+_NO_BOARD = {"text": "twin run: the twin's board starts fresh, nothing to check", "recovery": False, "source": "standard_state"}
 
 
 def _pytest(repo_root: Path, *args: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    # --twin: the conftest's session fixtures then look for no board, so whatever the host has attached is never touched.
     env = dict(os.environ, PYTHONPATH=os.pathsep.join((str(repo_root / "scripts"), str(repo_root / "tests_hardware"))))
-    return subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *args], capture_output=True, text=True, check=False, cwd=cwd, env=env, timeout=120)
+    return subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--twin", *args], capture_output=True, text=True, check=False, cwd=cwd, env=env, timeout=120)
 
 
 def test_collecting_the_hardware_levels_records_why_each_test_was_deselected(repo_root: Path, tmp_path: Path) -> None:
     record_path = tmp_path / "run_record.json"
     ran = _pytest(repo_root, "-p", "_pytest_run_record", f"--run-record={record_path}", "tests_hardware/flash", "tests_hardware/bench", "--collect-only", "-q", "-m", _FLOOR, cwd=repo_root)
     assert ran.returncode == 0, ran.stdout + ran.stderr
-    record = json.loads(record_path.read_text())
+    record = json.loads(record_path.read_text(encoding="utf-8"))
     assert record["collect_only"] is True
     by = {entry["nodeid"].rsplit("::", 1)[-1]: entry["by"] for entry in record["deselected"]}
-    assert by.get("test_same_device_concurrent_sessions_never_corrupt_each_other") == "--allow-persistence-writes", by
-    assert by.get("test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic") == "runner selection", "a -m exclusion is the runner's selection, never a wear gate"
-    assert set(by.values()) == {"--allow-persistence-writes", "runner selection"}, by
+    assert by.get("test_scd30_same_device_read_write_concurrency") == "--allow-persistence-write", by
+    # Each entry's reason follows its markers: a wear-gated mark names its flag, a floor mark the runner.
+    for entry in record["deselected"]:
+        marks = set(entry["markers"])
+        expected = "--allow-persistence-write" if "persistence_write" in marks else "runner selection"
+        assert entry["by"] == expected, entry
+        assert expected != "runner selection" or marks & {"soak_duration", "multi_day_rollover"}, entry
 
 
 _STUB_TEST = """
@@ -40,22 +47,49 @@ def test_a_session_note(request):
 """
 
 
+_ORDER_STUB = """
+import pytest
+
+@pytest.mark.destructive_last
+def test_a_destroys():
+    pass
+
+def test_b_reads():
+    pass
+
+@pytest.mark.persistence_write
+def test_c_writes():
+    pass
+
+def test_d_reads():
+    pass
+"""
+
+
 def test_result_note_and_session_notes_land_in_the_record(repo_root: Path, tmp_path: Path) -> None:
-    (tmp_path / "test_stub.py").write_text(_STUB_TEST)
+    # One run for both stubs: the notes, and destructive_last ordering with a wear-gate deselection.
+    (tmp_path / "test_stub.py").write_text(_STUB_TEST, encoding="utf-8")
+    (tmp_path / "test_order.py").write_text(_ORDER_STUB, encoding="utf-8")
     record_path = tmp_path / "run_record.json"
-    ran = _pytest(repo_root, "-p", "conftest", "-p", "_pytest_run_record", f"--run-record={record_path}", str(tmp_path / "test_stub.py"), cwd=tmp_path)
+    ran = _pytest(repo_root, "-p", "conftest", "-p", "_pytest_run_record", f"--run-record={record_path}", str(tmp_path / "test_order.py"), str(tmp_path / "test_stub.py"), cwd=tmp_path)
     assert ran.returncode == 0, ran.stdout + ran.stderr
-    record = json.loads(record_path.read_text())
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    order = [e["nodeid"].rsplit("::", 1)[-1] for e in record["tests"] if "test_order.py" in e["nodeid"]]
+    assert order[:1] == ["test_b_reads"] and order[-1] == "test_a_destroys" and "test_c_writes" not in order, order
+    assert [e["by"] for e in record["deselected"] if e["nodeid"].endswith("test_c_writes")] == ["--allow-persistence-write"], record["deselected"]
     props = next(e["user_properties"] for e in record["tests"] if e["nodeid"].endswith("test_a_recovered_pass"))
     assert ["result_note", "graceful wait 150.0s"] in props, props
     assert ["recovery", "recovered via a fallback hard_reset()"] in props, props
     assert {"text": "stale credentials repaired", "recovery": True, "source": "dut_ip"} in record["session_notes"], record["session_notes"]
+    assert _NO_BOARD in record["session_notes"], "the session fixtures looked for a board"
 
 
 def test_a_session_note_is_printed_when_no_record_is_written(repo_root: Path, tmp_path: Path) -> None:
     # A bare `pytest tests_hardware` loads no record plugin: the note reaches the terminal even
     # though pytest captures a passing test's own output.
-    (tmp_path / "test_stub.py").write_text(_STUB_TEST)
+    (tmp_path / "test_stub.py").write_text(_STUB_TEST, encoding="utf-8")
     ran = _pytest(repo_root, "-p", "conftest", str(tmp_path / "test_stub.py"), cwd=tmp_path)
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert "RECOVERY (dut_ip): stale credentials repaired" in ran.stdout, ran.stdout
+    assert f"NOTE (standard_state): {_NO_BOARD['text']}" in ran.stdout, "the session fixtures looked for a board"
+

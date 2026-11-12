@@ -1,8 +1,9 @@
 """buildgen/error_catalog.json against every logging call in src/ and the generated modules, and every
 test-side mirror of it: one number per meaning, passed by keyword through a named constant, and no test
-or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1). Each check bites a plant."""
+or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1)."""
 
 import ast
+import gc
 import json
 import re
 from collections import Counter
@@ -10,22 +11,25 @@ from dataclasses import dataclass
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 from _devices import DEVICE_NAMES
+from _repo_scan import python_files
 
 from buildgen.generate import generate_device
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
+
+    from buildgen.jsontypes import JsonDict, JsonValue
 
 _REPO = Path(__file__).resolve().parent.parent
 _CATALOG_PATH = _REPO / "buildgen" / "error_catalog.json"
 _MOCK_SAMPLES = "mockdata/samples.json"
 _TEST_SCOPES = ("tests", "tests_hardware", "tests_scripts", "digital_twin", "scripts")
 
-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
+_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}  # each persisting entry point
 _KEYWORD = {"E": "errno", "W": "wrnno"}
 _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
 _CODE_PARAMS = frozenset(_KEYWORD.values())
@@ -41,9 +45,7 @@ _COUNT_METHODS = frozenset({"count", "index"})
 
 # Seed scripts whose seeds still carry product numbers rather than the catalog's test band; each entry
 # leaves with its script's rewrite, and an entry the scan no longer flags fails the pending test.
-_SEED_NAMES_PENDING = frozenset({
-    ("tests_hardware/device_scripts/fram_error_log_roundtrip.py", "TEST_ERRNO"),
-})
+_SEED_NAMES_PENDING: "frozenset[tuple[str, str]]" = frozenset()
 
 
 @dataclass(frozen=True)
@@ -56,29 +58,60 @@ def _module(path: str, source: str) -> _Module:
     return _Module(path, ast.parse(source, filename=path))
 
 
+def _obj(value: "JsonValue", where: str = "a catalog entry") -> "JsonDict":
+    assert isinstance(value, dict), f"{where} is not a JSON object: {value!r}"
+    return value
+
+
+def _strs(value: "JsonValue") -> "list[str]":
+    assert isinstance(value, list), value
+    return [str(item) for item in value]
+
+
+def _int(value: "JsonValue") -> int:
+    assert isinstance(value, int) and not isinstance(value, bool), value
+    return value
+
+
+def _range(catalog: "JsonDict") -> "tuple[int, int]":
+    low, high = (_int(bound) for bound in _list(catalog["range"]))
+    return low, high
+
+
+def _list(value: "JsonValue") -> "list[JsonValue]":
+    assert isinstance(value, list), value
+    return value
+
+
+def _bands(spec: "JsonValue", kind: str) -> "list[tuple[int, int]]":
+    # An owner's [[lo, hi], ...] band list for one kind; a missing owner or a null band is none.
+    bands = _obj(spec).get("bands", {}) if isinstance(spec, dict) else {}
+    pairs = _obj(bands).get(kind)
+    return [(_int(lo), _int(hi)) for lo, hi in (_list(pair) for pair in _list(pairs))] if pairs is not None else []
+
+
 @cache
-def _catalog() -> "dict[str, Any]":
-    result: dict[str, Any] = json.loads(_CATALOG_PATH.read_text())
-    return result
+def _catalog() -> "JsonDict":
+    return _obj(json.loads(_CATALOG_PATH.read_text(encoding="utf-8")), "buildgen/error_catalog.json")
 
 
-def _rows(catalog: "dict[str, Any]", kind: str) -> "dict[int, dict[str, Any]]":
-    return {int(num): row for num, row in catalog["codes"].get(kind, {}).items()}
+def _rows(catalog: "JsonDict", kind: str) -> "dict[int, JsonDict]":
+    return {int(num): _obj(row) for num, row in _obj(_obj(catalog["codes"]).get(kind, {})).items()}
 
 
-def _live_numbers(catalog: "dict[str, Any]", kind: str) -> "dict[str, int]":
-    return {row["name"]: num for num, row in _rows(catalog, kind).items() if not row.get("retired")}
+def _live_numbers(catalog: "JsonDict", kind: str) -> "dict[str, int]":
+    return {str(row["name"]): num for num, row in _rows(catalog, kind).items() if not row.get("retired")}
 
 
-def _owners_of(catalog: "dict[str, Any]", path: str) -> "set[str]":
+def _owners_of(catalog: "JsonDict", path: str) -> "set[str]":
     return {
-        owner for owner, spec in catalog["owners"].items()
-        if any(path == f or (f.endswith("/") and path.startswith(f)) for f in spec["files"])
+        owner for owner, spec in _obj(catalog["owners"]).items()
+        if any(path == f or (f.endswith("/") and path.startswith(f)) for f in _strs(_obj(spec)["files"]))
     }
 
 
-def _repo_modules(directory: str) -> "list[_Module]":
-    return [_module(p.relative_to(_REPO).as_posix(), p.read_text()) for p in sorted((_REPO / directory).rglob("*.py"))]
+def _repo_modules(directory: str) -> "Iterator[_Module]":
+    return (_module(p.relative_to(_REPO).as_posix(), p.read_text(encoding="utf-8")) for p in python_files(_REPO, directory))
 
 
 @cache
@@ -93,11 +126,6 @@ def _generated() -> "tuple[_Module, ...]":
         result = generate_device(_REPO / "devices" / f"{device}.toml", _REPO / "src", _REPO / "ext")
         modules.append(_module(f"build/generated_src/sensortask_{device}.py", result.module_source))
     return tuple(modules)
-
-
-@cache
-def _test_side() -> "tuple[_Module, ...]":
-    return tuple(m for scope in _TEST_SCOPES for m in _repo_modules(scope) if "/_tmp/" not in m.path)
 
 
 def _functions(tree: ast.AST) -> "Iterator[ast.FunctionDef | ast.AsyncFunctionDef]":
@@ -150,37 +178,38 @@ def _loaded_names(tree: ast.AST) -> "set[str]":
 # ---- (1) catalog shape ----------------------------------------------------------------------------
 
 
-def _band_problems(catalog: "dict[str, Any]", kind: str) -> "list[str]":
+def _band_problems(catalog: "JsonDict", kind: str) -> "list[str]":
     problems: list[str] = []
     spans: list[tuple[int, int, str]] = []
-    for owner, spec in catalog["owners"].items():
-        spans.extend((lo, hi, owner) for lo, hi in spec["bands"].get(kind) or [])
+    owners = _obj(catalog["owners"])
+    for owner, spec in owners.items():
+        spans.extend((lo, hi, owner) for lo, hi in _bands(spec, kind))
     spans.sort()
     problems.extend(f"{kind}: bands of {a[2]} and {b[2]} overlap" for a, b in pairwise(spans) if b[0] <= a[1])
     for num, row in _rows(catalog, kind).items():
-        bands = (catalog["owners"].get(row["owner"]) or {}).get("bands", {}).get(kind) or []
+        bands = _bands(owners.get(str(row["owner"])), kind)
         if not any(lo <= num <= hi for lo, hi in bands):
             problems.append(f"{kind}{num} {row['name']} lies outside {row['owner']}'s {kind} band")
     return problems
 
 
-def _shape_problems(catalog: "dict[str, Any]") -> "list[str]":
-    low, high = catalog["range"]
+def _shape_problems(catalog: "JsonDict") -> "list[str]":
+    low, high = _range(catalog)
     problems: list[str] = []
     for kind in ("E", "W"):
-        rows = catalog["codes"].get(kind, {})
+        rows = _obj(_obj(catalog["codes"]).get(kind, {}))
         problems.extend(f"{kind}{num} is not an int in {low}-{high}" for num in rows if not (num.isdigit() and low <= int(num) <= high))
         if not all(num.isdigit() for num in rows):
             continue
         problems.extend(_band_problems(catalog, kind))
         for field in ("name", "text"):
-            seen = Counter(row[field] for row in rows.values())
+            seen = Counter(str(_obj(row)[field]) for row in rows.values())
             problems.extend(f"{kind}: {field} {value!r} is used {n} times" for value, n in seen.items() if n > 1)
     return problems
 
 
-def _retired_live_sites(catalog: "dict[str, Any]", modules: "tuple[_Module, ...]") -> "list[str]":
-    retired = {_PREFIX[kind] + row["name"] for kind in ("E", "W") for row in _rows(catalog, kind).values() if row.get("retired")}
+def _retired_live_sites(catalog: "JsonDict", modules: "tuple[_Module, ...]") -> "list[str]":
+    retired = {_PREFIX[kind] + str(row["name"]) for kind in ("E", "W") for row in _rows(catalog, kind).values() if row.get("retired")}
     return [f"{m.path}: retired {name} is still used" for m in modules for name in sorted(retired & _loaded_names(m.tree))]
 
 
@@ -391,10 +420,33 @@ def test_every_code_argument_is_built_from_catalog_names() -> None:
     assert not problems, "\n".join(problems)
 
 
+def _keyword_floor_problems(modules: "tuple[_Module, ...]") -> "list[str]":
+    # Each code keyword the sweep looks for must match at least one log call: a renamed one matches none, and
+    # the sweep above then passes on nothing.
+    read: Counter[str] = Counter()
+    for m in modules:
+        defs = {fn.name: fn for fn in _functions(m.tree)}
+        for fn in _functions(m.tree):
+            calls = _code_arguments(_Scope(m, fn, defs))
+            read.update(_KEYWORD[kind] for call, kind, _value in calls if isinstance(call.func, ast.Attribute) and call.func.attr in _METHOD_KIND)
+    return [f"the sweep read no {keyword}= argument in src/ - it judges nothing for that kind" for keyword in sorted(_KEYWORD.values()) if not read[keyword]]
+
+
+def test_the_sweep_reads_every_code_keyword() -> None:
+    problems = _keyword_floor_problems(_src())
+    assert not problems, "\n".join(problems)
+
+
+def test_a_renamed_code_keyword_passes_the_sweep_and_fails_its_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(_KEYWORD, "E", "errnum")
+    assert _expression_problems(_src()) == []
+    assert _keyword_floor_problems(_src()) == ["the sweep read no errnum= argument in src/ - it judges nothing for that kind"]
+
+
 # ---- (4)/(6) constants equal their catalog entry and stay in their file's bands --------------------
 
 
-def _constant_problems(catalog: "dict[str, Any]", modules: "tuple[_Module, ...]") -> "list[str]":
+def _constant_problems(catalog: "JsonDict", modules: "tuple[_Module, ...]") -> "list[str]":
     problems = []
     for m in modules:
         owners = _owners_of(catalog, m.path) | {"base", "shared"}
@@ -408,7 +460,7 @@ def _constant_problems(catalog: "dict[str, Any]", modules: "tuple[_Module, ...]"
     return problems
 
 
-def _non_catalog_problems(catalog: "dict[str, Any]", modules: "tuple[_Module, ...]") -> "list[str]":
+def _non_catalog_problems(catalog: "JsonDict", modules: "tuple[_Module, ...]") -> "list[str]":
     problems = []
     for m in modules:
         for kind, name, value, line in _code_constants(m.tree):
@@ -430,7 +482,7 @@ def test_no_code_constant_holds_a_non_catalog_value() -> None:
 # ---- (5) every live code is logged somewhere -------------------------------------------------------
 
 
-def _unused_code_problems(catalog: "dict[str, Any]", modules: "tuple[_Module, ...]") -> "list[str]":
+def _unused_code_problems(catalog: "JsonDict", modules: "tuple[_Module, ...]") -> "list[str]":
     used = set()
     for m in modules:
         declared = {name for _kind, name, _value, _line in _code_constants(m.tree)}
@@ -438,7 +490,7 @@ def _unused_code_problems(catalog: "dict[str, Any]", modules: "tuple[_Module, ..
     return [
         f"{kind}{num} {row['name']} has no live site ({_PREFIX[kind]}{row['name']} declared and used in src/)"
         for kind in ("E", "W") for num, row in sorted(_rows(catalog, kind).items())
-        if not row.get("retired") and row["owner"] != "test" and _PREFIX[kind] + row["name"] not in used
+        if not row.get("retired") and row["owner"] != "test" and _PREFIX[kind] + str(row["name"]) not in used
     ]
 
 
@@ -466,8 +518,8 @@ def _seed_only(tree: ast.AST, name: str) -> bool:
     return bool(loads) and all(id(n) in seed_values for n in loads)
 
 
-def _copy_bindings(m: _Module) -> "Iterator[tuple[str, int]]":
-    for node in ast.walk(m.tree):
+def _copy_bindings(m: _Module, nodes: "Iterable[ast.AST]") -> "Iterator[tuple[str, int]]":
+    for node in nodes:
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             target, value = _binding(node)
             if isinstance(target, ast.Name) and _COPY_NAME.search(target.id) and _int_value(value) is not None and not _seed_only(m.tree, target.id):
@@ -476,7 +528,7 @@ def _copy_bindings(m: _Module) -> "Iterator[tuple[str, int]]":
 
 def _literal_codes(node: ast.AST) -> "set[int]":
     # Literals a code could be: ints and "E21"-style strings in the catalog's range; a list repeat count is not one.
-    low, high = _catalog()["range"]
+    low, high = _range(_catalog())
     counts = {id(n.right) for n in ast.walk(node) if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mult)}
     found = set()
     for sub in ast.walk(node):
@@ -509,8 +561,8 @@ def _seeded(fn: ast.AST) -> "set[int]":
     return seeds
 
 
-def _assert_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
-    for node in ast.walk(fn):
+def _assert_literals(nodes: "Iterable[ast.AST]") -> "Iterator[tuple[int, set[int]]]":
+    for node in nodes:
         if not isinstance(node, ast.Assert):
             continue
         for cmp in (n for n in ast.walk(node.test) if isinstance(n, ast.Compare)):
@@ -525,8 +577,8 @@ def _assert_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
                 yield node.lineno, set().union(*(_literal_codes(a) for a in call.args))
 
 
-def _call_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
-    for node in ast.walk(fn):
+def _call_literals(nodes: "Iterable[ast.AST]") -> "Iterator[tuple[int, set[int]]]":
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
@@ -539,31 +591,55 @@ def _call_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
                 yield node.lineno, _literal_codes(value)
 
 
-def _copy_problems(modules: "tuple[_Module, ...]") -> "list[str]":
-    problems = [f"{m.path}:{line} binds {name} to an int - read it with code() from tests/_error_codes.py" for m in modules for name, line in _copy_bindings(m) if (m.path, name) not in _SEED_NAMES_PENDING]
-    for m in modules:
-        for fn in _functions(m.tree):
-            seeded = _seeded(fn)
-            for line, codes in (*_assert_literals(fn), *_call_literals(fn)):
-                if codes - seeded:
-                    problems.append(f"{m.path}:{line} {fn.name}() compares a logged code with the literal(s) {sorted(codes - seeded)} - use code()")
-    return sorted(set(problems))
+def _copy_scan(m: _Module) -> "tuple[list[tuple[str, int]], list[str]]":
+    # A module's flagged bindings and the problems they and its compared literals make, from one walk of its tree.
+    nodes = list(ast.walk(m.tree))
+    bindings = list(_copy_bindings(m, nodes))
+    problems = [f"{m.path}:{line} binds {name} to an int - read it with code() from tests/_error_codes.py" for name, line in bindings if (m.path, name) not in _SEED_NAMES_PENDING]
+    # A function's literals are among its module's, so a module holding none needs no per-function pass.
+    if next(_assert_literals(nodes), None) is None and next(_call_literals(nodes), None) is None:
+        return bindings, problems
+    for fn in _functions(m.tree):
+        found = (*_assert_literals(ast.walk(fn)), *_call_literals(ast.walk(fn)))
+        seeded = _seeded(fn) if found else set()
+        problems += [f"{m.path}:{line} {fn.name}() compares a logged code with the literal(s) {sorted(codes - seeded)} - use code()" for line, codes in found if codes - seeded]
+    return bindings, problems
+
+
+@cache
+def _test_side_copies() -> "tuple[tuple[str, ...], frozenset[tuple[str, str]]]":
+    # One parse of the test scopes, each tree dropped once scanned (kept together, their millions of nodes slow every
+    # garbage collection): the copy problems, and every (path, name) binding the scan flags.
+    problems: set[str] = set()
+    flagged: set[tuple[str, str]] = set()
+    collecting = gc.isenabled()
+    gc.disable()  # parsing makes millions of acyclic nodes, and each collection it set off re-walked every cached tree
+    try:
+        for scope in _TEST_SCOPES:
+            for m in _repo_modules(scope):
+                bindings, module_problems = _copy_scan(m)
+                problems.update(module_problems)
+                flagged.update((m.path, name) for name, _line in bindings)
+    finally:
+        if collecting:
+            gc.enable()
+    return tuple(sorted(problems)), frozenset(flagged)
 
 
 def test_no_test_tier_keeps_its_own_copy_of_a_code() -> None:
-    problems = _copy_problems(_test_side())
+    problems, _flagged = _test_side_copies()
     assert not problems, "\n".join(problems)
 
 
 def test_every_pending_seed_name_is_still_flagged() -> None:
-    flagged = {(m.path, name) for m in _test_side() for name, _line in _copy_bindings(m)}
+    _problems, flagged = _test_side_copies()
     assert flagged >= _SEED_NAMES_PENDING, f"no longer a pending seed copy, drop from _SEED_NAMES_PENDING: {sorted(_SEED_NAMES_PENDING - flagged)}"
 
 
 # ---- (9) device-script bindings ------------------------------------------------------------------------
 
 
-def _script_binding_problems(catalog: "dict[str, Any]", modules: "tuple[_Module, ...]") -> "list[str]":
+def _script_binding_problems(catalog: "JsonDict", modules: "tuple[_Module, ...]") -> "list[str]":
     problems = []
     for m in modules:
         for stmt in m.tree.body:
@@ -585,29 +661,30 @@ def test_device_script_bindings_equal_the_catalog() -> None:
 # ---- (10) mock histories ---------------------------------------------------------------------------
 
 
-def _logger_owners(catalog: "dict[str, Any]", logger: str) -> "set[str]":
+def _logger_owners(catalog: "JsonDict", logger: str) -> "set[str]":
     names = {logger, logger.split("_", 1)[0]}
-    return {owner for owner, spec in catalog["owners"].items() if names & set(spec["loggers"])} | {"base", "shared"}
+    return {owner for owner, spec in _obj(catalog["owners"]).items() if names & set(_strs(_obj(spec)["loggers"]))} | {"base", "shared"}
 
 
-def _history_problems(catalog: "dict[str, Any]", source: str, errcount: "dict[str, Any]") -> "list[str]":
+def _history_problems(catalog: "JsonDict", source: str, errcount: "JsonDict") -> "list[str]":
     problems = []
-    for logger, entry in errcount.items():
+    for logger, logged in errcount.items():
         owners = _logger_owners(catalog, logger)
-        slots = [(h["type"], h["num"]) for h in entry["history"] if h["type"] != "N"]
+        entry = _obj(logged, f"{source} {logger}")
+        slots = [(str(h["type"]), _int(h["num"])) for h in (_obj(item) for item in _list(entry["history"])) if h["type"] != "N"]
         for kind, num in slots:
             row = _rows(catalog, kind).get(num)
             if row is None or row.get("retired") or row["owner"] not in owners:
                 problems.append(f"{source} {logger}: {kind}{num} is not a live catalog code of this logger")
         problems.extend(f"{source} {logger}: two adjacent {a[0]}{a[1]} entries - the newest-entry rule never writes a repeat into a new slot" for a, b in pairwise(slots) if a == b)
-        if entry["counter"] < len(slots):
+        if _int(entry["counter"]) < len(slots):
             problems.append(f"{source} {logger}: counter {entry['counter']} is below its {len(slots)} recorded slots")
     return problems
 
 
 def test_mock_histories_hold_only_their_loggers_catalog_codes() -> None:
     # The one driver-keyed sample table every device's mock data is composed from (js/mock-server.js).
-    errcount = json.loads((_REPO / _MOCK_SAMPLES).read_text())["errcount"]
+    errcount = json.loads((_REPO / _MOCK_SAMPLES).read_text(encoding="utf-8"))["errcount"]
     assert errcount, f"{_MOCK_SAMPLES} carries no errcount samples - the check would hold nothing"
     problems = _history_problems(_catalog(), _MOCK_SAMPLES, errcount)
     assert not problems, "\n".join(problems)
@@ -630,12 +707,12 @@ def _module_ints(tree: ast.Module) -> "dict[str, int]":
     return ints
 
 
-def _reset_table_problems(catalog: "dict[str, Any]", tree: ast.Module) -> "list[str]":
+def _reset_table_problems(catalog: "JsonDict", tree: ast.Module) -> "list[str]":
     # begin_boot() returns a recorded RR_ code, or the base plus a phase it decodes (BOOT_CONSTRUCTION <= p < BOOT_DONE).
     ints = _module_ints(tree)
     codes = {value for name, value in ints.items() if name.lstrip("_").startswith("RR_") and name not in _RR_NON_CODES}
     codes |= {ints["_RR_BOOT_FAILURE"] + phase for phase in range(ints["BOOT_CONSTRUCTION"], ints["BOOT_DONE"])}
-    table = {int(num) for num in catalog.get("status", {}).get("ResetReason", {})}
+    table = {int(num) for num in _obj(_obj(catalog.get("status", {})).get("ResetReason", {}))}
     return [f"ResetReason {n} can be recorded but has no catalog row" for n in sorted(codes - table)] + [f"ResetReason {n} has a catalog row but no code" for n in sorted(table - codes)]
 
 
@@ -652,11 +729,12 @@ _TONED_TABLES = frozenset({"CalLight"})
 _TONES = frozenset({"good", "neutral", "warn"})
 
 
-def _status_table_problems(catalog: "dict[str, Any]") -> "list[str]":
+def _status_table_problems(catalog: "JsonDict") -> "list[str]":
     problems: list[str] = []
-    for table, rows in catalog.get("status", {}).items():
-        for num, row in rows.items():
+    for table, rows in _obj(catalog.get("status", {})).items():
+        for num, value in _obj(rows).items():
             where = f"status.{table}.{num}"
+            row = _obj(value, where)
             if not num.isdigit():
                 problems.append(f"{where}: the code is not a non-negative int")
             if not isinstance(row.get("text"), str) or not row["text"]:
@@ -673,15 +751,16 @@ def test_the_status_tables_carry_text_and_a_tone_only_where_the_page_colours_the
     catalog = _catalog()
     problems = _status_table_problems(catalog)
     assert not problems, "\n".join(problems)
+    status = _obj(catalog["status"])
     for table in _TONED_TABLES:
-        assert all("tone" in row for row in catalog["status"][table].values()), f"{table}: every code needs its tone"
-    assert {num: row["tone"] for num, row in catalog["status"]["CalLight"].items()} == {"0": "neutral", "1": "good", "2": "warn", "3": "warn"}
+        assert all("tone" in _obj(row) for row in _obj(status[table]).values()), f"{table}: every code needs its tone"
+    assert {num: _obj(row)["tone"] for num, row in _obj(status["CalLight"]).items()} == {"0": "neutral", "1": "good", "2": "warn", "3": "warn"}
 
 
-# ---- planted violations: each check above bites ---------------------------------------------------
+# ---- the checks on a planted catalog and module ----------------------------------------------------
 
 
-_PLANT_CATALOG: "dict[str, Any]" = {
+_PLANT_CATALOG: "JsonDict" = {
     "range": [1, 127],
     "owners": {
         "base": {"files": [], "loggers": [], "bands": {"E": [[1, 9]], "W": None}},
@@ -706,8 +785,8 @@ _ERR_NET_NO_ACK = const(20)
 _WRN_NET_SLOW = const(20)
 class Net:
     async def run(self):
-        await self.pr.err_s("x", errno=_ERR_NET_NO_ACK)
-        await self.pr.wrn_s("y", wrnno=_WRN_NET_SLOW)
+        self.pr.err_s("x", errno=_ERR_NET_NO_ACK)
+        self.pr.wrn_s("y", wrnno=_WRN_NET_SLOW)
 """
 
 
@@ -715,124 +794,18 @@ def _planted(source: str, path: str = "src/net.py") -> "tuple[_Module, ...]":
     return (_module(path, source),)
 
 
-def _plant_catalog(**changes: object) -> "dict[str, Any]":
-    catalog: dict[str, Any] = json.loads(json.dumps(_PLANT_CATALOG))
-    for key, value in changes.items():
-        kind, num, field = key.split("__")
-        catalog["codes"][kind].setdefault(num, {"owner": "net", "name": f"N{num}", "text": f"t{num}"})[field] = value
-    return catalog
-
-
 def test_the_plants_start_clean() -> None:
-    # Every bite below changes one thing from this baseline, so a bite cannot pass on a second fault.
+    # The clean baseline: no check flags a well-formed planted catalog and module.
     modules = _planted(_PLANT_NET)
     assert not _shape_problems(_PLANT_CATALOG)
     assert not _keyword_problems(modules)[0] + _expression_problems(modules) + _constant_problems(_PLANT_CATALOG, modules)
     assert not _non_catalog_problems(_PLANT_CATALOG, modules) + _retired_live_sites(_PLANT_CATALOG, modules)
 
 
-@pytest.mark.parametrize(
-    ("changes", "expected"),
-    [
-        ({"E__126__owner": "net"}, "outside net's E band"),  # a code outside its owner's band
-        ({"E__21__name": "NET_NO_ACK"}, "name 'NET_NO_ACK' is used 2 times"),
-        ({"W__21__text": "slow"}, "text 'slow' is used 2 times"),
-        ({"E__200__owner": "net"}, "is not an int in 1-127"),
-    ],
-)
-def test_the_shape_check_bites(changes: "dict[str, Any]", expected: str) -> None:
-    assert any(expected in p for p in _shape_problems(_plant_catalog(**changes)))
-
-
-def test_the_band_overlap_check_bites() -> None:
-    catalog = _plant_catalog()
-    catalog["owners"]["fan"]["bands"]["E"] = [[29, 39]]
-    assert any("overlap" in p for p in _shape_problems(catalog))
-
-
-def test_the_retired_check_bites() -> None:
-    planted = _planted("_ERR_FAN_OLD = const(31)\nasync def f(pr):\n    await pr.err_s('x', errno=_ERR_FAN_OLD)\n", "src/fan.py")
-    assert _retired_live_sites(_PLANT_CATALOG, planted)
-
-
-def test_the_keyword_check_bites() -> None:
-    problems, seen = _keyword_problems(_planted("async def f(pr):\n    await pr.err_s('x', 20)\n"))
-    assert seen["E"] == 1 and problems
-
-
-@pytest.mark.parametrize(
-    "argument",
-    ["errno=20", "errno=_ERR_NET_NO_ACK + 1", "errno=_WRN_NET_SLOW", "errno=_LIMIT", "errno=self._last"],
-)
-def test_the_expression_check_bites(argument: str) -> None:
-    source = f"_LIMIT = 5\nclass N:\n    def __init__(self):\n        self._last = 7\n    async def f(self):\n        await self.pr.err_s('x', {argument})\n"
-    assert _expression_problems(_planted(source))
-
-
 def test_the_expression_check_follows_helpers_and_feeders() -> None:
-    clean = "class N:\n    def _check(self, b):\n        return _ERR_NET_NO_ACK if b else 0\n    async def _err(self, errno):\n        await self.pr.err_s('x', errno=errno)\n    async def f(self, b):\n        err = self._check(b)\n        await self._err(err)\n"
+    clean = "class N:\n    def _check(self, b):\n        return _ERR_NET_NO_ACK if b else 0\n    async def _err(self, errno):\n        self.pr.err_s('x', errno=errno)\n    async def f(self, b):\n        err = self._check(b)\n        await self._err(err)\n"
     assert not _expression_problems(_planted(clean))
     assert _expression_problems(_planted(clean.replace("else 0", "else 3")))  # a feeder returning a literal
     assert _expression_problems(_planted(clean.replace("self._err(err)", "self._err(4)")))  # a helper's errno argument
 
 
-def test_the_constant_checks_bite() -> None:
-    assert _constant_problems(_PLANT_CATALOG, _planted("_ERR_NET_NO_ACK = const(21)\n"))  # wrong number
-    assert _constant_problems(_PLANT_CATALOG, _planted("_ERR_FAN_STALL = const(30)\n"))  # another owner's code
-    assert _non_catalog_problems(_PLANT_CATALOG, _planted("_ERR_CMD = const(0xB6)\n"))  # not a code at all
-
-
-def test_the_unused_code_check_bites() -> None:
-    assert any("FAN_STALL" in p for p in _unused_code_problems(_PLANT_CATALOG, _planted(_PLANT_NET)))
-
-
-def test_the_copy_check_bites() -> None:
-    copy = _planted("_ERR_NO_ACK = 20\n", "tests/test_x.py")
-    assert _copy_problems(copy)
-    asserted = _planted("def test_x(c):\n    assert persisted(c) == ['E99']\n", "tests/test_x.py")
-    assert _copy_problems(asserted)
-    seeded = _planted("def test_x(pr, c):\n    run(pr.err_s('s', errno=99))\n    assert persisted(c) == ['E99']\n", "tests/test_x.py")
-    assert not _copy_problems(seeded)
-    seed_only = _planted("SEED_ERRNO = 99\nasync def f(pr):\n    await pr.err_s('s', errno=SEED_ERRNO)\n", "tests/test_x.py")
-    assert not _copy_problems(seed_only)
-    helper = _planted("def test_x(ip):\n    assert_module_error_log_contains(ip, 'NTP', 12, 'E')\n", "tests_hardware/test_x.py")
-    assert _copy_problems(helper)
-
-
-def test_the_script_binding_check_bites() -> None:
-    assert _script_binding_problems(_PLANT_CATALOG, _planted("E_NET_NO_ACK = 21\n", "tests_hardware/device_scripts/x.py"))
-    assert not _script_binding_problems(_PLANT_CATALOG, _planted("E_NET_NO_ACK = 20\n", "tests_hardware/device_scripts/x.py"))
-
-
-def test_the_history_check_bites() -> None:
-    def entry(*slots: "tuple[str, int]", counter: int = 9) -> "dict[str, Any]":
-        return {"counter": counter, "history": [{"type": t, "num": n} for t, n in slots]}
-    assert not _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), ("W", 20), ("E", 10))})
-    assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 30))})  # another logger's code
-    assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), ("E", 20))})  # an adjacent repeat
-    assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), counter=0)})  # counter below its slots
-
-
-@pytest.mark.parametrize(
-    ("table", "row", "expected"),
-    [
-        ("ResetReason", {"text": "t", "tone": "good"}, "the page colours only"),
-        ("CalLight", {"text": "t", "tone": "red"}, "tone 'red' is not one of"),
-        ("CalLight", {"text": "t", "colour": "good"}, "unknown key 'colour'"),
-        ("CalLight", {"tone": "good"}, "no text"),
-    ],
-)
-def test_the_status_table_check_bites(table: str, row: "dict[str, str]", expected: str) -> None:
-    catalog = {"status": {"ResetReason": {"0": {"text": "a"}}, "CalLight": {"0": {"text": "b", "tone": "neutral"}}}}
-    assert not _status_table_problems(catalog)
-    catalog["status"][table]["9"] = row
-    assert any(expected in p for p in _status_table_problems(catalog))
-
-
-def test_the_reset_table_check_bites() -> None:
-    source = "_RR_MAGIC = const(7)\n_RR_UNKNOWN = const(0)\n_RR_BOOT_FAILURE = const(10)\nRR_INTERRUPTED = const(21)\nBOOT_CONSTRUCTION = const(1)\nBOOT_DONE = const(3)\n"
-    tree = ast.parse(source)
-    table = {str(n): {"text": f"t{n}"} for n in (0, 11, 12, 21)}
-    assert not _reset_table_problems({"status": {"ResetReason": table}}, tree)
-    assert _reset_table_problems({"status": {"ResetReason": {k: v for k, v in table.items() if k != "21"}}}, tree)  # a code without a row
-    assert _reset_table_problems({"status": {"ResetReason": {**table, "13": {"text": "t13"}}}}, tree)  # a row without a code

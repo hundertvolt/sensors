@@ -4,6 +4,26 @@ End-user notes for configuring/operating a deployed unit — not an AI-session o
 (see README.md/CLAUDE.md/SPECIFICATION.md for those). Add to this file, don't duplicate it
 elsewhere, when a new user-facing behavior needs explaining.
 
+## Commissioning and operating: what needs a person
+
+Once configured, a unit runs "without any user interaction" (owner, 2026-09-26). These need a person:
+
+- **Wi-Fi setup**, at the first boot or after the network changed: with no SSID stored the unit opens
+  its hotspot at once, otherwise after a failed connection streak. Join the network named like the
+  unit's hostname (password: **Hotspot Password**); any web address then leads to the unit's site,
+  whose Networking page stores SSID, password, country and hostname with **Apply & Reconnect**. A
+  silent unit ("Neopixel LED" below) gets its hotspot back by being unplugged and replugged.
+- **Ambient Pressure**, once after commissioning: the SCD30 starts measuring only on that first
+  setting (owner, 2026-09-26).
+- **Forced Calibration Reference**, when CO₂ readings have drifted (enter it once **FRC Readiness**
+  reads ready), and **Automatic Self-Calibration**, only where the unit sees fresh air daily: each
+  field's description on the page states its conditions. ISL29125 calibration: its section below.
+- **After an unexpected restart**: read the Status page's **Last Reset Reason**, and save `GET
+  /status` before clearing anything ("Clearing the error logs" below).
+- **I2C sensors still unreadable after reboots**: power-cycle the unit; a chip holding SCL, or one
+  the bus clear does not free, needs it (SPECIFICATION.md F.2).
+- **Moving a unit from the legacy firmware, or back**: README.md's reflash runbook.
+
 ## Neopixel LED
 
 One physical LED serves two independent purposes, arbitrated by `asy_neopixel_driver.py`:
@@ -61,6 +81,15 @@ the next successful sync (owner, 2026-09-29). `DNSFallback` (Networking) lists u
 servers, comma-separated, tried in order after the one the network hands out (default
 `8.8.8.8,1.1.1.1`); empty means none. The Networking page's **Clear** button empties it, after
 asking "Clear Fallback DNS Servers?".
+
+## Local time
+
+The unit keeps UTC from NTP. **NTP Offset** (Networking, default 0 s) is added to that time itself,
+so the clock and every timestamp the unit stores or reports move with it. Local time (`/system`'s
+`LocalTime` and the notification window) adds **GMT Offset** all year and **DST Offset** on top from
+01:00 UTC on the last Sunday of March to 01:00 UTC on the last Sunday of October (System page, both
+default 3600 s): the EU rule, as the legacy firmware applied it. No other region's switch dates are
+built in; elsewhere set DST Offset to 0 and change GMT Offset at your local switch.
 
 ## SGP40 VOC baseline FRAM backup
 
@@ -200,13 +229,18 @@ and the dropped-connection count (`HTTPDropped`) at once. It must finish within 
 15-second request limit, the same limit the web page waits; on a busy device it can take several
 seconds. Outside the two cases below, a reset that reports "Failed" means one module's log could
 not be cleared; the other logs are cleared. During a backup pause ("Pause backups for 5 minutes")
-the reset answers "Failed", yet it still clears the logs held in memory, and their next save
-carries that into FRAM: read the logs before resetting, and repeat the reset after the pause if the
-answer matters. From the moment a Reboot, Reboot into bootloader, Reset to defaults or Erase FRAM
-command is accepted until the unit restarts, the reset answers "Failed" and clears nothing (owner,
+the reset answers "Failed" and clears nothing, the logs held in memory and the dropped-connection
+count included (owner, 2026-10-13, asked "Clear nothing when ResetErrors answers Failed in
+mempause?": '1 b'); if a pause begins while a reset is still running, each log kept in FRAM that
+was not yet cleared stays as it was and that reset answers "Failed" too (owner, 2026-10-20, asked,
+paraphrase, whether to fix that case now or later: "I would like it to be fixed now"). Repeat it
+once the pause has ended. From the moment a Reboot, Reboot into bootloader, Reset to defaults or
+Erase FRAM command is accepted until the unit restarts, the reset answers "Failed" and clears nothing (owner,
 2026-10-13, asked "refuse `ResetErrors` once a reboot or erase command has been accepted?": '1 b',
-its option "Refuse it ("Failed") from the command's acceptance on"); clear the logs once the unit
-is back. Read and save the logs before clearing them: the reset cannot be undone. The page asks
+its option "Refuse it ("Failed") from the command's acceptance on"), and so it does once the unit
+has decided to restart on its own, after repeated task failures or a recorded stack overflow
+(owner, 2026-10-13, asked "Refuse ResetErrors from the supervisor's own reboot decision too?":
+'2 b'); clear the logs once the unit is back. Read and save the logs before clearing them: the reset cannot be undone. The page asks
 for confirmation ("Reset All Errors?") before it sends the reset (owner, 2026-10-01, asked about "A
 confirmation before clearing the DNS fallback list": '... add a dialog to all system commands and
 the clear error history as well. But only on the website, not on the API side.').

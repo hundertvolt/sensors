@@ -1,0 +1,9 @@
+U35: dev's responder ring holds the bench's 400 ms interrupts-off window
+
+devices/dev.toml's uart1 (the responder) rx_ring 512 -> 8192 B: a continuous sender puts 4,608 B into the longest
+flash window at 115200 baud, so the crossover's ring test ran no window at 512 B. The initiator stays at 512 B.
+Checked: the dev twin suite at -1 (329 + 15 checks), the UART and sensortask unit files, the buildgen and boot
+contiguity tests (957).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

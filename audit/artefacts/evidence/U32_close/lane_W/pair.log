@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u32w
+
+ ✓ |chromium| tests_js/templates.test.js (116 tests) 136ms
+
+ Test Files  1 passed (1)
+      Tests  116 passed (116)
+   Start at  08:33:57
+   Duration  1.56s (worker 42%, tests 31%, import 25%, setup 2%)
+
+== Summary: npm test ==
+Commit: 4ab98f2
+Levels: L0
+Counts (tests): passed 116 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

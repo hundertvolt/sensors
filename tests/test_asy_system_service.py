@@ -1,5 +1,9 @@
+"""SystemService: the boot batch, task supervision and restarts, staggered timers, the system commands and reboots, the
+debug level, reset reasons and the watchdog."""
+
 import asyncio
 import asyncio.core as asyncio_core  # type: ignore[import-not-found]  # asyncio's own context dict, read back below
+import errno
 import gc
 import json
 import os
@@ -13,49 +17,57 @@ sys.path.insert(0, "ext")
 
 import machine
 import micropython
+import microtest
+from _async_harness import cancel, newest_start, run, track_starts
 from _error_codes import code
-from _fram_chip_fake import FakeMB85RS64V
+from _fake_time import DrivenTime, ManualTick
+from _fake_timer_arm import RaiseOnArm
+from _fast_sleep import FastAsyncSleep
+from _fram_builders import make_fram_manager
+from _fram_chip_fake import _OPCODE_RDSR, _OPCODE_READ, _OPCODE_WREN, _OPCODE_WRITE, FakeMB85RS2MTA, FakeMB85RS64V
+from _recording_print import record_prints
+from _src_const import src_const, src_int
+from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
+from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from machine import Timer
 from microdot import Microdot, Request, Response
 
-# Same one-process-per-test-file swap as test_asy_base_classes.py/test_asy_fram_manager.py.
 import asy_base_classes
 import asy_config_manager as cm
 import asy_fram_manager
 import asy_print_log
-import asy_spi_driver
 import asy_system_service
-from asy_base_classes import UNAVAILABLE, SensorReaderConfig
-from asy_crc_checks import CRC8, CRC32
-from asy_fram_manager import FRAMChunk, FRAMManager
+from asy_base_classes import UNAVAILABLE, SensorReaderConfig, TickGrid
+from asy_fram_manager import FRAMManager
 from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistory, PrintLogHistoryStore
-from asy_spi_driver import SPI
 from asy_system_service import BOOT_CONSTRUCTION, BOOT_DONE, BOOT_NTP, SystemService, begin_boot, write_reset_record
 from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, WebserverService
-
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
+from crc_checks import CRC8, CRC32
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
     from asyncio.events import _Context, _ExceptionHandler
     from collections.abc import Callable, Coroutine, Sequence
-    from typing import Any, TypeVar
+    from typing import Protocol
 
+    from _recording_print import _Recorder
     from machine import WDT
     from typing_extensions import Self
 
     from asy_base_classes import SetupFct
+    from asy_print_log import ErrorLog
 
-    T = TypeVar("T")
+    class _ErrS(Protocol):
+        # PrintLogHistory.err_s()'s own signature, for a stand-in that forwards to the real one.
+        def __call__(self, *args: object, errno: int = ..., sep: str = ..., end: str = ...) -> None: ...
 
-# @tunable l1.system_service_run_bound_s = 5
 _RUN_BOUND_S = 5
 _SRC = "src/asy_system_service.py"
 _LOG_SRC = "src/asy_print_log.py"
@@ -63,22 +75,16 @@ _LOG_SRC = "src/asy_print_log.py"
 _ERR, _WARN, _EVENT, _ALL = 1, 2, 4, 5
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+def _const(name: str, path: str = _SRC) -> int:
+    return src_int(path, name)  # an int const() of the source (tests/_src_const.py)
 
 
-def _src_const(name: str, src: str = _SRC) -> int:
-    # The shipped value, read from the source: a private const() is not a module attribute on MicroPython.
-    with open(src) as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return int(line.split("const(", 1)[1].split(")", 1)[0], 0)
-    raise AssertionError(name + " not found in " + src)
+_PHASE_DUE, _PHASE_OWNED, _PHASE_ARMED, _PHASE_STARVED = (_const(f"_PHASE_{n}") for n in ("DUE", "OWNED", "ARMED", "STARVED"))
 
 
-def make_ntp_stub(
+def _make_ntp_stub(
     *, synced: bool = False, raise_exc: "Exception | None" = None,
-) -> "tuple[Callable[[], Coroutine[Any, Any, bool]], list[int]]":
+) -> "tuple[Callable[[], Coroutine[object, object, bool]], list[int]]":
     calls = [0]
 
     async def _ntp() -> bool:
@@ -90,35 +96,42 @@ def make_ntp_stub(
     return _ntp, calls
 
 
-def make_service(  # keywords mirror SystemService.__init__()'s own
-    ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
+_scratch = TmpScratch("sysservice")
+
+
+_SEQUENCES: "dict[int, list[asyncio.Task[object]]]" = {}  # each service's shutdown sequences, as track_starts() records them
+microtest.after_each(_SEQUENCES.clear)  # kept, every service, its rig and its chip would outlive the test
+
+
+def _make_service(  # keywords mirror SystemService.__init__()'s own
+    ntp: "Callable[[], Coroutine[object, object, bool]] | None" = None,
     *,
     watchdog: "WDT | None" = None,
     storage: "FRAMManager | None" = None,
     log: "LogConfig" = DEFAULT_LOG,
-    cfg_path: str = "",
-    level_setters: "Callable[[], list[Callable[[int], bool]]] | None" = None,
+    cfg_path: "str | None" = None,
+    level_setters: "Callable[[], list[Callable[[int], None]]] | None" = None,
     config_stores: "Callable[[], list[cm.ConfigManager]] | None" = None,
     reset_reason: int = 0,
 ) -> SystemService:
+    # A service of its own directory unless a test names one: the product's "" is the process's working directory,
+    # the checkout root here, where setup() would leave config_SYSTEM.cfg for every later run to read back.
     if ntp is None:
-        ntp, _calls = make_ntp_stub(synced=False)
-    return SystemService(
+        ntp, _calls = _make_ntp_stub(synced=False)
+    svc = SystemService(
         ntp, watchdog=watchdog, storage=storage, level_setters=level_setters, config_stores=config_stores,
-        reset_reason=reset_reason, cfg_path=cfg_path, log=log,
+        reset_reason=reset_reason, cfg_path=_scratch.dir() if cfg_path is None else cfg_path, log=log,
     )
+    _SEQUENCES[id(svc)] = track_starts(svc, "_shutdown_sequence")
+    svc._tick = ManualTick()  # the status pass runs where a test pumps it
+    return svc
 
 
-def make_fram_manager(max_size: int = 0x2000, part: "type[FakeMB85RS64V]" = FakeMB85RS64V) -> "tuple[FRAMManager, FakeMB85RS64V]":
-    asy_spi_driver._SPI = part  # type: ignore[misc]
-    try:
-        bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    finally:
-        asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
-    manager = FRAMManager(bus, 1, max_size=max_size)
-    chip = manager.fram._spidev.spi._spi
-    assert isinstance(chip, FakeMB85RS64V)
-    return manager, chip
+def _sequence(svc: SystemService) -> "asyncio.Task[object] | None":
+    # The newest shutdown sequence the service has begun (the service keeps no handle), recorded by _make_service().
+    starts = _SEQUENCES[id(svc)]
+    return starts[-1] if starts else None
 
 
 def _same_chip_manager(chip: FakeMB85RS64V) -> FRAMManager:
@@ -129,121 +142,22 @@ def _same_chip_manager(chip: FakeMB85RS64V) -> FRAMManager:
     return manager
 
 
-_TICKS_PERIOD = 1 << 30  # rp2's ticks_ms() wrap: py/mpconfig.h's MICROPY_PY_TIME_TICKS_PERIOD on a 32-bit small int
+def _driven(*, strict: bool = False) -> DrivenTime:
+    # The driven ticks_ms() the system service and the base classes read, from 1000 ms of uptime.
+    return DrivenTime(asy_base_classes, asy_system_service, now=1000, strict=strict)
 
 
-class _Clock:
-    # A driven ticks_ms() source installed as `time` in the modules that read it; every other name reaches the real
-    # module, unless `strict`, where the wall-clock reads raise (no RTC, time() or NTP value may be read).
-    def __init__(self, *, strict: bool = False) -> None:
-        self.now = 1000
-        self._strict = strict
-        self._saved = (asy_base_classes.time, asy_system_service.time)
-
-    def ticks_ms(self) -> int:
-        return self.now
-
-    def ticks_add(self, a: int, b: int) -> int:
-        return (a + b) & (_TICKS_PERIOD - 1)
-
-    def ticks_diff(self, a: int, b: int) -> int:
-        return ((a - b + _TICKS_PERIOD // 2) & (_TICKS_PERIOD - 1)) - _TICKS_PERIOD // 2
-
-    def advance(self, ms: int) -> None:
-        self.now = self.ticks_add(self.now, ms)
-
-    def __getattr__(self, name: str) -> object:
-        if self._strict and name in ("gmtime", "mktime", "time", "localtime"):
-            raise AssertionError("the wall clock was read: time." + name)
-        return getattr(time, name)
-
-    def __enter__(self) -> "Self":
-        asy_base_classes.time = self  # type: ignore[assignment]
-        asy_system_service.time = self  # type: ignore[assignment]
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        asy_base_classes.time, asy_system_service.time = self._saved
-
-
-async def _pump(flag: "asyncio.ThreadSafeFlag", ticks: int, clock: "_Clock | None" = None, step_ms: int = 1000, settle: int = 5) -> None:
-    # Drives a ThreadSafeFlag-gated loop forward `ticks` times, the driven clock advanced `step_ms` before each wake-up;
+async def _pump(grid: TickGrid, ticks: int, clock: "DrivenTime | None" = None, step_ms: int = 1000, settle: int = 5) -> None:
+    # Drives a ManualTick-gated loop forward `ticks` times, the driven clock advanced `step_ms` before each wake-up;
     # `settle` extra yields per tick let every await point of one loop iteration resolve before the next.
+    assert isinstance(grid, ManualTick), grid
+    flag = grid
     for _ in range(ticks):
         if clock is not None:
             clock.advance(step_ms)
         flag.set()
         for _ in range(settle):
             await asyncio.sleep(0)
-
-
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
-class _FastAsyncSleep:
-    # Makes asyncio.sleep()/sleep_ms() one yield each, so a supervisor pass or a fallback pass costs no real time;
-    # with a clock, each sleep also advances it by the slept time. Restored however the block exits.
-    def __init__(self, clock: "_Clock | None" = None) -> None:
-        self._clock = clock
-
-    def __enter__(self) -> "Self":
-        self._real_sleep = asyncio.sleep
-        self._real_sleep_ms = asyncio.sleep_ms
-        clock = self._clock
-        real_sleep = self._real_sleep
-
-        async def _fast(seconds: float) -> None:
-            if clock is not None:
-                clock.advance(int(seconds * 1000))
-            await real_sleep(0)
-
-        async def _fast_ms(ms: int) -> None:
-            if clock is not None:
-                clock.advance(ms)
-            await real_sleep(0)
-
-        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
-        asyncio.sleep_ms = _fast_ms  # type: ignore[assignment]  # likewise, for the millisecond form
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        asyncio.sleep = self._real_sleep
-        asyncio.sleep_ms = self._real_sleep_ms
-
-
-class _RaiseOnArm:
-    # Toggles tests/machine.py's shared Timer.raise_on_arm for the `with` block, simulating real rp2 alarm-
-    # pool exhaustion from Timer.init(); `exc` picks OSError(ENOMEM) or MemoryError, neither of which is
-    # the other's subclass (Part F), so each guard is proven against both.
-    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
-        self._exc = exc
-
-    def __enter__(self) -> "Self":
-        Timer.raise_on_arm_exc = self._exc
-        Timer.raise_on_arm = True
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        Timer.raise_on_arm = False
-        Timer.raise_on_arm_exc = OSError
-
-
-class _PrintRecorder:
-    # Shadows print() inside asy_print_log only, where every logger line is printed.
-    def __init__(self) -> None:
-        self.lines: list[tuple[object, ...]] = []
-        asy_print_log.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **_kwargs: object) -> None:
-        self.lines.append(args)
-
-    def restore(self) -> None:
-        del asy_print_log.print  # type: ignore[attr-defined]
 
 
 def _persisted(log_owner: "SystemService | PrintLogHistory") -> "list[int]":
@@ -259,7 +173,7 @@ def _persisted(log_owner: "SystemService | PrintLogHistory") -> "list[int]":
 
 
 def test_init_uses_in_memory_logging_when_fram_is_none() -> None:
-    svc = make_service()
+    svc = _make_service()
     assert isinstance(svc.pr, PrintLogHistory)
     assert svc._storage_pause is None
     assert svc.pr.name == "SYSTEM"  # baked in via make_logger(), not left empty
@@ -267,7 +181,7 @@ def test_init_uses_in_memory_logging_when_fram_is_none() -> None:
 
 def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None))
     assert isinstance(svc.pr, PrintLogHistoryStore)
     assert isinstance(svc.cfgmgr.pr, PrintLogHistoryStore)  # the settings store's logger shares the log config
     assert svc._storage_pause is not None
@@ -281,13 +195,13 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
 
 
 def test_init_debug_level_is_forwarded_to_the_logger() -> None:
-    svc = make_service(log=LogConfig(None, 10, _ERR))
+    svc = _make_service(log=LogConfig(None, 10, _ERR))
     assert svc.pr.level == _ERR
     assert svc.cfgmgr.pr.level == _ERR  # CFGMGR_SYSTEM takes the same config
 
 
 def test_init_history_length_is_forwarded() -> None:
-    svc = make_service(log=LogConfig(None, 3, None))
+    svc = _make_service(log=LogConfig(None, 3, None))
     assert len(svc.pr.history) == 3
     assert len(svc.cfgmgr.pr.history) == 3
 
@@ -295,7 +209,7 @@ def test_init_history_length_is_forwarded() -> None:
 def test_init_storage_without_a_fram_log_keeps_ram_logging_and_the_pause() -> None:
     # storage= is only the pause target; whether SYSTEM logs into FRAM is the log config's choice alone.
     manager, _chip = make_fram_manager()
-    svc = make_service(storage=manager)
+    svc = _make_service(storage=manager)
     assert type(svc.pr) is PrintLogHistory
     assert svc._storage_pause is not None
     svc._storage_pause(value=True)
@@ -304,32 +218,32 @@ def test_init_storage_without_a_fram_log_keeps_ram_logging_and_the_pause() -> No
 
 def test_init_watchdog_is_stored() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
     assert svc._watchdog is wdt
 
 
 def test_init_without_watchdog_defaults_to_none() -> None:
-    svc = make_service()
+    svc = _make_service()
     assert svc._watchdog is None
 
 
 def test_init_keeps_the_reset_reason_it_is_given() -> None:
-    assert make_service().get_reset_reason() == _src_const("_RR_UNKNOWN")
-    assert make_service(reset_reason=12).get_reset_reason() == 12
+    assert _make_service().get_reset_reason() == _const("_RR_UNKNOWN")
+    assert _make_service(reset_reason=12).get_reset_reason() == 12
 
 
 def test_init_zero_history_length_is_accepted_in_memory() -> None:
     # Unusual-but-typing-valid content: 0 is a legal int, not just the documented default of 10.
-    svc = make_service(log=LogConfig(None, 0, None))
+    svc = _make_service(log=LogConfig(None, 0, None))
     assert len(svc.pr.history) == 0
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=1))  # must not raise despite there being nowhere to store it
+    svc.pr.err_s("boom", errno=1)  # must not raise despite there being nowhere to store it
     assert svc.pr._err_count == 1
 
 
 def test_init_negative_history_length_is_clamped_to_zero() -> None:
     # asy_print_log.py's own PrintLogHistory clamps this; asy_system_service.py passes it through unmodified.
-    svc = make_service(log=LogConfig(None, -5, None))
+    svc = _make_service(log=LogConfig(None, -5, None))
     assert len(svc.pr.history) == 0
 
 
@@ -337,7 +251,7 @@ def test_init_all_constructor_params_combined_wire_correctly() -> None:
     # Cross-dependency: fram + watchdog + history_length + debug all set together, not just each in isolation.
     manager, _chip = make_fram_manager()
     wdt = machine.WDT()
-    svc = make_service(storage=manager, watchdog=wdt, log=LogConfig(manager, 4, _ALL))
+    svc = _make_service(storage=manager, watchdog=wdt, log=LogConfig(manager, 4, _ALL))
     assert isinstance(svc.pr, PrintLogHistoryStore)
     assert svc._storage_pause is not None
     assert svc._watchdog is wdt
@@ -352,7 +266,7 @@ def test_init_all_constructor_params_combined_wire_correctly() -> None:
 
 def test_feed_watchdog_feeds_a_real_watchdog() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
     svc.feed_watchdog()
     assert wdt.feed_count == 1
     svc.feed_watchdog()
@@ -361,17 +275,17 @@ def test_feed_watchdog_feeds_a_real_watchdog() -> None:
 
 def test_feed_watchdog_is_a_silent_no_op_without_a_watchdog() -> None:
     # A watchdog-less build takes the identical code path, no special-casing at the call site.
-    svc = make_service()
+    svc = _make_service()
     assert svc._watchdog is None
     svc.feed_watchdog()  # must not raise
 
 
-def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
-    # _force_watchdog_starve is the one-way "let the hardware watchdog do it" signal: set when a reset cannot be
-    # armed or the supervisor escalates - feed_watchdog() honours it even with a real watchdog present.
+def test_feed_watchdog_stops_once_the_phase_starves() -> None:
+    # The starved phase is the one-way "let the hardware watchdog do it" signal: entered once a reset is armed or
+    # cannot be armed - feed_watchdog() honours it even with a real watchdog present.
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
-    svc._force_watchdog_starve = True
+    svc = _make_service(watchdog=wdt)
+    svc._phase = _PHASE_STARVED
     svc.feed_watchdog()
     assert wdt.feed_count == 0
 
@@ -382,31 +296,31 @@ def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
 
 
 def test_get_uptime_initial_value_is_zero_before_status_counter_runs() -> None:
-    with _Clock():
-        svc = make_service()
+    with _driven():
+        svc = _make_service()
         assert run(svc.get_uptime()) == 0
 
 
 def test_get_boot_signature_initial_value_before_status_counter_runs() -> None:
-    svc = make_service()
-    assert run(svc.get_boot_signature()) is None  # LockedValue(init_value=None)'s own default
+    svc = _make_service()
+    assert run(svc.get_boot_signature()) is None  # unresolved until the status pass resolves it
 
 
 def test_ntp_boot_signature_not_synced_returns_none() -> None:
-    ntp, _calls = make_ntp_stub(synced=False)
-    svc = make_service(ntp)
+    ntp, _calls = _make_ntp_stub(synced=False)
+    svc = _make_service(ntp)
     assert run(svc._ntp_boot_signature()) is None
     assert svc.pr._err_count == 0
 
 
 def test_ntp_boot_signature_synced_returns_a_real_utc_timestamp() -> None:
-    ntp, _calls = make_ntp_stub(synced=True)
-    svc = make_service(ntp)
+    ntp, _calls = _make_ntp_stub(synced=True)
+    svc = _make_service(ntp)
     asy_base_classes.set_utc_valid()
     try:
         result = run(svc._ntp_boot_signature())
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert isinstance(result, int)
     assert result > 1_700_000_000  # sanity bound: after 2023-11-14, not the pre-refactor's magic -1/1
     assert svc.pr._err_count == 0
@@ -415,8 +329,8 @@ def test_ntp_boot_signature_synced_returns_a_real_utc_timestamp() -> None:
 def test_a_synced_signature_reads_utc_now() -> None:
     # The signature is the shared UTC primitive's value: None while the clock is not marked valid,
     # even with NTP reporting synced, and utc_now() itself once it is.
-    ntp, _calls = make_ntp_stub(synced=True)
-    svc = make_service(ntp)
+    ntp, _calls = _make_ntp_stub(synced=True)
+    svc = _make_service(ntp)
     assert run(svc._ntp_boot_signature()) is None
     original = asy_base_classes.utc_now
     asy_system_service.utc_now = lambda: 1_790_000_000
@@ -428,75 +342,75 @@ def test_a_synced_signature_reads_utc_now() -> None:
 
 
 def test_a_32_bit_signature_round_trips() -> None:
-    # The signature is an identifier, never stepped: a LockedValue, so no counter cap clamps it.
-    svc = make_service()
-    run(svc._boot_signature.set_value(1_790_000_000))
+    # The signature is an identifier, never stepped, so no counter cap clamps it.
+    svc = _make_service()
+    svc._boot_signature = 1_790_000_000
     assert run(svc.get_boot_signature()) == 1_790_000_000
-    run(svc._boot_signature.set_value(0xFFFFFFFF))  # a random signature uses the full 32 bits
+    svc._boot_signature = 0xFFFFFFFF  # a random signature uses the full 32 bits
     assert run(svc.get_boot_signature()) == 0xFFFFFFFF
 
 
 def test_ntp_boot_signature_callback_exception_returns_none_and_logs_once() -> None:
-    ntp, calls = make_ntp_stub(raise_exc=RuntimeError("ntp callback exploded"))
-    svc = make_service(ntp)
+    ntp, calls = _make_ntp_stub(raise_exc=RuntimeError("ntp callback exploded"))
+    svc = _make_service(ntp)
     assert run(svc._ntp_boot_signature()) is None
     assert calls[0] == 1
     assert svc.pr._err_count == 1
     assert _persisted(svc) == [code("E", "CALLBACK")]
 
 
-def _run_status_loop(svc: SystemService, clock: _Clock, ticks: int) -> "tuple[bool, int | float | None, int]":
+def _run_status_loop(svc: SystemService, clock: DrivenTime, ticks: int) -> "tuple[bool, int | float | None, int]":
     # Runs the status loop over `ticks` driven seconds; answers (signature resolved, signature, uptime).
     async def scenario() -> "tuple[bool, int | float | None, int]":
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, ticks, clock)
+        await _pump(svc._tick, ticks, clock)
         result = (svc._start_time_set, await svc.get_boot_signature(), await svc.get_uptime())
-        await _cancel(task)
+        await cancel(task)
         return result
 
     return run(scenario())
 
 
 def test_status_counter_reads_one_second_of_uptime_per_driven_second() -> None:
-    with _Clock() as clock:
-        svc = make_service()
+    with _driven() as clock:
+        svc = _make_service()
         assert _run_status_loop(svc, clock, 5)[2] == 5  # five pumps of 1000 ms each
 
 
 def test_status_counter_sets_boot_signature_via_ntp_once_synced() -> None:
-    ntp, _calls = make_ntp_stub(synced=True)
+    ntp, _calls = _make_ntp_stub(synced=True)
     asy_base_classes.set_utc_valid()
     try:
-        with _Clock() as clock:
-            svc = make_service(ntp)
+        with _driven() as clock:
+            svc = _make_service(ntp)
             start_time_set, signature, _uptime = _run_status_loop(svc, clock, 1)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert start_time_set is True
     assert signature is not None
     assert signature > 1_700_000_000
 
 
 def test_status_counter_before_wait_time_never_synced_leaves_boot_signature_unresolved() -> None:
-    with _Clock() as clock:
-        svc = make_service()
+    with _driven() as clock:
+        svc = _make_service()
         start_time_set, signature, _uptime = _run_status_loop(svc, clock, 5)  # well below _NTP_WAIT_TIME (120)
     assert start_time_set is False
     assert signature is None  # _status_loop's own "not yet resolved" sentinel
 
 
 def test_status_counter_falls_back_to_random_after_wait_time_when_never_synced() -> None:
-    with _Clock() as clock:
-        svc = make_service()
-        start_time_set, signature, uptime = _run_status_loop(svc, clock, _src_const("_NTP_WAIT_TIME"))  # exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
+    with _driven() as clock:
+        svc = _make_service()
+        start_time_set, signature, uptime = _run_status_loop(svc, clock, _const("_NTP_WAIT_TIME"))  # exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
     assert (start_time_set, uptime) == (True, 120)
     assert signature is not None
 
 
 def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_falls_back() -> None:
-    ntp, calls = make_ntp_stub(raise_exc=RuntimeError("ntp callback exploded"))
-    with _Clock() as clock:
-        svc = make_service(ntp)
+    ntp, calls = _make_ntp_stub(raise_exc=RuntimeError("ntp callback exploded"))
+    with _driven() as clock:
+        svc = _make_service(ntp)
         start_time_set, signature, _uptime = _run_status_loop(svc, clock, 120)
     assert start_time_set is True
     assert signature is not None
@@ -506,182 +420,100 @@ def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_fa
 
 
 def test_status_counter_stops_checking_ntp_once_start_time_is_set() -> None:
-    ntp, calls = make_ntp_stub(synced=True)
+    ntp, calls = _make_ntp_stub(synced=True)
     asy_base_classes.set_utc_valid()
     try:
-        with _Clock() as clock:
-            _run_status_loop(make_service(ntp), clock, 4)
+        with _driven() as clock:
+            _run_status_loop(_make_service(ntp), clock, 4)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert calls[0] == 1  # resolved on tick 1, never rechecked on ticks 2-4
 
 
 def test_status_counter_boot_signature_never_changes_again_once_resolved() -> None:
     # An outside observer watches get_boot_signature() for a change to detect a reboot, so the value stays
     # stable for the rest of this boot once resolved - never re-picked, never "upgraded".
-    ntp, _calls = make_ntp_stub(synced=True)
+    ntp, _calls = _make_ntp_stub(synced=True)
     asy_base_classes.set_utc_valid()
 
-    async def scenario(svc: SystemService, clock: _Clock) -> "list[int | float | None]":
+    async def scenario(svc: SystemService, clock: DrivenTime) -> "list[int | None]":
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, 1, clock)
+        await _pump(svc._tick, 1, clock)
         seen = [await svc.get_boot_signature()]
-        await _pump(svc._uptime_event, 10, clock)
+        await _pump(svc._tick, 10, clock)
         seen.append(await svc.get_boot_signature())
-        await _cancel(task)
+        await cancel(task)
         return seen
 
     try:
-        with _Clock() as clock:
-            first, second = run(scenario(make_service(ntp), clock))
+        with _driven() as clock:
+            first, second = run(scenario(_make_service(ntp), clock))
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert first is not None
     assert first == second  # unchanged across 10 further ticks - no spurious "reboot" signal
 
 
 def test_uptime_is_measured_not_counted() -> None:
     # Uptime follows ticks_ms() deltas, never the number of wake-ups, and reads no wall clock at all.
-    async def wakes(svc: SystemService, clock: _Clock, gaps_ms: "list[int]") -> int:
+    async def wakes(svc: SystemService, clock: DrivenTime, gaps_ms: "list[int]") -> int:
         task = asyncio.create_task(svc._status_loop())
         for gap in gaps_ms:
-            await _pump(svc._uptime_event, 1, clock, step_ms=gap)
+            await _pump(svc._tick, 1, clock, step_ms=gap)
         uptime = await svc.get_uptime()
-        await _cancel(task)
+        await cancel(task)
         return uptime
 
-    with _Clock() as clock:
-        assert run(wakes(make_service(), clock, [2500, 2500, 2500])) == 7  # (a) three wake-ups over 7,500 ms
-        svc = make_service()
+    with _driven() as clock:
+        assert run(wakes(_make_service(), clock, [2500, 2500, 2500])) == 7  # (a) three wake-ups over 7,500 ms
+        svc = _make_service()
         clock.advance(5000)  # (b) no wake-up for 5,000 ms, then one
         assert run(wakes(svc, clock, [0])) == 5
-    with _Clock() as clock:  # (c) a dropped wake-up loses nothing: the next read carries the elapsed time
-        svc = make_service()
-        svc.start_uptime_timer()
+    with _driven() as clock:  # (c) a skipped wake-up loses nothing: the next read carries the elapsed time
+        svc = _make_service()
 
         async def dropped() -> int:
             task = asyncio.create_task(svc._status_loop())
-            clock.advance(1000)
-            svc._uptime_timer.drop()
-            clock.advance(1000)
-            svc._uptime_timer.trigger()
+            clock.advance(2000)  # no pass at 1 s
+            await _pump(svc._tick, 1, settle=0)
             for _ in range(5):
                 await asyncio.sleep(0)
             uptime = await svc.get_uptime()
-            await _cancel(task)
+            await cancel(task)
             return uptime
 
         assert run(dropped()) == 2
-    with _Clock(strict=True) as clock:  # (d) no RTC, time() or NTP value: the wall-clock reads raise here
-        assert run(wakes(make_service(), clock, [1000, 1000, 1000])) == 3
+    with _driven(strict=True) as clock:  # (d) no RTC, time() or NTP value: the wall-clock reads raise here
+        assert run(wakes(_make_service(), clock, [1000, 1000, 1000])) == 3
 
 
 def test_a_restarted_counter_keeps_the_signature() -> None:
     # A supervisor restart of the uptime task changes neither the signature nor uptime (both live outside it).
-    async def restart(svc: SystemService, clock: _Clock, first_ticks: int) -> "tuple[int | float | None, int | float | None, int]":
+    async def restart(svc: SystemService, clock: DrivenTime, first_ticks: int) -> "tuple[int | float | None, int | float | None, int]":
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, first_ticks, clock)
+        await _pump(svc._tick, first_ticks, clock)
         before = await svc.get_boot_signature()
-        await _cancel(task)
+        await cancel(task)
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, 2, clock)
+        await _pump(svc._tick, 2, clock)
         after = await svc.get_boot_signature()
         uptime = await svc.get_uptime()
-        await _cancel(task)
+        await cancel(task)
         return before, after, uptime
 
-    ntp, _calls = make_ntp_stub(synced=True)
+    ntp, _calls = _make_ntp_stub(synced=True)
     asy_base_classes.set_utc_valid()
     try:
-        with _Clock() as clock:
-            before, after, uptime = run(restart(make_service(ntp), clock, 1))
+        with _driven() as clock:
+            before, after, uptime = run(restart(_make_service(ntp), clock, 1))
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert before is not None and before == after
     assert uptime == 3
-    with _Clock() as clock:  # the random fallback: resolved at 120 s, kept across the restart
-        before, after, uptime = run(restart(make_service(), clock, 120))
+    with _driven() as clock:  # the random fallback: resolved at 120 s, kept across the restart
+        before, after, uptime = run(restart(_make_service(), clock, 120))
     assert before is not None and before == after
     assert uptime == 122
-
-
-def test_a_dead_uptime_timer_falls_back_to_one_second_passes() -> None:
-    with _Clock() as clock:
-        svc = make_service()
-        with _RaiseOnArm():
-            svc.start_uptime_timer()
-        assert svc._tick_failed is True
-        assert svc._uptime_event.state  # set: wakes the loop into its fallback
-
-        async def scenario() -> "tuple[int, int | float | None, int]":
-            task = asyncio.create_task(svc._status_loop())
-            with _RaiseOnArm(), _FastAsyncSleep(clock):
-                for _ in range(130):
-                    await asyncio.sleep(0)
-            uptime = await svc.get_uptime()
-            signature = await svc.get_boot_signature()
-            entries = svc.pr._err_count
-            await _cancel(task)
-            return uptime, signature, entries
-
-        uptime, signature, entries = run(scenario())
-    assert uptime >= 120  # one driven second per pass, no tick needed
-    assert signature is not None  # the random fallback resolved on the passes alone
-    assert entries == 1 and _persisted(svc) == [code("E", "TIMER")]  # once per task run, however many passes
-    assert svc._tick_failed is True
-
-    with _Clock() as clock:  # once an arm succeeds the passes wait on the tick again
-        svc = make_service()
-        with _RaiseOnArm():
-            svc.start_uptime_timer()
-
-        async def rearm() -> int:
-            task = asyncio.create_task(svc._status_loop())
-            with _FastAsyncSleep(clock):
-                for _ in range(5):
-                    await asyncio.sleep(0)
-            assert svc._tick_failed is False
-            assert svc._uptime_timer.mode == Timer.PERIODIC and svc._uptime_timer.period == 1000
-            settled = await svc.get_uptime()
-            for _ in range(5):
-                await asyncio.sleep(0)  # no tick and no fallback: the loop waits on the event
-            clock.advance(3000)
-            assert await svc.get_uptime() == settled + 3  # measured on the next read whenever it comes
-            await _cancel(task)
-            return settled
-
-        assert run(rearm()) >= 1
-    assert _persisted(svc) == [code("E", "TIMER")]
-
-
-def test_a_dead_uptime_timer_reads_the_clock_every_second() -> None:
-    # The structural form of "uptime is read inside ticks_diff()'s 2**29 ms horizon": with the timer dead, no two
-    # consecutive TickSeconds reads are more than 1000 driven ms apart, and uptime equals the driven seconds.
-    with _Clock() as clock:
-        svc = make_service()
-        reads: list[int] = []
-        real_read = svc._uptime.read
-
-        def recording_read() -> int:
-            reads.append(clock.now)
-            return real_read()
-
-        svc._uptime.read = recording_read  # type: ignore[method-assign]
-        with _RaiseOnArm():
-            svc.start_uptime_timer()
-        start = clock.now
-
-        async def scenario() -> int:
-            task = asyncio.create_task(svc._status_loop())
-            with _RaiseOnArm(), _FastAsyncSleep(clock):
-                while len(reads) < 50:
-                    await asyncio.sleep(0)
-            await _cancel(task)
-            return await svc.get_uptime()
-
-        uptime = run(scenario())
-    assert max(reads[i + 1] - reads[i] for i in range(len(reads) - 1)) <= 1000, reads
-    assert uptime == (clock.now - start) // 1000
 
 
 # ---------------------------------------------------------------------------
@@ -689,91 +521,50 @@ def test_a_dead_uptime_timer_reads_the_clock_every_second() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_start_timers_with_no_starters_arms_nothing() -> None:
-    svc = make_service()
+def test_start_timers_with_no_starters_waits_for_nothing() -> None:
+    svc = _make_service()
+    with FastAsyncSleep() as sleeps:
+        run(svc.start_timers([], []))
+    assert [ms for _task, _seconds, ms in sleeps.slept] == []
+
+
+def test_triggers_start_in_order_each_at_its_slot_by_deadline_sleeps() -> None:
+    # The timer starters first, then trigger k at t0 + k * slot (1000 // 4 here) on the driven clock: no Timer.
+    svc = _make_service()
     before = list(Timer.all_timers)
-    run(svc.start_timers([], []))
-    assert Timer.all_timers == before
-    assert svc._sequencer_timer.period == -1  # never armed
+    started: list[tuple[str, int]] = []
 
+    async def scenario(clock: DrivenTime) -> None:
+        def mark(name: str) -> "Callable[[], None]":
+            return lambda: started.append((name, clock.now))
 
-def test_a_single_trigger_starts_without_a_stagger_timer() -> None:
-    svc = make_service()
-    started: list[int] = []
-    run(svc.start_timers([lambda: started.append(1)], []))
-    assert started == [1]
-    assert svc._sequencer_timer.period == -1  # slot 0 starts at the shared start itself
-
-
-def test_triggers_start_in_order_on_the_one_preallocated_timer() -> None:
-    svc = make_service()
-    before = list(Timer.all_timers)
-    started: list[str] = []
-    timers = [lambda: started.append("t1"), lambda: started.append("t2")]
-    triggers = [lambda: started.append("r1"), lambda: started.append("r2"), lambda: started.append("r3")]
-    first_id = id(svc._sequencer_timer)
-
-    async def scenario() -> None:
-        task = asyncio.create_task(svc.start_timers(triggers, timers))
-        for _ in range(5):
-            await asyncio.sleep(0)
-        assert started == ["t1", "t2", "r1"]  # the timer starters first, then trigger 0 at once
-        for n in (2, 3):
-            assert svc._sequencer_timer.mode == Timer.ONE_SHOT
-            assert 0 < svc._sequencer_timer.period <= (n - 1) * 250  # trigger n-1 waits for its slot
-            svc._sequencer_timer.trigger()
-            for _ in range(5):
-                await asyncio.sleep(0)
-            assert started[-1] == "r" + str(n)
+        task = asyncio.create_task(svc.start_timers([mark("r1"), mark("r2"), mark("r3")], [mark("t1"), mark("t2")]))
+        await clock.run_until(task.done, 1000)
         await task
 
-    run(scenario())
-    assert started == ["t1", "t2", "r1", "r2", "r3"]
-    assert id(svc._sequencer_timer) == first_id
-    assert Timer.all_timers == before  # one preallocated Timer re-armed through init(), none constructed
+    with DrivenTime(asy_system_service, now=0, sleeps=True) as clock:
+        run(scenario(clock))
+    assert started == [("t1", 0), ("t2", 0), ("r1", 0), ("r2", 250), ("r3", 500)], started
+    assert Timer.all_timers == before
 
 
 def test_a_raising_starter_is_persisted_and_sequencing_continues() -> None:
-    svc = make_service(log=LogConfig(None, 10, _ERR))
+    svc = _make_service(log=LogConfig(None, 10, _ERR))
     started: list[int] = []
 
     def bad_starter() -> None:
         raise RuntimeError("boom")
 
-    recorder = _PrintRecorder()
-    try:
-        with _FastAsyncSleep():
-            run(svc.start_timers([lambda: started.append(1)], [bad_starter, lambda: started.append(2)]))
-    finally:
-        recorder.restore()
+    with record_prints() as recorder, FastAsyncSleep():
+        run(svc.start_timers([lambda: started.append(1)], [bad_starter, lambda: started.append(2)]))
     assert started == [2, 1]
     assert svc.pr._err_count == 1
     assert _persisted(svc) == [code("E", "TASK_STARTER_RAISED")]
     assert [line[:3] for line in recorder.lines if line[1] == "Timer starter"] == [("SYSTEM", "Timer starter", 0)]
 
 
-def _start_triggers_with_every_arm_failing(exc: "type[BaseException]") -> "tuple[SystemService, list[int]]":
-    svc = make_service()
-    started: list[int] = []
-    triggers = [lambda: started.append(1), lambda: started.append(2), lambda: started.append(3)]
-    with _FastAsyncSleep(), _RaiseOnArm(exc):
-        run(svc.start_timers(triggers, []))
-    return svc, started
-
-
-def test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger() -> None:
-    for exc in (OSError, MemoryError):
-        svc, started = _start_triggers_with_every_arm_failing(exc)
-        assert started == [1, 2, 3]  # degraded in place, never stopped early
-        assert svc.pr._err_count == 2  # one entry per failed stagger arm (trigger 0 needs none)
-        assert _persisted(svc) == [code("E", "TIMER")]
-
-
-# ---------------------------------------------------------------------------
-# The reset path: reboot_system()/reboot_bootloader() through the command gate, and _reboot() - record, flush, pause, arm
-# ---------------------------------------------------------------------------
-
 _SETTLE_MS = 30_000  # a limit, not a timing claim: the 256 KB erase's sequence ends far inside it
+_SEQUENCE_POLL_MS = 1  # how often _sequence_done() looks at the sequence's task again, in real time
 
 
 async def _real_time(ms: int) -> None:
@@ -783,24 +574,26 @@ async def _real_time(ms: int) -> None:
 
 
 async def _sequence_done(svc: SystemService) -> None:
-    # Awaits the shutdown sequence's own task, bounded in real time; its exception, if any, surfaces here.
-    task = svc._shutdown_task
-    assert task is not None, "no shutdown sequence was started"
-    try:
-        await asyncio.wait_for_ms(task, _SETTLE_MS)
-    except asyncio.TimeoutError:
-        raise AssertionError("the shutdown sequence never finished") from None
+    # Waits for the shutdown sequence's own task, bounded in real time, then its exception, if any, surfaces here. Polled:
+    # a task awaiting one a power cut (a BaseException) left mid-step takes no cancel, so the run's cleanup would hang.
+    task = await newest_start(_SEQUENCES[id(svc)])
+    start = time.ticks_ms()
+    while not task.done():
+        if time.ticks_diff(time.ticks_ms(), start) > _SETTLE_MS:
+            raise AssertionError("the shutdown sequence never finished")
+        await _real_time(_SEQUENCE_POLL_MS)
+    await task
 
 
-async def _command(svc: SystemService, command: "Callable[[], Coroutine[Any, Any, bool]]") -> bool:
-    # A system command as main() serves it, under _FastAsyncSleep: the supervisor runs as its task, the command
+async def _command(svc: SystemService, command: "Callable[[], Coroutine[object, object, bool]]") -> bool:
+    # A system command as main() serves it, under FastAsyncSleep: the supervisor runs as its task, the command
     # answers, and its shutdown sequence runs to the arm; supervise_tasks() is cancelled before this returns.
     sup = asyncio.create_task(svc.supervise_tasks())
     await asyncio.sleep(0)
     accepted = await command()
     if accepted:
         await _sequence_done(svc)
-    await _cancel(sup)
+    await cancel(sup)
     return accepted
 
 
@@ -812,6 +605,16 @@ async def _fire(svc: SystemService) -> None:
         if svc._reset_task is not None and svc._reset_task.done():
             return
     raise AssertionError("the reset task never ran")
+
+
+def _run_into_reset(coro: "Coroutine[object, object, object]", kind: "type[BaseException]" = machine.SimulatedResetError) -> None:
+    # A scenario ending in the fired reset: rp2's reset() and bootloader() never return, so the fake's raise ends the run
+    # there and the harness cancels what the scenario started. A run that ends without it fails.
+    try:
+        run(coro)
+    except kind:
+        return
+    raise AssertionError(kind.__name__ + " was never raised")
 
 
 class _Store:
@@ -855,25 +658,25 @@ class _Store:
 
 
 def test_reboot_system_arms_the_one_shot_and_the_trigger_runs_machine_reset() -> None:
-    svc = make_service()
+    svc = _make_service()
     machine.reset_count = 0
 
     async def scenario() -> None:
         assert await _command(svc, svc.reboot_system) is True
         assert svc._reset_timer.mode == Timer.ONE_SHOT
-        assert svc._reset_timer.period == _src_const("_RESET_DELAY") * 1000
+        assert svc._reset_timer.period == _const("_RESET_DELAY") * 1000
         assert machine.reset_count == 0  # not yet fired - a real Timer would still be counting down
         await _fire(svc)
 
-    with _FastAsyncSleep():
-        run(scenario())
+    with FastAsyncSleep():
+        _run_into_reset(scenario())
     assert machine.reset_count == 1
 
 
 def test_an_armed_reset_stops_every_feed_so_a_dropped_one_shot_still_resets() -> None:
     # A one-shot the scheduler drops never wakes the reset task; with nothing feeding, the watchdog resets instead.
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
 
     async def scenario() -> None:
         svc.feed_watchdog()
@@ -883,30 +686,30 @@ def test_an_armed_reset_stops_every_feed_so_a_dropped_one_shot_still_resets() ->
         svc.feed_watchdog()
         svc._own_feed()
         assert wdt.feed_count == fed, wdt.feed_count  # the callback never runs here: nothing fed since the arm
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
-    assert machine.mem_backup(0)[1] == _src_const("_RR_REBOOT")  # the watchdog reset still decodes as the command
+    assert machine.mem_backup(0)[1] == _const("_RR_REBOOT")  # the watchdog reset still decodes as the command
 
 
 def test_reboot_system_with_fram_pauses_storage_and_a_pending_unpause_never_reopens_it() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None))
     machine.reset_count = 0
-    with _Clock() as clock:
+    with _driven() as clock:
 
         async def scenario() -> None:
             assert svc.pause_permanent_storage(60) is True
-            with _FastAsyncSleep():
+            with FastAsyncSleep():
                 assert await _command(svc, svc.reboot_system) is True
             assert manager.get_pause() is True  # paused at once, before the reset timer ever fires
             loop = asyncio.create_task(svc._status_loop())
-            await _pump(svc._uptime_event, 61, clock)  # the pending deadline passes inside the countdown
+            await _pump(svc._tick, 61, clock)  # the pending deadline passes inside the countdown
+            assert not loop.done()  # the pass that refused the deadline kept running; the run's end cancels it
             await _fire(svc)
-            await _cancel(loop)
 
-        run(scenario())
+        _run_into_reset(scenario())
     assert machine.reset_count == 1
     assert manager.get_pause() is True
     assert svc._unpause_at is None  # spent, refused
@@ -914,26 +717,27 @@ def test_reboot_system_with_fram_pauses_storage_and_a_pending_unpause_never_reop
 
 def test_reboot_bootloader_arms_the_one_shot_and_the_trigger_runs_machine_bootloader() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None))
     machine.bootloader_count = 0
 
     async def scenario() -> None:
         assert await _command(svc, svc.reboot_bootloader) is True
         assert manager.get_pause() is True
         assert machine.bootloader_count == 0
+        assert machine.mem_backup(0)[1] == _const("_RR_COMMAND_INCOMPLETE")  # no code of its own: its acceptance's stays
         await _fire(svc)
 
-    with _FastAsyncSleep():
-        run(scenario())
+    with FastAsyncSleep():
+        _run_into_reset(scenario(), machine.SimulatedBootloaderEntryError)
     assert machine.bootloader_count == 1
 
 
 def _arm_failure(exc: "type[BaseException]", *, bootloader: bool, with_fram: bool) -> "tuple[SystemService, FRAMManager | None]":
     manager = make_fram_manager()[0] if with_fram else None
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None) if manager is not None else DEFAULT_LOG)
-    code_ = _src_const("_RR_BOOTLOADER" if bootloader else "_RR_REBOOT")
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None) if manager is not None else DEFAULT_LOG)
+    code_ = _const("_BOOTLOADER" if bootloader else "_RR_REBOOT")
     action = machine.bootloader if bootloader else machine.reset
-    with _RaiseOnArm(exc):
+    with RaiseOnArm(exc):
         run(svc._reboot(code_, "Reboot triggered", action))  # must not raise despite the timer failing to arm
     return svc, manager
 
@@ -947,8 +751,8 @@ def test_an_arm_failure_starves_the_watchdog_and_records_code_6() -> None:
             for with_fram in (False, True):
                 machine.power_on()
                 svc, manager = _arm_failure(exc, bootloader=bootloader, with_fram=with_fram)
-                assert svc._force_watchdog_starve is True
-                assert machine.mem_backup(0)[1] == _src_const("_RR_STARVE_ARM_FAILED")
+                assert svc._phase == _PHASE_STARVED
+                assert machine.mem_backup(0)[1] == _const("_RR_STARVE_ARM_FAILED")
                 assert svc._reset_task is not None and svc._reset_timer.period == -1  # created, then cancelled; never armed
                 if manager is not None:
                     assert manager.get_pause() is True  # the pause happened before the failing init()
@@ -956,34 +760,34 @@ def test_an_arm_failure_starves_the_watchdog_and_records_code_6() -> None:
 
 
 def test_a_second_reboot_request_neither_deinits_nor_rearms() -> None:
-    svc = make_service()
+    svc = _make_service()
 
     async def scenario() -> None:
         assert await _command(svc, svc.reboot_system) is True
         callback = svc._reset_timer.callback
         assert await svc.reboot_bootloader() is False  # the other command while one is under way
         assert await svc.reboot_system() is True  # the same command: answered, nothing new started
-        await svc._reboot(_src_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
+        await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
         assert len(svc._reset_timer.arms) == 1
         assert svc._reset_timer.callback is callback
         assert svc._reset_timer.deinit_called is False
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
-    assert machine.mem_backup(0)[1] == _src_const("_RR_REBOOT")  # the first request's record stands
+    assert machine.mem_backup(0)[1] == _const("_RR_REBOOT")  # the first request's record stands
 
 
 def test_a_raising_flush_never_stops_the_other_stores_or_the_arm() -> None:
     events: list[str] = []
     stores = [_Store("A", events), _Store("B", events, raise_on_flush=True), _Store("C", events)]
-    svc = make_service(cfg_path=_tmp_cfg_dir(), config_stores=lambda: stores)  # type: ignore[arg-type, return-value]
+    svc = _make_service(cfg_path=_scratch.dir(), config_stores=lambda: stores)  # type: ignore[arg-type, return-value]
     run(svc.setup())
 
     async def scenario() -> None:
-        await svc._reboot(_src_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
-        assert svc._reset_timer.period == _src_const("_RESET_DELAY") * 1000  # still armed
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await svc._reboot(_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
+        assert svc._reset_timer.period == _const("_RESET_DELAY") * 1000  # still armed
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
     run(scenario())
     assert [s.flushes for s in stores] == [1, 1, 1]
@@ -995,46 +799,74 @@ def test_the_record_precedes_the_flush_and_the_pause_follows_it() -> None:
     manager, _chip = make_fram_manager()
     events: list[str] = []
     store = _Store("A", events, manager)
-    svc = make_service(storage=manager, cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])  # type: ignore[list-item]
+    svc = _make_service(storage=manager, cfg_path=_scratch.dir(), config_stores=lambda: [store])  # type: ignore[list-item]
     run(svc.setup())
 
     async def scenario() -> None:
-        await svc._reboot(_src_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
+        await svc._reboot(_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
         assert manager.get_pause() is True
         await _fire(svc)
 
-    run(scenario())
-    reboot = _src_const("_RR_REBOOT")
+    _run_into_reset(scenario())
+    reboot = _const("_RR_REBOOT")
     # The record is written before the first flush, which runs unpaused; the stores close, then flush once more.
     assert events == [f"A.flush record={reboot} paused=False", "A.close", f"A.flush record={reboot} paused=True"]
 
 
 def test_a_task_creation_failure_inside_reboot_starves_and_arms_nothing() -> None:
     machine.power_on()
-    svc = make_service()
-    real_create_task = asyncio.create_task
+    svc = _make_service()
 
     def failing(_coro: object) -> None:
         _coro.close()  # type: ignore[attr-defined]
         raise MemoryError("injected: no room for the reset task")
 
-    asyncio.create_task = failing  # type: ignore[assignment]
-    try:
-        run(svc._reboot(_src_const("_RR_REBOOT"), "Reboot triggered", machine.reset))
-    finally:
-        asyncio.create_task = real_create_task
-    assert svc._force_watchdog_starve is True
+    async def reboot_with_no_room() -> None:
+        real_create_task = asyncio.create_task  # inside the run: the harness's own tracking stand-in
+        asyncio.create_task = failing  # type: ignore[assignment]
+        try:
+            await svc._reboot(_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
+        finally:
+            asyncio.create_task = real_create_task
+
+    run(reboot_with_no_room())
+    assert svc._phase == _PHASE_STARVED
     assert svc._reset_task is None
     assert svc._reset_timer.arms == []
-    assert machine.mem_backup(0)[1] == _src_const("_RR_STARVE_ARM_FAILED")
+    assert machine.mem_backup(0)[1] == _const("_RR_STARVE_ARM_FAILED")
 
 
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
-_scratch = TmpScratch("sysservice")
+class _CloseRaisingStore(_Store):
+    # Its close raises: any unexpected fault in the reset task's last flush, the one pass that closes after an
+    # escalation's arm. The real close_writes() only sets a flag, so this stands in for a fault, not its I/O.
+    def close_writes(self) -> None:
+        _Store.close_writes(self)
+        raise RuntimeError("injected close fault")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
+def test_a_fault_in_the_reset_task_is_logged_and_the_watchdog_still_resets() -> None:
+    machine.power_on()
+    machine.reset_count = 0
+    wdt = machine.WDT()
+    store = _CloseRaisingStore("A", [])
+    svc = _make_service(watchdog=wdt, log=LogConfig(None, 10, _ERR), cfg_path=_scratch.dir(), config_stores=lambda: [store])  # type: ignore[list-item]
+    run(svc.setup())
+
+    async def scenario() -> None:
+        await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)  # the escalation's own call
+        await _fire(svc)
+        assert svc._reset_task is not None
+        await svc._reset_task  # ended at its top, not with the fault
+
+    with record_prints(svc.pr) as recorder:
+        run(scenario())
+    assert _persisted(svc) == [code("E", "UNEXPECTED")], _persisted(svc)
+    assert "injected close fault" in recorder.text(), recorder.text()
+    assert machine.reset_count == 0  # the reset action never ran: nothing feeds, so the watchdog resets
+    fed = wdt.feed_count
+    svc.feed_watchdog()
+    assert wdt.feed_count == fed
+    assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
 
 
 _VAL_COUNT: "cm.ConfigSchema" = (("Count", "int", 5, 0, 10, None),)
@@ -1042,7 +874,8 @@ _VAL_COUNT: "cm.ConfigSchema" = (("Count", "int", 5, 0, 10, None),)
 
 def _real_store(path: str) -> cm.ConfigManager:
     store = cm.ConfigManager(path + "config_RESETWIN.cfg", _VAL_COUNT, "RESETWIN")
-    assert run(store.setup()) is True
+    run(store.setup())
+    assert store.valid is True
     return store
 
 
@@ -1052,21 +885,21 @@ def _file_count(path: str) -> int:
 
 
 def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _real_store(path)
-    svc = make_service(cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])
+    svc = _make_service(cfg_path=_scratch.dir(), config_stores=lambda: [store])
     run(svc.setup())
     machine.reset_count = 0
 
-    async def scenario() -> "tuple[bool, cm.WriteValidity]":
+    async def scenario() -> None:
         # The supervisor escalation's window: its stores stay open until the reset closes them (a command closes them at once).
-        await svc._reboot(_src_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
+        await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
         persisted, results = await store.write_config({"Count": 7})  # 3.9 s into the window: staged, flushed by the reset
         assert (persisted, results) == (True, {"Count": "Valid"})
         await _fire(svc)
-        return await store.write_config({"Count": 8})  # after the trigger: the store is closed
 
-    late = run(scenario())
+    _run_into_reset(scenario())
+    late = run(store.write_config({"Count": 8}))  # after the trigger: the store is closed
     assert machine.reset_count == 1
     assert _file_count(path) == 7
     assert late == (False, {})
@@ -1076,12 +909,16 @@ def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() ->
 # System commands: one gate, one controlled shutdown, the watchdog the sequence owns (SPECIFICATION.md Part A.8)
 # ---------------------------------------------------------------------------
 
-_FRAM_SRC = "src/asy_fram_manager.py"
-_WRITE_OPCODE = 0x02  # keep in sync with tests/_fram_chip_fake.py's _OPCODE_WRITE (MB85RS64V DS501-00015 p.6)
-_ERASE_UNIT = 256  # keep in sync with src/asy_fram_manager.py's _ERASE_UNIT (pinned below)
+_ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _HANG_WATCH_MS = 1000  # real time a hung step is watched: a fed step feeds well inside it
-_PURPOSES = ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
-_REST_WORDS = {"_RR_REBOOT": "reboot", "_RR_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
+_HANG_REACH_MS = 300  # real time a command's sequence gets to reach the step a hang is planted in
+_POLL_MS = 10  # how often a bounded real-time wait for the supervisor's escalation looks again
+_BUDGET_POLL_MS = 20  # how often the starved-supervisor wait looks again within the watchdog's budget
+_QUIET_WINDOW_MS = 20  # real time a command's refusal or its wait for the supervisor is watched not to move on
+_HELD_WINDOW_MS = 50  # real time a sequence is watched holding behind an in-flight write or a PUT's lock
+_STALLED_WINDOW_MS = 100  # real time a sequence is watched hung in its flush step
+_PURPOSES = ("_RR_REBOOT", "_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
+_REST_WORDS = {"_RR_REBOOT": "reboot", "_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
 
 
 class PowerCut(BaseException):
@@ -1089,8 +926,8 @@ class PowerCut(BaseException):
 
 
 class _CutChip(FakeMB85RS64V):
-    # The FRAM fake counting its erase-unit writes in place (fixed-size state: no record grows with the chip), with a
-    # power cut after `cut_after_bytes` more data bytes (those land, then PowerCut ends the run) and drop_wren_at_unit.
+    # The FRAM fake counting its erase-unit writes in place (fixed-size state: no record grows with the chip), with
+    # drop_wren_at_unit; once the fake's own power cut (`cut_after_bytes`) has landed, PowerCut ends the run.
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.units = 0  # erase-unit (256-byte) writes
@@ -1098,11 +935,10 @@ class _CutChip(FakeMB85RS64V):
         self.status_after_unit = 0  # one-byte (status) writes after the first unit write
         self.watch: tuple[int, ...] = ()  # addresses read as the first unit write arrives
         self.watched: list[int] | None = None
-        self.cut_after_bytes: int | None = None
         self.drop_wren_at_unit = False
 
     def write(self, buf: object) -> None:
-        if self._pending_op != _WRITE_OPCODE or self._pending_addr is None:
+        if self._pending_op != _OPCODE_WRITE or self._pending_addr is None:
             super().write(buf)
             return
         data = bytes(buf)  # type: ignore[call-overload]
@@ -1115,18 +951,14 @@ class _CutChip(FakeMB85RS64V):
             self.units += 1
         elif len(data) == 1 and self.units:
             self.status_after_unit += 1
-        cut = self.cut_after_bytes
-        if cut is not None and len(data) >= cut:
-            super().write(data[:cut])
-            raise PowerCut
-        if cut is not None:
-            self.cut_after_bytes = cut - len(data)
         super().write(data)
+        if self.cut_after_bytes == 0:
+            raise PowerCut
 
 
 class _CutChip2MTA(_CutChip):
-    SIZE = 0x40000
-    RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # MB85RS2MTA (datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10)
+    SIZE = FakeMB85RS2MTA.SIZE
+    RDID = FakeMB85RS2MTA.RDID
 
 
 class _Outcome:
@@ -1141,18 +973,18 @@ class _Outcome:
 
 
 def _armed(svc: SystemService) -> bool:
-    # Read through a call, so a type checker keeps no narrowing of the flag across the awaits that change it.
-    return svc._reset_armed
+    # Read through a call, so a type checker keeps no narrowing of the phase across the awaits that change it.
+    return svc._phase >= _PHASE_ARMED
 
 
-def _word(svc: SystemService, purpose: str) -> "Callable[[], Coroutine[Any, Any, bool]]":
-    commands = {"_RR_REBOOT": svc.reboot_system, "_RR_BOOTLOADER": svc.reboot_bootloader, "_RR_CONFIG_RESET": svc.reset_to_defaults, "_RR_FRAM_ERASED": svc.erase_fram}
+def _word(svc: SystemService, purpose: str) -> "Callable[[], Coroutine[object, object, bool]]":
+    commands = {"_RR_REBOOT": svc.reboot_system, "_BOOTLOADER": svc.reboot_bootloader, "_RR_CONFIG_RESET": svc.reset_to_defaults, "_RR_FRAM_ERASED": svc.erase_fram}
     return commands[purpose]
 
 
 def _code_after_flush_shortfall(purpose: str) -> int:
     # The reset reason after S2 left config off the flash: 9, but a config reset's own code, its deletes discarding it.
-    return _src_const(purpose if purpose == "_RR_CONFIG_RESET" else "_RR_COMMAND_INCOMPLETE")
+    return _const(purpose if purpose == "_RR_CONFIG_RESET" else "_RR_COMMAND_INCOMPLETE")
 
 
 def _sleeping(events: "list[str]", name: str, *, stubborn_until: "asyncio.Event | None" = None) -> "Callable[[], asyncio.Task[None]]":
@@ -1173,7 +1005,7 @@ def _sleeping(events: "list[str]", name: str, *, stubborn_until: "asyncio.Event 
     return starter
 
 
-async def _retire(task: "asyncio.Task[Any] | None") -> None:
+async def _retire(task: "asyncio.Task[object] | None") -> None:
     # Cancels a task a scenario leaves behind and waits it out, however it ends.
     if task is None:
         return
@@ -1224,7 +1056,7 @@ class _Rig:
     # One system command's setup, built at synchronous scope (CLAUDE.md's nested-asyncio.run() rule): a watchdog, a
     # real FRAMManager on the fake chip holding SYSTEM's chunks, recording stores and sleeping supervised tasks.
     def __init__(
-        self, *, stores: "int | list[Any]" = 2, storage: bool = True, set_up: bool = True, tasks: int = 2,
+        self, *, stores: "int | Sequence[_Store | cm.ConfigManager]" = 2, storage: bool = True, set_up: bool = True, tasks: int = 2,
         chip: "type[_CutChip]" = _CutChip, level: int | None = None, protect: bool = False,
     ) -> None:
         machine.power_on()
@@ -1244,19 +1076,16 @@ class _Rig:
             if set_up:
                 run(self.manager.setup())
             log = LogConfig(self.manager, 10, level)
-        self.stores: list[Any] = stores if isinstance(stores, list) else [_Store(n, self.events, probe=self._supervisor) for n in ("A", "B", "C")[:stores]]
-        self.svc = make_service(watchdog=self.wdt, storage=self.manager, log=log, cfg_path=_tmp_cfg_dir(), config_stores=lambda: self.stores)
+        doubles: list[_Store | cm.ConfigManager] = [_Store(n, self.events, probe=self._supervisor) for n in ("A", "B", "C")[: stores if isinstance(stores, int) else 0]]
+        self.stores: list[_Store | cm.ConfigManager] = doubles if isinstance(stores, int) else list(stores)
+        self.svc = _make_service(watchdog=self.wdt, storage=self.manager, log=log, cfg_path=_scratch.dir(), config_stores=lambda: self.stores)  # type: ignore[arg-type, return-value]  # a _Store stands in for a ConfigManager
         run(self.svc.setup())
-        self.starters: list[Callable[[], asyncio.Task[Any]]] = [_sleeping(self.events, "t" + str(n)) for n in range(tasks)]
+        self.starters: list[Callable[[], asyncio.Task[None]]] = [_sleeping(self.events, "t" + str(n)) for n in range(tasks)]
         if self.manager is not None:
             self._record_quiesce(self.manager)
 
-    def _supervisor(self) -> str:
-        task = self.svc._supervisor_task
-        return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
-
     def _record_quiesce(self, manager: FRAMManager) -> None:
-        # The sequence's step 3, recorded: the pause quiesce() sets, then each chunk's wait for its operation in flight.
+        # The sequence's step 3, recorded: the storage pause; no chunk operation is ever in flight to wait out.
         events, set_pause = self.events, manager.set_pause
 
         def pause(*, value: bool) -> None:
@@ -1264,20 +1093,17 @@ class _Rig:
             set_pause(value=value)
 
         manager.set_pause = pause  # type: ignore[method-assign]
-        for chunk in manager._chunks:
 
-            async def idle(wait: "Callable[[], Coroutine[Any, Any, None]]" = chunk.wait_idle) -> None:
-                events.append("wait_idle")
-                await wait()
+    def _supervisor(self) -> str:
+        task = self.svc._supervisor_task
+        return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
 
-            chunk.wait_idle = idle  # type: ignore[method-assign]
-
-    def steps(self) -> "list[str]":
-        return [e.split(" ")[0] for e in self.events]
+    async def settle(self) -> None:
+        await _sequence_done(self.svc)
 
     async def start(self, *, supervise: bool = True) -> "asyncio.Task[None] | None":
         # main()'s last two steps: start_tasks(), then supervise_tasks() as a task, past the supervisor's first pass.
-        await self.svc.start_tasks(self.starters)
+        await self.svc.start_tasks(self.starters, task_names=["t" + str(n) for n in range(len(self.starters))])
         if not supervise:
             return None
         sup = asyncio.create_task(self.svc.supervise_tasks())
@@ -1291,8 +1117,8 @@ class _Rig:
         await asyncio.sleep(0)
         return sup
 
-    async def settle(self) -> None:
-        await _sequence_done(self.svc)
+    def steps(self) -> "list[str]":
+        return [e.split(" ")[0] for e in self.events]
 
     async def stop(self, sup: "asyncio.Task[None] | None") -> None:
         # Ends what the scenario started: supervise_tasks() (the supervisor with it), the reset task, the supervised tasks.
@@ -1300,7 +1126,7 @@ class _Rig:
         await _retire(self.svc._reset_task)
         for task in self.svc._tasks:
             await _retire(task)
-        await _retire(self.svc._shutdown_task)
+        await _retire(_sequence(self.svc))
 
 
 def _drive(rig: _Rig, purpose: str, *, fire: bool = True, snapshot: bool = True) -> _Outcome:
@@ -1322,32 +1148,31 @@ def _drive(rig: _Rig, purpose: str, *, fire: bool = True, snapshot: bool = True)
             await _fire(rig.svc)
         await rig.stop(sup)
 
-    with _FastAsyncSleep():
-        run(scenario())
+    with FastAsyncSleep():
+        try:
+            run(scenario())
+        except machine.SimulatedRebootError:  # the fired reset: rp2's reset() and bootloader() never return
+            if not (fire and out.arms):
+                raise
     return out
 
 
 def _expected_steps(rig: _Rig, purpose: str) -> "list[str]":
-    # Acceptance closes the stores; the supervisor parks; S2 closes and flushes; S3 pauses and waits out each chunk;
+    # Acceptance closes the stores; the supervisor parks; S2 closes and flushes; S3 pauses the storage;
     # S4 stops the tasks; S5 deletes for a config reset; S6's _reboot() and the fired reset each flush once more.
     stores = [s.name for s in rig.stores]
-    chunks = 0 if rig.manager is None else len(rig.manager._chunks)
     steps = [n + ".close" for n in stores] + ["park"] + [n + ".close" for n in stores] + [n + ".flush" for n in stores]
-    steps += (["pause=True"] + ["wait_idle"] * chunks) if rig.manager is not None else []
+    steps += ["pause=True"] if rig.manager is not None else []
     steps += ["t" + str(n) + ".cancelled" for n in range(len(rig.starters))]
     steps += [n + ".delete" for n in stores] if purpose == "_RR_CONFIG_RESET" else []
     return steps + [n + ".flush" for n in stores] + [n + ".close" for n in stores] + [n + ".flush" for n in stores]
 
 
 def _planned_feeds(rig: _Rig, purpose: str) -> int:
-    # S1's two, one per store flush, per chunk quiesced and per task stopped, then S5's own, then S6's one at the arm.
+    # S1's two, one per store flush and per task stopped, then S5's own, then S6's one at the arm.
     chunks = 0 if rig.manager is None else len(rig.manager._chunks)
     s5 = {"_RR_CONFIG_RESET": len(rig.stores), "_RR_FRAM_ERASED": chunks + rig.chip.size // _ERASE_UNIT}.get(purpose, 0)
-    return 2 + len(rig.stores) + chunks + len(rig.starters) + s5 + 1
-
-
-def test_the_erase_unit_mirror_matches_the_source() -> None:
-    assert _src_const("_ERASE_UNIT", _FRAM_SRC) == _ERASE_UNIT
+    return 2 + len(rig.stores) + len(rig.starters) + s5 + 1
 
 
 def _takes_over(purpose: str, counter: str) -> None:
@@ -1359,7 +1184,7 @@ def _takes_over(purpose: str, counter: str) -> None:
     # Closed at the answer, while the supervisor still runs; S2's and the fired reset's closes once it stopped.
     assert closes == ["A.close sup=running", "B.close sup=running"] + ["A.close sup=done", "B.close sup=done"] * 2, closes
     assert out.at_arm == out.before  # no chip write
-    assert out.record == _src_const(purpose)
+    assert out.record == _const(purpose)
     assert out.arms == 1
     assert out.feeds == _planned_feeds(rig, purpose), out.feeds
     assert getattr(machine, counter) == 1
@@ -1370,8 +1195,8 @@ def test_reboot_takes_over_closes_quiesces_stops_then_resets_with_code_3() -> No
     _takes_over("_RR_REBOOT", "reset_count")
 
 
-def test_bootloader_takes_over_closes_quiesces_stops_then_enters_the_bootloader_with_code_4() -> None:
-    _takes_over("_RR_BOOTLOADER", "bootloader_count")
+def test_bootloader_takes_over_closes_quiesces_stops_then_enters_the_bootloader_with_no_code_of_its_own() -> None:
+    _takes_over("_BOOTLOADER", "bootloader_count")
 
 
 def test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_code_7() -> None:
@@ -1380,7 +1205,7 @@ def test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_wi
 
 def test_reset_to_defaults_deletes_every_config_file_whatever_its_state() -> None:
     # A readable file, an unparseable one the boot repaired, and one setup() could not read: all deleted, none read.
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     good = _named_store(path, "GOOD", 7)
     with open(path + "config_BAD.cfg", "w") as f:
         f.write("{not json")
@@ -1396,7 +1221,7 @@ def test_reset_to_defaults_deletes_every_config_file_whatever_its_state() -> Non
     rig = _Rig(stores=[good, bad, unread])
     with WriteCountingOpen(cm) as opens:
         out = _drive(rig, "_RR_CONFIG_RESET")
-    assert out.record == _src_const("_RR_CONFIG_RESET")
+    assert out.record == _const("_RR_CONFIG_RESET")
     assert [_exists(path + "config_" + n + ".cfg") for n in ("GOOD", "BAD", "UNREAD")] == [False, False, False]
     assert rig.svc._config_stores == [good, bad, unread]
     assert (opens.reads, opens.writes) == (0, 0)
@@ -1406,7 +1231,7 @@ def _seeded_erase(chip: "type[_CutChip]") -> None:
     # Valid log chunks, 0xA5 everywhere else, seeded unit by unit (a whole-chip pattern would allocate the chip's size).
     rig = _Rig(chip=chip)
     assert rig.manager is not None
-    run(rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK")))
+    rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK"))
     spans = sorted((addr, addr + c.size + c.crc.length() + 2) for c in rig.manager._chunks for addr in c._block_addr)
     pattern = b"\xa5" * _ERASE_UNIT
     image = [(lo, bytes(rig.chip.memory[lo:hi])) for lo, hi in spans]  # the chunks, taken before the pattern
@@ -1416,7 +1241,7 @@ def _seeded_erase(chip: "type[_CutChip]") -> None:
         rig.chip.memory[lo : lo + len(data)] = data
     rig.chip.watch = _status_addresses(rig.manager)
     out = _drive(rig, "_RR_FRAM_ERASED", snapshot=False)
-    assert out.answer is True and out.record == _src_const("_RR_FRAM_ERASED")
+    assert out.answer is True and out.record == _const("_RR_FRAM_ERASED")
     assert _all_zero(rig.chip.memory)
     assert (rig.chip.units, rig.chip.units_in_order) == (rig.chip.size // _ERASE_UNIT, True)
     assert rig.chip.status_after_unit == 0  # pass 1 (every block marked blank) ends before any unit write
@@ -1432,10 +1257,10 @@ def test_erase_fram_zeroes_every_byte_and_reboots_with_code_8() -> None:
 
 def test_an_erased_chip_boots_like_a_new_one() -> None:
     rig = _Rig()
-    run(rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK")))
+    rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK"))
     _drive(rig, "_RR_FRAM_ERASED")
     manager = _same_chip_manager(rig.chip)
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=_tmp_cfg_dir())
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=_scratch.dir())
     run(svc.setup())
     assert svc.pr.initialized is True
     assert run(svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0
@@ -1452,21 +1277,21 @@ def test_an_all_zero_block_never_validates_even_with_an_idle_status() -> None:
             end = addr + chunk.size + chunk.crc.length()
             chip.memory[addr:end] = bytearray(end - addr)
             chip.memory[end : end + 2] = b"\x01\x01"  # both status bytes idle over all-zero data and CRC
-        assert run(chunk.read()) is None, crc
+        assert chunk.read() is None, crc
 
 
-def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[Any, Any, None]] | None" = None, failing_create: bool = False) -> None:
+def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[object, object, None]] | None" = None, failing_create: bool = False) -> None:
     # The command answers False and changes nothing; the supervisor keeps feeding over its next passes.
     async def scenario() -> None:
         sup = await rig.start()
         if before is not None:
             await before()
-        memory, arms, starved = bytes(rig.chip.memory), len(rig.svc._reset_timer.arms), rig.svc._force_watchdog_starve
+        memory, arms, starved = bytes(rig.chip.memory), len(rig.svc._reset_timer.arms), (rig.svc._phase == _PHASE_STARVED)
         record = machine.mem_backup(0)[1]
         paused = rig.manager is not None and rig.manager.get_pause()
         real_create_task = asyncio.create_task
 
-        def failing(coro: "Coroutine[Any, Any, None]") -> None:
+        def failing(coro: "Coroutine[object, object, None]") -> None:
             coro.close()
             raise MemoryError("injected: no room for the shutdown task")
 
@@ -1478,20 +1303,20 @@ def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[Any, An
             asyncio.create_task = real_create_task
         assert answer is False, purpose
         svc = rig.svc
-        assert (svc._shutdown, svc._shutdown_task, svc._feed_owned) == (0, None, False), purpose
+        assert (svc._shutdown, _sequence(svc), svc._phase == _PHASE_OWNED) == (0, None, False), purpose
         assert not any(".close" in e for e in rig.events), rig.events
         assert rig.manager is None or rig.manager.get_pause() is paused
         assert rig.chip.memory == memory
         assert len(svc._reset_timer.arms) == arms
         assert machine.mem_backup(0)[1] == record, purpose  # a refusal records nothing
         fed = rig.wdt.feed_count
-        await _real_time(20)
+        await _real_time(_QUIET_WINDOW_MS)
         assert svc._supervisor_parked.is_set() is False and sup is not None and not sup.done()
         if not starved:
             assert rig.wdt.feed_count > fed, purpose  # the supervisor still feeds
         await rig.stop(sup)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
@@ -1505,9 +1330,10 @@ def test_every_refusal_answers_false_and_changes_nothing() -> None:
         rig = _Rig()
 
         async def armed(svc: SystemService = rig.svc) -> None:
-            await svc._reboot(_src_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
+            svc._phase = _PHASE_DUE  # as both of _reboot()'s callers decide first
+            await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
-        _refused(rig, purpose, before=armed)  # a reset already armed
+        _refused(rig, purpose, before=armed)  # a reset already due and armed
 
 
 def test_the_same_command_again_answers_true_and_any_other_answers_false() -> None:
@@ -1519,24 +1345,25 @@ def test_the_same_command_again_answers_true_and_any_other_answers_false() -> No
         async def scenario(first: str = first, rig: _Rig = rig, manager: FRAMManager = manager) -> None:
             sup = await rig.start()
             assert await _word(rig.svc, first)() is True
-            task = rig.svc._shutdown_task
+            task = _sequence(rig.svc)
             for other in _PURPOSES:
                 assert await _word(rig.svc, other)() is (other == first), (first, other)
-            assert rig.svc._shutdown_task is task and rig.svc._shutdown == _src_const(first)
+            assert _sequence(rig.svc) is task and rig.svc._shutdown == _const(first)
             assert rig.svc.pause_permanent_storage(300) is False
             assert (manager.get_pause(), rig.svc._unpause_at) == (False, None)
             await rig.settle()
+            assert len(_SEQUENCES[id(rig.svc)]) == 1  # the repeats started none
             assert len(rig.svc._reset_timer.arms) == 1
-            assert machine.mem_backup(0)[1] == _src_const(first)
+            assert machine.mem_backup(0)[1] == _const(first)
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
 
 
 def test_two_commands_at_once_start_one_sequence_and_one_reset() -> None:
     # Both orders of two different words, the same word twice, and a command, a reboot and a mempause together.
-    cases = (("_RR_REBOOT", "_RR_BOOTLOADER"), ("_RR_BOOTLOADER", "_RR_REBOOT"), ("_RR_FRAM_ERASED", "_RR_CONFIG_RESET"), ("_RR_CONFIG_RESET", "_RR_CONFIG_RESET"))
+    cases = (("_RR_REBOOT", "_BOOTLOADER"), ("_BOOTLOADER", "_RR_REBOOT"), ("_RR_FRAM_ERASED", "_RR_CONFIG_RESET"), ("_RR_CONFIG_RESET", "_RR_CONFIG_RESET"))
     for a, b in cases:
         rig = _Rig()
 
@@ -1549,49 +1376,106 @@ def test_two_commands_at_once_start_one_sequence_and_one_reset() -> None:
             answers = await asyncio.gather(_word(rig.svc, a)(), _word(rig.svc, b)(), mempause())
             assert list(answers) == [True, a == b, False], (a, b, answers)
             await rig.settle()
-            assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _src_const(a)
+            assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const(a)
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
+
+
+def _yielding(rig: _Rig) -> list[int]:
+    assert rig.manager is not None
+    sequences: list[int] = []
+    start, ready = rig.svc._shutdown_sequence, rig.manager.erase_ready
+
+    def counted(purpose: int) -> "Coroutine[object, object, None]":
+        sequences.append(purpose)
+        return start(purpose)
+
+    async def yielding_ready() -> bool:
+        await asyncio.sleep(0)  # a preflight that suspends: the gate never relies on erase_ready() running through
+        return await ready()
+
+    rig.svc._shutdown_sequence = counted  # type: ignore[method-assign]
+    rig.manager.erase_ready = yielding_ready  # type: ignore[method-assign]
+    return sequences
+
+
+def test_a_command_in_its_preflight_refuses_a_mempause_and_another_word_and_the_same_word_waits() -> None:
+    rig = _Rig(tasks=0)
+    sequences = _yielding(rig)
+
+    async def scenario() -> None:
+        sup = await rig.start()
+
+        async def mempause() -> bool:
+            return rig.svc.pause_permanent_storage(300)
+
+        answers = await asyncio.gather(rig.svc.erase_fram(), mempause(), rig.svc.reboot_system(), rig.svc.erase_fram())
+        assert list(answers) == [True, False, False, True], answers
+        assert sequences == [_const("_RR_FRAM_ERASED")], sequences
+        await rig.settle()
+        assert machine.mem_backup(0)[1] == _const("_RR_FRAM_ERASED")
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+
+
+def test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_outcome() -> None:
+    rig = _Rig(tasks=0, protect=True)
+    sequences = _yielding(rig)
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        answers = await asyncio.gather(rig.svc.erase_fram(), rig.svc.erase_fram())
+        assert list(answers) == [False, False], answers
+        assert (sequences, rig.svc._shutdown, _sequence(rig.svc)) == ([], 0, None)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
 
 
 def test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
         rig = _Rig(stores=0)
-        rig.stores += [_Store("A", rig.events), _Store("B", rig.events, raise_on_flush=True)]
+        doubles = [_Store("A", rig.events), _Store("B", rig.events, raise_on_flush=True)]
+        rig.stores += doubles
         out = _drive(rig, purpose)
         assert out.record == _code_after_flush_shortfall(purpose), purpose
-        assert [s.flushes >= 2 for s in rig.stores] == [True, True]  # S2's and the arm's pass reach both
-        # S2's failure lands in FRAM; the later passes run with FRAM paused, so theirs stay in RAM behind a LOG_RAM_ONLY.
+        assert [s.flushes >= 2 for s in doubles] == [True, True]  # S2's and the arm's pass reach both
+        # S2's failure lands in FRAM; the later passes run with FRAM paused, so theirs stay in RAM, a repeat in its one slot.
         assert _rings_after(rig.chip)[0][0] == ([] if purpose == "_RR_FRAM_ERASED" else [code("E", "CALLBACK")]), purpose
-        assert _persisted(rig.svc) == [code("E", "CALLBACK"), code("E", "LOG_RAM_ONLY"), code("E", "CALLBACK")], _persisted(rig.svc)
+        assert _persisted(rig.svc) == [code("E", "CALLBACK")], _persisted(rig.svc)
 
 
 def test_a_store_running_on_config_the_flash_lacks_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
         rig = _Rig()
-        rig.stores[1].unpersisted = True  # its latest file write failed: a reset loses what it runs on
+        store = rig.stores[1]
+        assert isinstance(store, _Store)
+        store.unpersisted = True  # its latest file write failed: a reset loses what it runs on
         assert _drive(rig, purpose).record == _code_after_flush_shortfall(purpose), purpose
 
 
 def test_a_staged_write_the_shutdown_cannot_put_on_flash_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
-        path = _tmp_cfg_dir()
+        path = _scratch.dir()
         store = cm.ConfigManager(path + "config_LOST.cfg", _VAL_COUNT, "LOST")
         run(store.setup())
         rig = _Rig(stores=[store])
 
         async def scenario(rig: _Rig = rig, store: cm.ConfigManager = store, purpose: str = purpose) -> None:
             sup = await rig.start()
-            assert (await store.write_config({"Count": 6}, defer=True))[0] is True  # staged; its flush waits for S2
+            assert (await store.write_config({"Count": 6}))[0] is True  # staged; its flush runs under the failing open
             with WriteCountingOpen(cm, fail_writes=True):
                 assert await _word(rig.svc, purpose)() is True
                 await rig.settle()
-            assert store.unpersisted and rig.svc._reset_armed, purpose
+            assert store.unpersisted and (rig.svc._phase >= _PHASE_ARMED), purpose
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
         assert machine.mem_backup(0)[1] == _code_after_flush_shortfall(purpose), purpose
         assert _exists(path + "config_LOST.cfg") == (purpose != "_RR_CONFIG_RESET"), purpose
@@ -1605,6 +1489,9 @@ class _RemoveRefusingOs:
         self._cut_after = cut_after
         self.removed = 0
 
+    def __getattr__(self, name: str) -> object:
+        return getattr(os, name)
+
     def remove(self, path: str) -> None:
         if path == self._refused:
             raise OSError(5, "EIO")
@@ -1613,12 +1500,9 @@ class _RemoveRefusingOs:
         os.remove(path)
         self.removed += 1
 
-    def __getattr__(self, name: str) -> object:
-        return getattr(os, name)
-
 
 def test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     keep, gone = _named_store(path, "KEEP", 4), _named_store(path, "GONE", 6)
     rig = _Rig(stores=[keep, gone])
     cm.os = _RemoveRefusingOs(path + "config_KEEP.cfg")  # type: ignore[assignment]
@@ -1626,16 +1510,40 @@ def test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9() -> None:
         out = _drive(rig, "_RR_CONFIG_RESET")
     finally:
         cm.os = os
-    assert out.record == _src_const("_RR_COMMAND_INCOMPLETE")
+    assert out.record == _const("_RR_COMMAND_INCOMPLETE")
     assert (_exists(path + "config_KEEP.cfg"), _exists(path + "config_GONE.cfg")) == (True, False)
     assert _persisted(keep.pr) == []  # the failed delete prints one line and persists nothing
+
+
+class _DeleteRaisingStore(_Store):
+    # Its delete raises: any unexpected fault in a config reset's own step, past the quiesce that paused FRAM. The
+    # real delete_file() turns an OSError into False (the reset then ends in code 9): a fault, not a delete error.
+    async def delete_file(self) -> bool:
+        await _Store.delete_file(self)
+        raise RuntimeError("injected delete fault")
+
+
+def test_a_fault_in_a_shutdown_step_is_logged_and_the_watchdog_still_resets() -> None:
+    rig = _Rig(stores=0, level=_ERR)
+    rig.stores += [_Store("A", rig.events), _DeleteRaisingStore("B", rig.events)]
+    with record_prints(rig.svc.pr) as recorder:
+        out = _drive(rig, "_RR_CONFIG_RESET")
+    assert out.answer is True
+    assert _persisted(rig.svc) == [code("E", "UNEXPECTED")], _persisted(rig.svc)
+    assert "injected delete fault" in recorder.text(), recorder.text()
+    assert code("E", "UNEXPECTED") not in _rings_after(rig.chip)[0][0]  # FRAM paused: the console and RAM log only
+    # No reset armed and nothing feeds, so the watchdog resets; the record still reads the incomplete command.
+    assert (out.arms, machine.reset_count, out.record) == (0, 0, _const("_RR_COMMAND_INCOMPLETE"))
+    fed = rig.wdt.feed_count
+    rig.svc.feed_watchdog()
+    assert rig.wdt.feed_count == fed
 
 
 def test_an_erase_whose_writes_stop_ends_in_code_9_with_every_block_marked_blank() -> None:
     rig = _Rig()
     rig.chip.drop_wren_at_unit = True  # from the first erase-unit write on, no write is enabled any more
     out = _drive(rig, "_RR_FRAM_ERASED")
-    assert out.record == _src_const("_RR_COMMAND_INCOMPLETE")
+    assert out.record == _const("_RR_COMMAND_INCOMPLETE")
     assert rig.manager is not None and set(_status_bytes(rig.manager, rig.chip.memory)) == {0}
 
 
@@ -1643,12 +1551,12 @@ def test_a_chunk_that_cannot_be_blanked_stops_the_erase_before_any_overwrite() -
     rig = _Rig()
     assert rig.manager is not None
 
-    async def refuse() -> bool:
+    def refuse() -> bool:
         return False
 
     rig.manager._chunks[0].invalidate = refuse  # type: ignore[method-assign]
     out = _drive(rig, "_RR_FRAM_ERASED")
-    assert out.record == _src_const("_RR_COMMAND_INCOMPLETE")
+    assert out.record == _const("_RR_COMMAND_INCOMPLETE")
     assert rig.chip.units == 0
 
 
@@ -1667,7 +1575,7 @@ def test_an_erase_without_its_unit_buffer_blanks_the_chunks_and_ends_in_code_9()
         out = _drive(rig, "_RR_FRAM_ERASED")
     finally:
         del asy_fram_manager.bytearray  # type: ignore[attr-defined]
-    assert out.record == _src_const("_RR_COMMAND_INCOMPLETE")
+    assert out.record == _const("_RR_COMMAND_INCOMPLETE")
     assert set(_status_bytes(rig.manager, rig.chip.memory)) == {0}
     assert rig.chip.units == 0
 
@@ -1678,25 +1586,25 @@ def _logged_chip() -> "tuple[_CutChip, list[list[int]]]":
     assert rig.manager is not None
     other = PrintLogHistoryStore(rig.manager, 4, None, name="OTHER")
     run(other.setup())
-    run(rig.svc.pr.err_s("first", errno=code("E", "CALLBACK")))
-    run(rig.svc.pr.wrn_s("second", wrnno=code("W", "CONFIG_LOST")))
-    run(other.err_s("third", errno=code("E", "TIMER")))
+    rig.svc.pr.err_s("first", errno=code("E", "CALLBACK"))
+    rig.svc.pr.wrn_s("second", wrnno=code("W", "STORED_DEFAULT"))
+    other.err_s("third", errno=code("E", "TIMER"))
     return rig.chip, [_persisted(rig.svc), _persisted(other)]
 
 
 def _rings_after(chip: _CutChip, *, write: int = 0) -> "tuple[list[list[int]], list[int]]":
     # A reboot over the cut array: a fresh manager and the same loggers in allocation order, each reading its ring
-    # (only the loggers: a full setup() would add its own CONFIG_LOST entry); `write` then logs that code to SYSTEM.
+    # (only the loggers, so no store's setup() adds an entry); `write` then logs that code to SYSTEM.
     manager, _fake = make_fram_manager()
     manager.fram._spidev.spi._spi = chip
     run(manager.setup())
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None))
     other = PrintLogHistoryStore(manager, 4, None, name="OTHER")
     run(svc.pr.setup())
     run(other.setup())
     rings, logged = [_persisted(svc), _persisted(other)], _persisted(manager.pr)
     if write:
-        run(svc.pr.err_s("the first entry after the reboot", errno=write))
+        svc.pr.err_s("the first entry after the reboot", errno=write)
     return rings, logged
 
 
@@ -1705,13 +1613,13 @@ def _cut_erase(chip: _CutChip, cut: int) -> bool:
     manager, _fake = make_fram_manager()
     manager.fram._spidev.spi._spi = chip
     run(manager.setup())
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None))
     PrintLogHistoryStore(manager, 4, None, name="OTHER")  # replays the allocation, so the erase sees both rings
     run(svc.pr.setup())
     chip.cut_after_bytes = cut
 
     async def erase() -> None:
-        await manager.quiesce(lambda: None)
+        manager.set_pause(value=True)
         await manager.erase_chip(lambda: None)
 
     try:
@@ -1724,13 +1632,68 @@ def _cut_erase(chip: _CutChip, cut: int) -> bool:
     return False
 
 
+def _bare_chip() -> FakeMB85RS64V:
+    return FakeMB85RS64V(0, sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
+
+
+def _raw_write(chip: FakeMB85RS64V, addr: int, data: bytes, *, enable: bool = True) -> None:
+    # One WRITE as FRAM_SPI clocks it: WREN (unless `enable` is False), the opcode with its address, then the data.
+    if enable:
+        chip.write(bytes([_OPCODE_WREN]))
+    chip.write(bytes([_OPCODE_WRITE, addr >> 8, addr & 0xFF]))
+    chip.write(data)
+
+
+def test_the_chip_fakes_power_cut_lands_its_bytes_and_then_none() -> None:
+    chip = _bare_chip()
+    chip.cut_after_bytes = 5
+    _raw_write(chip, 0x10, b"\x11" * 3)
+    _raw_write(chip, 0x20, b"\x22" * 4)  # the cut falls inside this write: two of its bytes land
+    _raw_write(chip, 0x30, b"\x33" * 2)  # the power is gone: nothing lands
+    assert bytes(chip.memory[0x10:0x34]) == b"\x11" * 3 + bytes(13) + b"\x22" * 2 + bytes(18), bytes(chip.memory[0x10:0x34])
+    assert (chip.cut_after_bytes, chip.write_transactions) == (0, 3)
+
+
+def test_the_chip_fake_counts_only_the_data_bytes_that_land() -> None:
+    chip = _bare_chip()
+    _raw_write(chip, 0x10, b"\x11" * 3)
+    _raw_write(chip, 0x20, b"\x22" * 4, enable=False)  # no WEL: the WRITE is not performed (p.7)
+    chip.corrupt_next_write_data = b"\x55"
+    _raw_write(chip, 0x40, b"\x44" * 2)  # what lands is the disturbed payload
+    assert (chip.bytes_written, chip.write_transactions) == (4, 3)
+
+
+def test_a_chip_read_fault_names_the_command_it_hits() -> None:
+    chip = _bare_chip()
+    buf = bytearray(64)  # at or above the DMA threshold, the only reads that can raise
+    chip.inject_fault("readinto", OSError, errno.EIO, "planted", match=_OPCODE_RDSR)
+    chip.write(bytes([_OPCODE_READ, 0, 0]))
+    chip.readinto(buf)  # a READ, not the RDSR the fault names
+    assert chip.pending("readinto") == 1
+    chip.inject_fault("readinto", OSError, errno.EIO, "planted", match=_OPCODE_READ)
+    chip.write(bytes([_OPCODE_READ, 0, 0]))
+    raised = 0
+    try:
+        chip.readinto(buf)
+    except OSError as e:
+        raised = e.args[0]
+    assert (raised, chip.pending("readinto")) == (errno.EIO, 1)
+
+
+def test_the_chip_fake_declares_every_test_only_name_it_adds() -> None:
+    # Every public name the chip adds to machine.SPI's, on the instance or the class, is listed in its TEST_API.
+    own = {name for name in list(_bare_chip().__dict__) + list(FakeMB85RS64V.__dict__) if not name.startswith("_")}
+    assert "TEST_API" in FakeMB85RS64V.__dict__
+    assert sorted(own - set(machine.SPI.TEST_API) - {"TEST_API", "readinto", "write"}) == sorted(FakeMB85RS64V.TEST_API)
+
+
 def test_a_power_cut_anywhere_in_the_erase_leaves_each_ring_whole_or_blank() -> None:
     chip, rings = _logged_chip()
     assert all(rings), rings
     blank: list[int] = []
     manager, _fake = make_fram_manager()
     manager.fram._spidev.spi._spi = chip
-    make_service(storage=manager, log=LogConfig(manager, 10, None))  # the layout: SYSTEM's two chunks, then OTHER's
+    _make_service(storage=manager, log=LogConfig(manager, 10, None))  # the layout: SYSTEM's two chunks, then OTHER's
     PrintLogHistoryStore(manager, 4, None, name="OTHER")
     status = len(_status_bytes(manager, bytes(chip.memory)))
     blocks = [(addr, addr + c.size + c.crc.length() + 2) for c in manager._chunks for addr in c._block_addr]
@@ -1750,7 +1713,7 @@ def test_a_power_cut_anywhere_in_the_erase_leaves_each_ring_whole_or_blank() -> 
 def test_a_power_cut_while_config_files_are_deleted_leaves_a_bootable_state() -> None:
     names = ("ONE", "TWO", "THREE")
     for k in range(len(names) + 1):
-        path = _tmp_cfg_dir()
+        path = _scratch.dir()
         stores = [_named_store(path, n, 2 + i) for i, n in enumerate(names)]
         rig = _Rig(stores=stores)
         cm.os = _RemoveRefusingOs(cut_after=k)  # type: ignore[assignment]
@@ -1777,16 +1740,17 @@ def test_a_command_before_the_supervisor_runs_waits_for_its_first_pass() -> None
         await rig.start(supervise=False)
         fed = rig.wdt.feed_count
         assert await rig.svc.reboot_system() is True
-        await _real_time(20)
-        assert rig.svc._shutdown_task is not None and not rig.svc._shutdown_task.done()
+        await _real_time(_QUIET_WINDOW_MS)
+        sequence = _sequence(rig.svc)
+        assert sequence is not None and not sequence.done()
         rig.svc.feed_watchdog()
         assert rig.wdt.feed_count == fed + 1  # S1's first own feed alone
         sup = asyncio.create_task(rig.svc.supervise_tasks())
         await rig.settle()
-        assert machine.mem_backup(0)[1] == _src_const("_RR_REBOOT")
+        assert machine.mem_backup(0)[1] == _const("_RR_REBOOT")
         await rig.stop(sup)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
@@ -1799,78 +1763,33 @@ def test_a_supervisor_that_already_ended_lets_the_sequence_proceed_without_a_par
         await _retire(rig.svc._supervisor_task)
         assert await rig.svc.reboot_system() is True
         await rig.settle()
-        assert rig.svc._reset_armed and machine.mem_backup(0)[1] == _src_const("_RR_REBOOT")
+        assert (rig.svc._phase >= _PHASE_ARMED) and machine.mem_backup(0)[1] == _const("_RR_REBOOT")
         assert "park" not in rig.steps()
         await rig.stop(sup)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
 def test_a_write_staged_before_the_command_is_on_flash_at_the_arm_and_a_later_one_is_refused() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _real_store(path)
     rig = _Rig(stores=[store])
+    at_arm = [-1]
 
     async def scenario() -> None:
-        sup = await rig.start()
-        assert await store.write_config({"Count": 7}, defer=True) == (True, {"Count": "Valid"})  # staged, flush waits
+        await rig.start()
+        assert await store.write_config({"Count": 7}) == (True, {"Count": "Valid"})  # staged, its flush scheduled
         assert await rig.svc.reboot_system() is True
         assert await store.write_config({"Count": 8}) == (False, {})
         await rig.settle()
         assert _file_count(path) == 7
-        with WriteCountingOpen(cm) as opens:
-            await _fire(rig.svc)
-        assert (opens.writes, store._pending_flush) == (0, None)  # the final pass opens nothing and starts no flush
-        await rig.stop(sup)
+        at_arm[0] = opens.writes
+        await _fire(rig.svc)
 
-    with _FastAsyncSleep():
-        run(scenario())
-
-
-def test_a_fram_write_in_flight_completes_both_blocks_and_a_later_one_is_refused() -> None:
-    for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
-        rig = _Rig()
-        assert rig.manager is not None
-        log = rig.svc.pr
-        assert isinstance(log, PrintLogHistoryStore)
-        chunk = log.fram
-        assert isinstance(chunk, FRAMChunk)
-        gate, between = asyncio.Event(), asyncio.Event()
-        real_write = chunk._write_chunk
-        calls = [0]
-
-        async def gated(
-            buf: bytearray, addr: int, real: "Callable[[bytearray, int], Coroutine[Any, Any, bool]]" = real_write, gate: asyncio.Event = gate,
-            calls: "list[int]" = calls, between: asyncio.Event = between,
-        ) -> bool:
-            calls[0] += 1
-            if calls[0] == 2:
-                between.set()
-                await gate.wait()  # between block 0 and block 1
-            return await real(buf, addr)
-
-        chunk._write_chunk = gated  # type: ignore[method-assign]
-
-        async def scenario(purpose: str = purpose, rig: _Rig = rig, gate: asyncio.Event = gate, between: asyncio.Event = between) -> None:
-            sup = await rig.start()
-            writer = asyncio.create_task(rig.svc.pr.err_s("in flight", errno=code("E", "CALLBACK")))
-            await between.wait()
-            assert await _word(rig.svc, purpose)() is True
-            await _real_time(50)
-            assert not rig.svc._shutdown_task.done()  # type: ignore[union-attr]  # S3 waits out the write
-            gate.set()
-            await rig.settle()
-            await _retire(writer)
-            image = bytes(rig.chip.memory)
-            await rig.svc.pr.err_s("after the quiesce", errno=code("E", "TIMER"))
-            assert rig.chip.memory == image  # refused while paused: the chip is unchanged
-            await rig.stop(sup)
-
-        with _FastAsyncSleep():
-            run(scenario())
-        after, _logged = _rings_after(rig.chip)
-        assert after[0] == ([code("E", "CALLBACK")] if purpose == "_RR_REBOOT" else []), (purpose, after)
+    with FastAsyncSleep(), WriteCountingOpen(cm) as opens:
+        _run_into_reset(scenario())
+    assert (opens.writes, store._pending_flush) == (at_arm[0], None)  # the final pass opens nothing and starts no flush
 
 
 def test_a_task_cancelled_inside_a_bus_session_frees_the_bus() -> None:
@@ -1900,7 +1819,7 @@ def test_a_task_cancelled_inside_a_bus_session_frees_the_bus() -> None:
             pass
         await rig.stop(sup)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
@@ -1908,7 +1827,7 @@ def test_an_erase_under_an_active_mempause_completes() -> None:
     rig = _Rig()
     assert rig.manager is not None and rig.svc.pause_permanent_storage(300) is True
     out = _drive(rig, "_RR_FRAM_ERASED")
-    assert out.record == _src_const("_RR_FRAM_ERASED") and _all_zero(rig.chip.memory)
+    assert out.record == _const("_RR_FRAM_ERASED") and _all_zero(rig.chip.memory)
 
 
 def _dying_until(calls: "list[int]", at: int, reached: asyncio.Event) -> "Callable[[], asyncio.Task[None]]":
@@ -1935,7 +1854,7 @@ def test_tasks_dying_while_a_command_runs_never_escalate() -> None:
         real_log = rig.svc._log_dead_task
 
         async def held_log(
-            task: "asyncio.Task[Any]", n: int, real: "Callable[[asyncio.Task[Any], int], Coroutine[Any, Any, None]]" = real_log, release: asyncio.Event = release,
+            task: "asyncio.Task[None]", n: int, real: "Callable[[asyncio.Task[None], int], Coroutine[object, object, None]]" = real_log, release: asyncio.Event = release,
             entered: asyncio.Event = entered,
         ) -> None:
             await real(task, n)
@@ -1958,83 +1877,193 @@ def test_tasks_dying_while_a_command_runs_never_escalate() -> None:
             assert calls[0] == started  # no restart once the command owns the reset
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
-        assert rig.svc._force_watchdog_starve is True and len(rig.svc._reset_timer.arms) == 1
-        assert machine.mem_backup(0)[1] == _src_const("_RR_REBOOT")
+        assert rig.svc._phase == _PHASE_STARVED and len(rig.svc._reset_timer.arms) == 1
+        assert machine.mem_backup(0)[1] == _const("_RR_REBOOT")
         assert code("E", "TASK_BUDGET_REBOOT") not in _persisted(rig.svc)
 
 
-def test_an_escalation_armed_during_the_erase_preflight_refuses_the_command() -> None:
-    rig = _Rig(tasks=0)
-    assert rig.manager is not None
-    calls = [0]
-    rig.starters = [_dead_starter(calls)]
-    release = asyncio.Event()
-    real_ready = rig.manager.erase_ready
-
-    async def slow_ready() -> bool:
-        await release.wait()
-        return await real_ready()
-
-    rig.manager.erase_ready = slow_ready  # type: ignore[method-assign]
-
-    async def scenario() -> None:
-        sup = await rig.start()
-        command = asyncio.create_task(rig.svc.erase_fram())
-        for _ in range(_RUN_BOUND_S * 100):
-            if rig.svc._reset_armed:
-                break
-            await _real_time(10)
-        assert rig.svc._reset_armed, "the supervisor never escalated"
-        await _real_time(10)  # the escalation's arm paused storage
-        memory = bytes(rig.chip.memory)
-        release.set()
-        assert await command is False
-        assert (rig.svc._shutdown, rig.svc._feed_owned, rig.svc._shutdown_task) == (0, False, None)
-        assert rig.chip.memory == memory
-        await rig.stop(sup)
-
-    with _FastAsyncSleep():
-        run(scenario())
-    assert machine.mem_backup(0)[1] == _src_const("_RR_TASK_BUDGET")
+def test_the_task_budget_steps_once_past_its_max_and_stops() -> None:
+    # Checked before the step: the charge that first passes _TASK_FAIL_MAX lands, every later one leaves it there.
+    top_max, step = _const("_TASK_FAIL_MAX"), _const("_TASK_FAIL_INCREMENT")
+    svc = _make_service()
+    budgets = [0]
+    for _ in range(top_max // step + 4):
+        budgets.append(svc._charge_task_budget(budgets[-1]))
+    top = (top_max // step + 1) * step
+    assert budgets[: top_max // step + 2] == [n * step for n in range(top_max // step + 2)]
+    assert budgets[-3:] == [top, top, top] and top_max < top <= top_max + step
 
 
-def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> None:
+def _gate_entry_write(rig: _Rig, entry: str) -> "tuple[asyncio.Event, asyncio.Event]":
+    # The escalation held right after its entry landed, before its reset arms, until release is set; reached marks the hold.
+    release, reached = asyncio.Event(), asyncio.Event()
+    real_err_s, real_reboot = rig.svc.pr.err_s, rig.svc._reboot
+    logged = [False]
+
+    def noting_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        real(*args, errno=errno, sep=sep, end=end)
+        logged[0] = logged[0] or errno == code("E", entry)
+
+    async def gated_reboot(code: int, message: str, action: "Callable[[], None]", *, fed: bool = False) -> None:
+        if logged[0]:
+            reached.set()
+            await release.wait()
+        await real_reboot(code, message, action, fed=fed)
+
+    rig.svc.pr.err_s = noting_err_s  # type: ignore[method-assign]
+    rig.svc._reboot = gated_reboot  # type: ignore[method-assign]
+    return release, reached
+
+
+async def _until_armed(svc: SystemService) -> None:
+    while svc._phase < _PHASE_ARMED:
+        await _real_time(_POLL_MS)
+
+
+async def _until_reached(reached: asyncio.Event) -> None:
+    while not reached.is_set():
+        await _real_time(_POLL_MS)
+
+
+def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalation_resets() -> None:
+    # Once the escalation commits to the reset, the gate refuses every command: the record keeps code 5, nothing is
+    # erased, and the escalation's own reset arms after its entry.
     for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
         rig = _Rig(tasks=0)
         calls = [0]
         rig.starters = [_dead_starter(calls)]
-        release, reached = asyncio.Event(), asyncio.Event()
-        real_err_s = rig.svc.pr.err_s
+        release, reached = _gate_entry_write(rig, "TASK_BUDGET_REBOOT")
+        answers: list[object] = []
 
-        async def gated_err_s(
-            *args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "Callable[..., Coroutine[Any, Any, None]]" = real_err_s,
-            release: asyncio.Event = release, reached: asyncio.Event = reached,
-        ) -> None:
-            if errno == code("E", "TASK_BUDGET_REBOOT"):
-                reached.set()
-                await release.wait()
-            await real(*args, errno=errno, sep=sep, end=end)
-
-        rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
-
-        async def scenario(purpose: str = purpose, rig: _Rig = rig, release: asyncio.Event = release, reached: asyncio.Event = reached) -> None:
+        async def scenario(purpose: str = purpose, rig: _Rig = rig, release: asyncio.Event = release, reached: asyncio.Event = reached, answers: "list[object]" = answers) -> None:
             sup = await rig.start()
-            await reached.wait()
-            fed = rig.wdt.feed_count
-            assert await _word(rig.svc, purpose)() is True
+            await _until_reached(reached)
+            answers.extend((await _word(rig.svc, purpose)(), machine.mem_backup(0)[1]))
             release.set()
-            await rig.settle()
-            assert rig.wdt.feed_count > fed  # the sequence fed through its steps
+            await _until_armed(rig.svc)
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
-        assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _src_const(purpose)
-        assert rig.svc._force_watchdog_starve is True  # set by the arm alone (Part C.9), not by the escalation's starve
-        if purpose == "_RR_FRAM_ERASED":
-            assert _all_zero(rig.chip.memory)
+        assert answers == [False, _const("_RR_TASK_BUDGET")], (purpose, answers)
+        assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
+        assert rig.svc._phase == _PHASE_STARVED
+        assert not _all_zero(rig.chip.memory), purpose  # a refused erase blanks nothing
+
+
+def test_a_command_during_an_entry_write_that_never_ends_leaves_the_escalations_code_to_the_watchdog() -> None:
+    # The escalation stops after its entry and never arms: the command is refused, nothing feeds after the hold, and the
+    # record still reads 5 when the watchdog resets.
+    rig = _Rig(tasks=0)
+    calls = [0]
+    rig.starters = [_dead_starter(calls)]
+    _release, reached = _gate_entry_write(rig, "TASK_BUDGET_REBOOT")
+    seen: list[object] = []
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        await _until_reached(reached)
+        fed = rig.wdt.feed_count
+        seen.extend((await rig.svc.reboot_system(), machine.mem_backup(0)[1]))
+        await _yields(20)
+        seen.extend((rig.wdt.feed_count - fed, (rig.svc._phase >= _PHASE_ARMED), machine.mem_backup(0)[1]))
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert seen == [False, _const("_RR_TASK_BUDGET"), 0, False, _const("_RR_TASK_BUDGET")], seen
+
+
+def test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs() -> None:
+    # False before the gate passes, after a refused command too; True at the answer, before the sequence's first feed.
+    rig = _Rig(stores=0)
+    seen: list[object] = []
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        seen.append(rig.svc.is_reset_decided())
+        assert await rig.svc.reset_to_defaults() is False  # no config store
+        seen.append(rig.svc.is_reset_decided())
+        fed = rig.wdt.feed_count
+        assert await rig.svc.reboot_system() is True
+        seen.extend((rig.svc.is_reset_decided(), rig.wdt.feed_count - fed))
+        await rig.settle()
+        seen.append(rig.svc.is_reset_decided())
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert seen == [False, False, True, 0, True], seen
+
+
+def test_the_escalation_decides_and_records_the_reset_before_its_entry_write() -> None:
+    # Every task end charged before the escalation reads False; its own entry write starts True, and it stays True. The
+    # record names the reset before that write, so a write that never ends leaves the watchdog's reset reading 5.
+    rig = _Rig(tasks=0)
+    rig.starters = [_dead_starter([0])]
+    seen: list[tuple[int, bool]] = []
+    records: list[int] = []
+    real_err_s = rig.svc.pr.err_s
+
+    def recording_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        seen.append((errno, rig.svc.is_reset_decided()))
+        records.append(machine.mem_backup(0)[1])
+        real(*args, errno=errno, sep=sep, end=end)
+
+    rig.svc.pr.err_s = recording_err_s  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        while not _armed(rig.svc):
+            await _real_time(_POLL_MS)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    codes = [errno for errno, _ in seen]
+    assert code("E", "TASK_BUDGET_REBOOT") in codes, seen
+    at = codes.index(code("E", "TASK_BUDGET_REBOOT"))
+    assert at > 0 and not any(decided for _, decided in seen[:at]), seen
+    assert all(decided for _, decided in seen[at:]), seen
+    assert records[at] == _const("_RR_TASK_BUDGET"), records
+
+
+def test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on() -> None:
+    # A ResetErrors whose SYSTEM reset runs after the escalation's entry write answers False and clears nothing, so the
+    # entry that explains the reboot survives; before the decision the same reset clears the log.
+    rig = _Rig(tasks=0)
+    rig.starters = [_dead_starter([0])]
+    rig.svc.pr.err_s("seeded", errno=code("E", "CALLBACK"))
+    assert run(rig.svc.reset_error_counter()) is True
+    assert run(rig.svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0
+    answers: list[bool] = []
+    real_err_s = rig.svc.pr.err_s
+
+    spawned: list[asyncio.Task[None]] = []
+
+    async def reset() -> None:
+        answers.append(await rig.svc.reset_error_counter())
+
+    def err_s_then_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        real(*args, errno=errno, sep=sep, end=end)
+        if errno == code("E", "TASK_BUDGET_REBOOT"):
+            spawned.append(asyncio.create_task(reset()))  # a ResetErrors arriving right after the entry: at the escalation's next await
+
+    rig.svc.pr.err_s = err_s_then_reset  # type: ignore[method-assign]
+
+    async def scenario() -> "ErrorLog":
+        sup = await rig.start()
+        while not _armed(rig.svc):
+            await _real_time(_POLL_MS)
+        await rig.stop(sup)
+        return await rig.svc.get_error_counter()
+
+    with FastAsyncSleep():
+        log = run(scenario())["SYSTEM"]
+    assert answers == [False], answers
+    assert code("E", "TASK_BUDGET_REBOOT") in log["ErrNum"], log
 
 
 def test_after_the_takeover_no_other_site_feeds() -> None:
@@ -2046,7 +2075,7 @@ def test_after_the_takeover_no_other_site_feeds() -> None:
             sup = await rig.start()
             real_log = rig.svc._log_dead_task
 
-            async def gated_log(task: "asyncio.Task[Any]", n: int) -> None:
+            async def gated_log(task: "asyncio.Task[None]", n: int) -> None:
                 entered.set()
                 await release.wait()  # a supervisor pass held before its feed
                 await real_log(task, n)
@@ -2072,7 +2101,7 @@ def test_after_the_takeover_no_other_site_feeds() -> None:
                 raise AssertionError("the supervisor ended without its cancel")
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
 
 
@@ -2080,19 +2109,19 @@ def test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm() 
     # Real sleeps: S1's two feeds bracket at most one supervisor sleep and a pass; every other gap is one step.
     rig = _Rig(level=_EVENT)
     marks: list[tuple[str, int]] = []
-    recorder = _PrintRecorder()
-    real_print = recorder.__call__
 
-    def stamped(*args: object, **kwargs: object) -> None:
-        marks.append(("line", rig.wdt.feed_count))
-        real_print(*args, **kwargs)
+    def stamped(*_args: object, **_kwargs: object) -> None:
+        marks.append(("line", rig.wdt.feed_count))  # each logger line's place among the feeds, kept off the output
 
     asy_print_log.print = stamped  # type: ignore[attr-defined]
     real_init = rig.svc._reset_timer.init
 
-    def arm(*, period: int = -1, mode: int = Timer.PERIODIC, callback: "Callable[[Timer], None] | None" = None) -> None:
+    def arm(
+        *, mode: int = Timer.PERIODIC, callback: "Callable[[Timer], None] | None" = None, period: int = -1, tick_hz: int = 1000,
+        freq: "float | None" = None, hard: bool = False,
+    ) -> None:  # Timer.init()'s own keywords, passed through
         marks.append(("arm", rig.wdt.feed_count))
-        real_init(period=period, mode=mode, callback=callback)
+        real_init(mode=mode, callback=callback, period=period, tick_hz=tick_hz, freq=freq, hard=hard)
 
     rig.svc._reset_timer.init = arm  # type: ignore[method-assign]
     try:
@@ -2107,41 +2136,40 @@ def test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm() 
 
         run(scenario())
     finally:
-        recorder.restore()
+        del asy_print_log.print  # type: ignore[attr-defined]
     times = list(rig.wdt.feed_times)[-_planned_feeds(rig, "_RR_REBOOT") :]
     gaps = [time.ticks_diff(times[i + 1], times[i]) for i in range(len(times) - 1)]
-    assert gaps[0] < _src_const("_TASK_CHECK_TIME") * 1000 + 500, gaps
+    assert gaps[0] < _const("_TASK_CHECK_TIME") * 1000 + 500, gaps
     assert all(g < 1000 for g in gaps[1:]), gaps
     arm_at = next(n for kind, n in marks if kind == "arm")
     last_line = [n for kind, n in marks if kind == "line" and n < arm_at]
     assert arm_at == rig.wdt.feed_count and last_line and last_line[-1] == arm_at - 1, (marks, arm_at)
 
 
-def _hang(rig: _Rig, purpose: str, plant: "Callable[[], Coroutine[Any, Any, None]]", *, armed: bool = False, unstick: "asyncio.Event | None" = None) -> None:
+def _hang(rig: _Rig, purpose: str, plant: "Callable[[], Coroutine[object, object, None]]", *, armed: bool = False, unstick: "asyncio.Event | None" = None) -> None:
     # A hang planted in one step: watched for _HANG_WATCH_MS of real time, the watchdog gets no further feed; `unstick`
     # lets a stubborn task end before the cleanup.
-    fast = _FastAsyncSleep()
 
     async def scenario() -> None:
         sup = await rig.start()
         await plant()
         assert await _word(rig.svc, purpose)() is True
-        await _real_time(300)  # the sequence reaches the planted hang
+        await _real_time(_HANG_REACH_MS)  # the sequence reaches the planted hang
         fed = rig.wdt.feed_count
-        await fast._real_sleep_ms(_HANG_WATCH_MS)
+        await _real_time(_HANG_WATCH_MS)
         assert rig.wdt.feed_count == fed, (purpose, fed, rig.wdt.feed_count)
-        sequence = rig.svc._shutdown_task
-        assert sequence is not None and sequence.done() is armed and rig.svc._reset_armed is armed
+        sequence = _sequence(rig.svc)
+        assert sequence is not None and sequence.done() is armed and (rig.svc._phase >= _PHASE_ARMED) is armed
         if armed:
             assert rig.svc._reset_task is not None and not rig.svc._reset_task.done()
         # The watchdog resets the hung unit; the next boot reads why: the command's own code once armed, else 9.
-        expected = _src_const(purpose if armed else "_RR_COMMAND_INCOMPLETE")
+        expected = _const(purpose if armed else "_RR_COMMAND_INCOMPLETE")
         assert machine.mem_backup(0)[1] == expected, (purpose, machine.mem_backup(0)[1])
         if unstick is not None:
             unstick.set()
         await rig.stop(sup)
 
-    with fast:
+    with FastAsyncSleep():
         run(scenario())
 
 
@@ -2156,7 +2184,7 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
     async def stuck_pass(rig: _Rig = rig) -> None:
         inside = asyncio.Event()
 
-        async def held(task: "asyncio.Task[Any]", n: int) -> None:
+        async def held(task: "asyncio.Task[None]", n: int) -> None:
             inside.set()
             await never.wait()
 
@@ -2167,24 +2195,17 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
     _hang(rig, "_RR_REBOOT", stuck_pass)
     # S2: a store whose flush never returns.
     rig = _Rig()
-    rig.stores[1].gate = never
+    store = rig.stores[1]
+    assert isinstance(store, _Store)
+    store.gate = never
     _hang(rig, "_RR_REBOOT", nothing)
-    # S3: a chunk whose operation lock a task holds for good.
-    rig = _Rig()
-    assert rig.manager is not None
-    lock = rig.manager._chunks[0]._op_lock
-
-    async def held_lock(lock: asyncio.Lock = lock) -> None:
-        await lock.acquire()
-
-    _hang(rig, "_RR_REBOOT", held_lock)
     # S4: a supervised task that swallows its cancel.
     rig = _Rig()
     unstick = asyncio.Event()
     rig.starters[1] = _sleeping(rig.events, "t1", stubborn_until=unstick)
-    _hang(rig, "_RR_BOOTLOADER", nothing, unstick=unstick)
+    _hang(rig, "_BOOTLOADER", nothing, unstick=unstick)
     # S5, config reset: a store whose file lock is held for good.
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _named_store(path, "HELD", 4)
     rig = _Rig(stores=[store])
 
@@ -2192,19 +2213,18 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
         await store._config_lock.acquire()
 
     _hang(rig, "_RR_CONFIG_RESET", held_file)
-    # S5, erase: the chip refuses an erase unit and its report never returns.
+    # S5, erase: an erase that never returns.
     rig = _Rig()
-    rig.chip.drop_wren_at_unit = True
 
-    async def stuck_report(status: int) -> bool:
+    async def stuck_erase(step_done: "Callable[[], None]") -> bool:  # the erase never steps
         await never.wait()
         return False
 
-    async def plant_report(rig: _Rig = rig) -> None:
+    async def plant_erase(rig: _Rig = rig) -> None:
         assert rig.manager is not None
-        rig.manager.fram.report_set_values = stuck_report  # type: ignore[method-assign]
+        rig.manager.erase_chip = stuck_erase  # type: ignore[method-assign]
 
-    _hang(rig, "_RR_FRAM_ERASED", plant_report)
+    _hang(rig, "_RR_FRAM_ERASED", plant_erase)
     # S6: the reset timer's one-shot never fires.
     _hang(_Rig(), "_RR_REBOOT", nothing, armed=True)
 
@@ -2216,29 +2236,32 @@ def test_a_command_that_hangs_before_its_arm_reads_command_incomplete_at_the_nex
         begin_boot()
         if marked_done:
             rig.svc.boot_phase(BOOT_DONE)
-        rig.stores[0].gate = asyncio.Event()  # S2 hangs
+        store = rig.stores[0]
+        assert isinstance(store, _Store)
+        store.gate = asyncio.Event()  # S2 hangs
 
         async def scenario(rig: _Rig = rig) -> None:
             sup = await rig.start()
             assert await rig.svc.reboot_system() is True
-            await _real_time(100)
-            assert rig.svc._shutdown_task is not None and not rig.svc._shutdown_task.done()
+            await _real_time(_STALLED_WINDOW_MS)
+            sequence = _sequence(rig.svc)
+            assert sequence is not None and not sequence.done()
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
         _watchdog_reset()
-        assert begin_boot() == _src_const("_RR_COMMAND_INCOMPLETE"), marked_done
+        assert begin_boot() == _const("_RR_COMMAND_INCOMPLETE"), marked_done
 
 
 def test_an_arm_failure_in_the_sequence_starves_and_records_code_6() -> None:
     for purpose in _PURPOSES:
         rig = _Rig()
-        with _RaiseOnArm(OSError):
+        with RaiseOnArm(OSError):
             out = _drive(rig, purpose, fire=False)
         assert out.answer is True and out.arms == 0
-        assert out.record == _src_const("_RR_STARVE_ARM_FAILED"), purpose
-        assert rig.svc._force_watchdog_starve is True
+        assert out.record == _const("_RR_STARVE_ARM_FAILED"), purpose
+        assert rig.svc._phase == _PHASE_STARVED
         fed = rig.wdt.feed_count
         rig.svc._own_feed()
         rig.svc.feed_watchdog()
@@ -2246,7 +2269,7 @@ def test_an_arm_failure_in_the_sequence_starves_and_records_code_6() -> None:
 
 
 def test_a_refused_command_never_stops_the_supervisor_feeding() -> None:
-    # A refusal clears _shutdown; the park and the escalation's suppression key on _feed_owned alone.
+    # A refusal clears _shutdown; the park and the escalation's suppression key on the owned phase alone.
     rig = _Rig(protect=True)
     assert rig.manager is not None
     real_ready = rig.manager.erase_ready
@@ -2266,45 +2289,42 @@ def test_a_refused_command_never_stops_the_supervisor_feeding() -> None:
         assert await rig.svc.erase_fram() is True
         assert await rig.svc.reboot_bootloader() is False
         await rig.settle()
-        assert (rig.wdt.feed_count - fed, rig.svc._shutdown) == (_planned_feeds(rig, "_RR_FRAM_ERASED"), _src_const("_RR_FRAM_ERASED"))
+        assert (rig.wdt.feed_count - fed, rig.svc._shutdown) == (_planned_feeds(rig, "_RR_FRAM_ERASED"), _const("_RR_FRAM_ERASED"))
         await rig.stop(sup)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
     rig = _Rig()
 
     async def armed(svc: SystemService = rig.svc) -> None:
-        await svc._reboot(_src_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
+        svc._phase = _PHASE_DUE  # as both of _reboot()'s callers decide first
+        await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
     _refused(rig, "_RR_REBOOT", before=armed)
 
 
 def test_a_deadline_crossed_after_an_accepted_command_leaves_storage_paused() -> None:
     # S1 held (the supervisor never parks), so only the mempause's own pause stands when its deadline passes.
-    recorder = _PrintRecorder()
-    try:
-        with _Clock() as clock:
-            rig = _Rig(level=_EVENT)
-            assert rig.manager is not None
+    with record_prints() as recorder, _driven() as clock:
+        rig = _Rig(level=_EVENT)
+        assert rig.manager is not None
 
-            async def scenario() -> None:
-                status = asyncio.create_task(rig.svc._status_loop())
-                await rig.start(supervise=False)
-                assert rig.svc.pause_permanent_storage(10) is True
-                assert await rig.svc.reboot_system() is True
-                await _pump(rig.svc._uptime_event, 12, clock)
-                await _retire(status)
-                await rig.stop(None)
+        async def scenario() -> None:
+            status = asyncio.create_task(rig.svc._status_loop())
+            await rig.start(supervise=False)
+            assert rig.svc.pause_permanent_storage(10) is True
+            assert await rig.svc.reboot_system() is True
+            await _pump(rig.svc._tick, 12, clock)
+            await _retire(status)
+            await rig.stop(None)
 
-            run(scenario())
-    finally:
-        recorder.restore()
+        run(scenario())
     assert rig.manager.get_pause() is True and rig.svc._unpause_at is None
     assert _auto_unpause_lines(recorder) == 0
 
 
 def test_rr_interrupted_is_21_and_decodes_like_every_other_record() -> None:
-    assert _src_const("RR_INTERRUPTED") == 21 == asy_system_service.RR_INTERRUPTED
+    assert _const("RR_INTERRUPTED") == 21 == asy_system_service.RR_INTERRUPTED
     machine.power_on()
     begin_boot()
     write_reset_record(asy_system_service.RR_INTERRUPTED)
@@ -2313,12 +2333,53 @@ def test_rr_interrupted_is_21_and_decodes_like_every_other_record() -> None:
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
 
+def _ended_in_phase(phase: int) -> None:
+    # A boot marked up to `phase`, then the boot entry's call for a loop that an exception other than Ctrl-C ended.
+    machine.power_on()
+    begin_boot()
+    asy_system_service._write_region(1, _const("_BP_MAGIC"), phase)
+    asy_system_service.record_loop_end()
+
+
+def test_a_loop_ended_after_boot_records_22_and_the_next_boot_decodes_it() -> None:
+    assert _const("_RR_LOOP_ENDED") == 22
+    _ended_in_phase(BOOT_DONE)
+    _watchdog_reset()
+    assert begin_boot() == 22
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_loop_ended_during_boot_writes_nothing_so_the_next_boot_reads_its_phase() -> None:
+    for phase in range(BOOT_CONSTRUCTION, BOOT_DONE):
+        _ended_in_phase(phase)
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], phase
+        _watchdog_reset()
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + phase, phase
+
+
+def test_a_record_already_written_is_kept_and_a_torn_one_is_replaced() -> None:
+    # A command's or an escalation's record names the reset already underway; a torn record names nothing.
+    for recorded in (_const("_RR_REBOOT"), _const("_RR_STACK_EXHAUSTED"), asy_system_service.RR_INTERRUPTED):
+        machine.power_on()
+        begin_boot()
+        write_reset_record(recorded)
+        asy_system_service._write_region(1, _const("_BP_MAGIC"), BOOT_DONE)
+        asy_system_service.record_loop_end()
+        _watchdog_reset()
+        assert begin_boot() == recorded, recorded
+    machine.power_on()
+    begin_boot()
+    machine.mem_backup(0)[0] = _const("_RR_MAGIC")  # the magic alone: its check word does not match
+    asy_system_service._write_region(1, _const("_BP_MAGIC"), BOOT_DONE)
+    asy_system_service.record_loop_end()
+    _watchdog_reset()
+    assert begin_boot() == 22
+
+
 def test_the_debug_level_range_is_the_loggers_level_range() -> None:
-    # _apply_level() drops set_level()'s answer: safe only while the schema's bounds are the loggers' own.
-    with open(_SRC) as f:
-        line = next(text for text in f if text.startswith("_VAL_DEBUG_LEVEL = const("))
-    field = line.split("const((", 1)[1].split("),", 1)[0].strip("( ").split(", ")
-    assert [int(field[3]), int(field[4])] == [_src_const("_LOG_OFF", _LOG_SRC), _src_const("_LOG_ALL", _LOG_SRC)], field
+    # set_level() clamps silently: _apply_level() is exact only while the schema's bounds are the loggers' own.
+    field = src_schema(_SRC, "_VAL_DEBUG_LEVEL")[0]
+    assert [field[3], field[4]] == [_const("_LOG_OFF", _LOG_SRC), _const("_LOG_ALL", _LOG_SRC)], field
 
 
 # ---------------------------------------------------------------------------
@@ -2328,11 +2389,11 @@ def test_the_debug_level_range_is_the_loggers_level_range() -> None:
 
 def _paused_service() -> "tuple[SystemService, FRAMManager]":
     manager, _chip = make_fram_manager()
-    return make_service(storage=manager, log=LogConfig(manager, 10, _EVENT)), manager
+    return _make_service(storage=manager, log=LogConfig(manager, 10, _EVENT)), manager
 
 
 def test_pause_permanent_storage_without_fram_is_a_no_op_that_answers_true() -> None:
-    svc = make_service()
+    svc = _make_service()
     before = list(Timer.all_timers)
     assert svc.pause_permanent_storage(100) is True
     assert svc._unpause_at is None
@@ -2349,13 +2410,13 @@ def test_pause_permanent_storage_zero_and_negative_durations_unpause_at_once() -
 
 
 def test_pause_permanent_storage_clamps_to_the_max() -> None:
-    with _Clock() as clock:
-        for duration in (999_999, _src_const("_MAX_STORAGE_PAUSE")):
+    with _driven() as clock:
+        for duration in (999_999, _const("_MAX_STORAGE_PAUSE")):
             svc, manager = _paused_service()
             assert svc.pause_permanent_storage(duration) is True
             assert manager.get_pause() is True
             assert svc._unpause_at is not None
-            assert clock.ticks_diff(svc._unpause_at, clock.now) == _src_const("_MAX_STORAGE_PAUSE") * 1000  # type: ignore[arg-type]
+            assert clock.ticks_diff(svc._unpause_at, clock.now) == _const("_MAX_STORAGE_PAUSE") * 1000  # type: ignore[arg-type]
 
 
 def test_a_pause_arms_no_timer() -> None:
@@ -2369,114 +2430,59 @@ def _pending(svc: SystemService) -> bool:
     return svc._unpause_at is not None
 
 
-def _auto_unpause_lines(recorder: _PrintRecorder) -> int:
+def _auto_unpause_lines(recorder: "_Recorder") -> int:
     return sum(1 for line in recorder.lines if "Storage auto-unpaused." in line)
 
 
 def test_the_first_pass_past_the_deadline_unpauses_and_logs_one_line() -> None:
-    recorder = _PrintRecorder()
-    try:
-        with _Clock() as clock:
-            svc, manager = _paused_service()
+    with record_prints() as recorder, _driven() as clock:
+        svc, manager = _paused_service()
 
-            async def scenario() -> None:
-                task = asyncio.create_task(svc._status_loop())
-                assert svc.pause_permanent_storage(60) is True
-                await _pump(svc._uptime_event, 59, clock)
-                await _pump(svc._uptime_event, 1, clock, step_ms=999)  # 1 ms before the deadline
-                assert (manager.get_pause(), _pending(svc)) == (True, True)
-                await _pump(svc._uptime_event, 1, clock, step_ms=1)  # the first pass at it
-                assert (manager.get_pause(), _pending(svc)) == (False, False)
-                await _pump(svc._uptime_event, 3, clock)
-                await _cancel(task)
+        async def scenario() -> None:
+            task = asyncio.create_task(svc._status_loop())
+            assert svc.pause_permanent_storage(60) is True
+            await _pump(svc._tick, 59, clock)
+            await _pump(svc._tick, 1, clock, step_ms=999)  # 1 ms before the deadline
+            assert (manager.get_pause(), _pending(svc)) == (True, True)
+            await _pump(svc._tick, 1, clock, step_ms=1)  # the first pass at it
+            assert (manager.get_pause(), _pending(svc)) == (False, False)
+            await _pump(svc._tick, 3, clock)
+            await cancel(task)
 
-            run(scenario())
-    finally:
-        recorder.restore()
+        run(scenario())
     assert _auto_unpause_lines(recorder) == 1
 
 
 def test_a_second_pause_replaces_the_first_deadline() -> None:
-    with _Clock() as clock:
+    with _driven() as clock:
         svc, manager = _paused_service()
 
         async def scenario() -> None:
             task = asyncio.create_task(svc._status_loop())
             svc.pause_permanent_storage(60)
             svc.pause_permanent_storage(120)
-            await _pump(svc._uptime_event, 61, clock)
+            await _pump(svc._tick, 61, clock)
             assert manager.get_pause() is True  # the first deadline is gone
-            await _pump(svc._uptime_event, 60, clock)
+            await _pump(svc._tick, 60, clock)
             assert manager.get_pause() is False
-            await _cancel(task)
+            await cancel(task)
 
         run(scenario())
-
-
-def test_a_dropped_tick_delays_the_unpause_by_one_pass() -> None:
-    with _Clock() as clock:
-        svc, manager = _paused_service()
-        svc.start_uptime_timer()
-
-        async def scenario() -> None:
-            task = asyncio.create_task(svc._status_loop())
-            svc.pause_permanent_storage(2)
-            for drop in (False, True):
-                clock.advance(1000)
-                if drop:
-                    svc._uptime_timer.drop()  # the crossing tick's callback lost to a full scheduler queue
-                else:
-                    svc._uptime_timer.trigger()
-                for _ in range(5):
-                    await asyncio.sleep(0)
-            assert manager.get_pause() is True  # crossed at 2 s, but the pass never ran
-            clock.advance(1000)
-            svc._uptime_timer.trigger()
-            for _ in range(5):
-                await asyncio.sleep(0)
-            assert manager.get_pause() is False  # the next pass unpauses
-            await _cancel(task)
-
-        run(scenario())
-
-
-def test_mempause_answers_valid_with_every_timer_arm_failing() -> None:
-    # A "Valid" pause always ends: with every Timer.init() failing it ends on the uptime loop's one-second fallback.
-    with _Clock() as clock:
-        svc, manager = _paused_service()
-        with _RaiseOnArm():
-            svc.start_uptime_timer()
-            assert svc.pause_permanent_storage(5) is True
-            assert manager.get_pause() is True
-
-            async def scenario() -> None:
-                task = asyncio.create_task(svc._status_loop())
-                with _FastAsyncSleep(clock):
-                    for _ in range(40):
-                        await asyncio.sleep(0)
-                await _cancel(task)
-
-            run(scenario())
-    assert manager.get_pause() is False
 
 
 def test_a_deadline_crossed_after_a_reset_leaves_storage_paused() -> None:
-    recorder = _PrintRecorder()
-    try:
-        with _Clock() as clock:
-            svc, manager = _paused_service()
+    with record_prints() as recorder, _driven() as clock:
+        svc, manager = _paused_service()
 
-            async def scenario() -> None:
-                task = asyncio.create_task(svc._status_loop())
-                svc.pause_permanent_storage(10)
-                await svc._reboot(_src_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
-                await _pump(svc._uptime_event, 12, clock)
-                await _cancel(task)
-                await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        async def scenario() -> None:
+            task = asyncio.create_task(svc._status_loop())
+            svc.pause_permanent_storage(10)
+            await svc._reboot(_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
+            await _pump(svc._tick, 12, clock)
+            await cancel(task)
+            await cancel(svc._reset_task)  # type: ignore[arg-type]
 
-            run(scenario())
-    finally:
-        recorder.restore()
+        run(scenario())
     assert manager.get_pause() is True
     assert svc._unpause_at is None
     assert _auto_unpause_lines(recorder) == 0
@@ -2488,49 +2494,25 @@ def test_a_deadline_crossed_after_a_reset_leaves_storage_paused() -> None:
 
 
 def test_get_task_starters_starter_returns_a_real_task() -> None:
-    svc = make_service()
+    svc = _make_service()
 
     async def scenario() -> None:
         starters = svc.get_task_starters()
         assert len(starters) == 1  # the uptime counter alone: the auto-unpause has no task
-        await _cancel(starters[0]())
+        await cancel(starters[0]())
 
     run(scenario())
 
 
-def test_get_timer_starters_starter_arms_the_uptime_timer() -> None:
-    svc = make_service()
-    starters = svc.get_timer_starters()
-    assert len(starters) == 1
-    starters[0]()
-    assert svc._uptime_timer.mode == Timer.PERIODIC
-    assert svc._uptime_timer.period == 1000
-    assert svc._tick_failed is False
-
-
-def test_start_uptime_timer_degrades_to_the_fallback_when_it_cannot_be_armed() -> None:
-    # Owner-confirmed design (2026-07-18, `1df8bc4`): a failed arm degrades rather than reboots. Its persisted
-    # TIMER entry comes from the uptime loop's fallback, once per task run, not from this call.
-    for exc in (OSError, MemoryError):
-        svc = make_service()
-        with _RaiseOnArm(exc):
-            svc.start_uptime_timer()  # must not raise despite the timer failing to arm
-        assert svc._tick_failed is True
-        assert svc.pr._err_count == 0
-        assert svc._force_watchdog_starve is False  # graceful degradation, not a forced reboot
-        assert svc._uptime_timer.period == -1  # never actually armed
-
-
-# ---------------------------------------------------------------------------
-# get_error_counter / reset_error_counter
-# ---------------------------------------------------------------------------
+def test_get_timer_starters_is_empty_the_status_cadence_being_its_own_sleep() -> None:
+    assert _make_service().get_timer_starters() == []
 
 
 def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> None:
     # history_length=1: one err_s() fills the one slot, so the log reads exactly that entry.
-    svc = make_service(log=LogConfig(None, 1, None))
+    svc = _make_service(log=LogConfig(None, 1, None))
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
+    svc.pr.err_s("boom", errno=code("E", "CALLBACK"))
     result = run(svc.get_error_counter())
     assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     assert run(svc.reset_error_counter()) is True
@@ -2540,9 +2522,9 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
 def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     manager, _chip = make_fram_manager()
     run(manager.setup())
-    svc = make_service(storage=manager, log=LogConfig(manager, 1, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 1, None))
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
+    svc.pr.err_s("boom", errno=code("E", "CALLBACK"))
     result = run(svc.get_error_counter())
     assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     assert run(svc.reset_error_counter()) is True
@@ -2551,7 +2533,7 @@ def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
 
 def test_reset_error_counter_answers_false_when_the_history_write_fails() -> None:
     manager, chip = make_fram_manager()
-    svc = make_service(storage=manager, log=LogConfig(manager, 4, None))
+    svc = _make_service(storage=manager, log=LogConfig(manager, 4, None))
     run(manager.setup())
     run(svc.pr.setup())
     chip.drop_wren = True  # no WREN lands: the cleared ring cannot be written
@@ -2564,28 +2546,32 @@ def test_reset_error_counter_answers_false_when_the_history_write_fails() -> Non
 
 
 def test_start_task_returns_the_real_task_on_success() -> None:
-    svc = make_service()
+    svc = _make_service()
 
     async def scenario() -> None:
         async def _coro() -> None:
             pass
 
+        created: list[asyncio.Task[None]] = []
+
         def starter() -> "asyncio.Task[None]":
-            return asyncio.create_task(_coro())
+            created.append(asyncio.create_task(_coro()))
+            return created[0]
 
         task = await svc._start_task(starter, 0)
-        assert task is not None
+        assert task is created[0]
         await task
 
     run(scenario())
 
 
 def test_start_task_starter_exception_returns_none_and_logs_once() -> None:
-    svc = make_service()
+    svc = _make_service()
 
     def bad_starter() -> "asyncio.Task[None]":
         raise RuntimeError("boom")
 
+    svc._task_names = ["T0", "T1", "T2"]  # what start_tasks() stores: _start_task() names slot n from it
     result = run(svc._start_task(bad_starter, 2))
     assert result is None
     assert svc.pr._err_count == 1
@@ -2609,124 +2595,84 @@ def _long_lived_starter() -> "asyncio.Task[None]":
     return asyncio.create_task(_c())
 
 
+def _always_raising_starter() -> "asyncio.Task[None]":
+    raise RuntimeError("starter always fails")
+
+
 def test_supervise_tasks_with_no_tasks_never_fails() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
 
     async def scenario() -> None:
-        await svc.start_tasks([])
+        await svc.start_tasks([], task_names=[])
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(3)
         assert wdt.feed_count >= 1
-        await _cancel(task)
+        await cancel(task)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
 def test_cancelling_supervise_tasks_cancels_its_supervisor() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
 
     async def scenario() -> None:
-        await svc.start_tasks([_long_lived_starter])
+        await svc.start_tasks([_long_lived_starter], task_names=["T"])
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(10)
         supervisor = svc._supervisor_task
         assert supervisor is not None and not supervisor.done()
-        await _cancel(task)
+        await cancel(task)
         await _yields(3)
         assert supervisor.done()
         fed = wdt.feed_count
         await _yields(10)
         assert wdt.feed_count == fed  # nothing supervises, nothing feeds
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
-class _CountingGc:
-    # Stands in for the `gc` module so the boot collects can be counted - module-attribute
-    # reassignment is this project's mocking mechanism (MicroPython has no unittest.mock).
-
-    def __init__(self) -> None:
-        self.collects = 0
-
-    def collect(self) -> None:
-        self.collects += 1
+def test_neither_boot_list_nor_the_supervisor_collects() -> None:
+    # No collect between the boot lists' units: their survivors land low without one since FRAM became synchronous.
+    assert not hasattr(asy_system_service, "gc"), "asy_system_service imports gc again"
 
 
-def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task[Any]]]", iterations: int) -> "tuple[int, int]":
-    # Returns (collects once start_tasks() has started every starter, collects after `iterations` more
-    # supervisor yields) - the second must equal the first: the supervisor is the run phase.
-    counter = _CountingGc()
-    original_gc = asy_system_service.gc
-    asy_system_service.gc = counter  # type: ignore[assignment]
-    svc = make_service(watchdog=machine.WDT())
-    after_start = [0]
-
+def _supervised(svc: SystemService, starters: "list[Callable[[], asyncio.Task[None]]]", passes: int = 20, names: "list[str] | None" = None) -> None:
+    # Drives the start loop (every slot named "T" unless `names` are given), then the supervisor through `passes` yields
+    # under the fast sleep, then cancels it.
     async def scenario() -> None:
-        await svc.start_tasks(starters)
-        after_start[0] = counter.collects
-        task = asyncio.create_task(svc.supervise_tasks())
-        await _yields(iterations)
-        await _cancel(task)
-
-    try:
-        with _FastAsyncSleep():
-            run(scenario())
-    finally:
-        asy_system_service.gc = original_gc
-    return after_start[0], counter.collects
-
-
-def test_start_tasks_collects_once_per_starter_plus_one_and_the_supervisor_never() -> None:
-    # The boot placement reset (SPECIFICATION.md I.4(f.1)): the starter list is the second of the two one-time
-    # boot lists that get a collect between their units; the supervisor underneath is the run phase.
-    starters = [_long_lived_starter, _long_lived_starter, _long_lived_starter]
-    after_start, after_supervision = _count_collects_during_supervision(starters, 40)
-    assert after_start == len(starters) + 1, f"expected {len(starters) + 1} boot collects, got {after_start}"
-    assert after_supervision == after_start, f"the supervisor collected {after_supervision - after_start} time(s)"
-
-
-def test_start_tasks_with_no_starters_still_does_the_start_of_list_collect() -> None:
-    after_start, after_supervision = _count_collects_during_supervision([], 20)
-    assert after_start == 1, f"expected exactly the start-of-list collect, got {after_start}"
-    assert after_supervision == 1, "the supervisor loop must not collect even with no tasks to supervise"
-
-
-def _supervised(svc: SystemService, starters: "list[Callable[[], asyncio.Task[Any]]]", passes: int = 20) -> None:
-    # Drives the start loop, then the supervisor through `passes` yields under the fast sleep, then cancels it.
-    async def scenario() -> None:
-        await svc.start_tasks(starters)
+        await svc.start_tasks(starters, task_names=names if names is not None else ["T"] * len(starters))
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(passes)
-        await _cancel(task)
+        await cancel(task)
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
 def test_supervise_tasks_feeds_the_watchdog_while_tasks_stay_alive() -> None:
     wdt = machine.WDT()
-    _supervised(make_service(watchdog=wdt), [_long_lived_starter], 10)
+    _supervised(_make_service(watchdog=wdt), [_long_lived_starter], 10)
     assert wdt.feed_count >= 1
 
 
-def test_supervise_tasks_stops_feeding_the_watchdog_once_force_watchdog_starve_is_set() -> None:
+def test_supervise_tasks_stops_feeding_the_watchdog_once_the_phase_starves() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
-    svc._force_watchdog_starve = True
+    svc = _make_service(watchdog=wdt)
+    svc._phase = _PHASE_STARVED
     _supervised(svc, [_long_lived_starter], 10)
     assert wdt.feed_count == 0  # never fed despite tasks staying alive and under the fail budget
 
 
 def test_supervise_tasks_without_watchdog_does_not_raise() -> None:
-    _supervised(make_service(watchdog=None), [_long_lived_starter], 10)  # must not raise
+    _supervised(_make_service(watchdog=None), [_long_lived_starter], 10)  # must not raise
 
 
 def test_the_supervisor_leaves_the_logger_setup_to_the_boot_batch() -> None:
-    svc = make_service()
+    svc = _make_service()
     _supervised(svc, [_long_lived_starter], 10)
     assert svc.pr.initialized is False
 
@@ -2757,14 +2703,14 @@ def _ending_then_parked(how: str, calls: "list[int]", parked: asyncio.Event) -> 
 def test_each_task_end_adds_exactly_one_entry() -> None:
     # One SYSTEM entry per task end, by how it ended; the restart line beside it is console-only.
     for how, name in (("raise", "TASK_RAISED"), ("cancel", "TASK_CANCELLED"), ("return", "TASK_RETURNED")):
-        svc = make_service()
+        svc = _make_service()
         calls = [0]
         _supervised(svc, [_ending_then_parked(how, calls, asyncio.Event())])
         assert calls[0] == 2, (how, calls)
         assert _persisted(svc) == [code("E", name)], (how, _persisted(svc))
         assert svc.pr._err_count == 1, how
     # A restart whose starter raises adds only its own TASK_STARTER_RAISED beside the task end's entry.
-    svc = make_service()
+    svc = _make_service()
     calls = [0]
     _supervised(svc, [_ending_then_parked("starter", calls, asyncio.Event())])
     assert calls[0] == 3, calls
@@ -2773,7 +2719,7 @@ def test_each_task_end_adds_exactly_one_entry() -> None:
 
 
 def test_supervise_tasks_restarts_a_dead_task_and_logs_its_end() -> None:
-    svc = make_service()
+    svc = _make_service()
     calls = [0]
     _supervised(svc, [_ending_then_parked("return", calls, asyncio.Event())], 10)
     assert calls[0] >= 2  # started once at startup, restarted at least once after dying
@@ -2783,7 +2729,7 @@ def test_supervise_tasks_restarts_a_dead_task_and_logs_its_end() -> None:
 
 def test_supervise_tasks_logs_the_real_exception_of_a_crashed_task() -> None:
     # MicroPython's asyncio Task has no .exception()/.result(): _log_dead_task() awaits the ended task to learn why.
-    svc = make_service()
+    svc = _make_service()
     calls = [0]
     _supervised(svc, [_ending_then_parked("raise", calls, asyncio.Event())], 10)
     assert calls[0] >= 2
@@ -2792,11 +2738,84 @@ def test_supervise_tasks_logs_the_real_exception_of_a_crashed_task() -> None:
 
 def test_supervise_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
     # Regression for the real "wrnno=10" bench bug: a task ending cancelled persists its own TASK_CANCELLED.
-    svc = make_service()
+    svc = _make_service()
     calls = [0]
     _supervised(svc, [_ending_then_parked("cancel", calls, asyncio.Event())], 10)
     assert calls[0] >= 2
     assert _persisted(svc) == [code("E", "TASK_CANCELLED")]  # exactly one entry, _log_dead_task's own
+
+
+def test_a_slot_is_named_in_its_end_start_failure_and_restart_lines() -> None:
+    # Each console line of a slot's end and restart carries the name start_tasks() was given for it, not its index.
+    svc = _make_service(log=LogConfig(None, 10, _WARN))
+    with record_prints(svc.pr) as recorder:
+        _supervised(svc, [_long_lived_starter, _ending_then_parked("starter", [0], asyncio.Event())], names=["W", "X"])
+    lines = [line[1:] for line in recorder.lines]
+    assert ("Task", "X", "ended: returned") in lines, recorder.text()
+    assert [line[:3] for line in lines if line[0] == "Task starter"] == [("Task starter", "X", "failed to start:")], recorder.text()
+    restarts = [line for line in lines if line[0] == "Task ended - attempting restart, error counter increased to"]
+    assert len(restarts) == 2 and all(line[-2:] == ("-", "X") for line in restarts), recorder.text()
+
+
+def _ends_when_set(event: asyncio.Event) -> "Callable[[], asyncio.Task[None]]":
+    # A starter whose first task returns once `event` is set; a restart's task stays parked.
+    calls = [0]
+
+    def starter() -> "asyncio.Task[None]":
+        calls[0] += 1
+        first = calls[0] == 1
+
+        async def _c() -> None:
+            await (event if first else asyncio.Event()).wait()
+
+        return asyncio.create_task(_c())
+
+    return starter
+
+
+def test_get_last_task_end_names_the_last_ended_slot_and_the_uptime_then() -> None:
+    # None until a supervised task ends; then that slot's name and the measured uptime at its end, each end replacing
+    # the one before - two slots of one module differ by their names.
+    a_ends, b_ends = asyncio.Event(), asyncio.Event()
+    seen: list[object] = []
+    with _driven() as clock:
+        svc = _make_service()
+
+        async def scenario() -> None:
+            await svc.start_tasks([_ends_when_set(a_ends), _ends_when_set(b_ends)], task_names=["mod.a", "mod.b"])
+            sup = asyncio.create_task(svc.supervise_tasks())
+            await _yields(20)
+            seen.append(svc.get_last_task_end())
+            clock.advance(42000)
+            a_ends.set()
+            await _yields(20)
+            seen.append(svc.get_last_task_end())
+            clock.advance(8000)
+            b_ends.set()
+            await _yields(20)
+            seen.append(svc.get_last_task_end())
+            await cancel(sup)
+
+        with FastAsyncSleep():
+            run(scenario())
+    assert seen == [None, {"Task": "mod.a", "Uptime": 42}, {"Task": "mod.b", "Uptime": 50}], seen
+
+
+def test_a_starter_that_raised_at_start_is_not_a_task_end() -> None:
+    # An empty slot is restarted, but no task existed to end: the record stays None.
+    calls = [0]
+
+    def raising_then_parked() -> "asyncio.Task[None]":
+        calls[0] += 1
+        if calls[0] == 1:
+            raise RuntimeError("injected starter failure")
+        return _long_lived_starter()
+
+    svc = _make_service()
+    _supervised(svc, [raising_then_parked], names=["R"])
+    assert calls[0] == 2, calls
+    assert svc.get_last_task_end() is None
+    assert _persisted(svc) == [code("E", "TASK_STARTER_RAISED")], _persisted(svc)
 
 
 def _dead_starter(calls: "list[int]") -> "Callable[[], asyncio.Task[None]]":
@@ -2814,7 +2833,7 @@ def _dead_starter(calls: "list[int]") -> "Callable[[], asyncio.Task[None]]":
 def test_the_supervisor_escalates_past_the_failure_budget() -> None:
     machine.power_on()
     machine.reset_count = 0
-    svc = make_service()
+    svc = _make_service()
     calls = [0]
 
     def always_raising_starter() -> "asyncio.Task[None]":
@@ -2822,21 +2841,21 @@ def test_the_supervisor_escalates_past_the_failure_budget() -> None:
         raise RuntimeError("starter always fails")
 
     async def scenario() -> None:
-        await svc.start_tasks([always_raising_starter])
+        await svc.start_tasks([always_raising_starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
-        assert svc._reset_armed, "the supervisor never escalated"
-        assert (svc._shutdown, svc._feed_owned, svc._supervisor_parked.is_set()) == (0, False, False)  # no command path
+        assert svc._phase >= _PHASE_ARMED, "the supervisor never escalated"
+        assert (svc._shutdown, svc._phase == _PHASE_OWNED, svc._supervisor_parked.is_set()) == (0, False, False)  # no command path
         await _yields(10)
         assert not sup.done()  # it keeps running after the arm - main() never returns
-        await _cancel(sup)
+        await cancel(sup)
         await _fire(svc)
 
-    with _FastAsyncSleep():
-        run(scenario())
+    with FastAsyncSleep():
+        _run_into_reset(scenario())
     assert machine.reset_count == 1
     assert _persisted(svc).count(code("E", "TASK_BUDGET_REBOOT")) == 1  # one escalation, however many passes follow
     assert calls[0] >= 4  # enough restart attempts to cross _TASK_FAIL_MAX (100 per attempt)
@@ -2845,24 +2864,24 @@ def test_the_supervisor_escalates_past_the_failure_budget() -> None:
 def test_a_pass_with_every_task_dead_escalates_at_the_first_end_past_the_budget() -> None:
     # 22 ended tasks in one pass: exactly four task-end entries, then the escalation's, fed once, three restarts.
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
     calls = [0]
     starters = [_dead_starter(calls)] * 22
     seen: list[object] = []
 
     async def scenario() -> None:
-        await svc.start_tasks(starters)
+        await svc.start_tasks(starters, task_names=["T"] * len(starters))
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(200):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
         # The escalating pass has armed the reset and sleeps: what it left is read before another pass runs.
         seen.extend((await svc.get_error_counter(), svc.pr._err_count, wdt.feed_count, calls[0]))
-        await _cancel(sup)
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await cancel(sup)
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
     log, entries, feeds, started = seen
     numbers, kinds = log["SYSTEM"]["ErrNum"], log["SYSTEM"]["ErrType"]  # type: ignore[index]
@@ -2877,7 +2896,7 @@ def test_a_pass_with_every_task_dead_escalates_at_the_first_end_past_the_budget(
 def test_an_escalating_pass_retires_the_dead_task_so_no_later_pass_awaits_it_again() -> None:
     # The escalating pass breaks before its restart: the dead task must still leave its slot, since a later pass
     # awaiting it again raises None where the first await raced asyncio's queued handler call (Part F.1).
-    svc = make_service()
+    svc = _make_service()
     calls = [0]
     first: list[object] = []  # the tasks themselves: a freed task's id() is reused once a collection runs
     again: list[object] = []
@@ -2891,7 +2910,7 @@ def test_an_escalating_pass_retires_the_dead_task_so_no_later_pass_awaits_it_aga
 
         return asyncio.create_task(_c())
 
-    async def recording_log(task: "asyncio.Task[Any]", n: int) -> None:
+    async def recording_log(task: "asyncio.Task[None]", n: int) -> None:
         # A repeat is recorded and never awaited, so the defect reads as a failure here rather than a segfault.
         if any(seen is task for seen in first):
             again.append(task)
@@ -2910,23 +2929,23 @@ def test_an_escalating_pass_retires_the_dead_task_so_no_later_pass_awaits_it_aga
     svc._reboot = recording_reboot  # type: ignore[method-assign]
 
     async def scenario() -> None:
-        await svc.start_tasks([starter])
+        await svc.start_tasks([starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(400):
             await asyncio.sleep(0)
-        await _cancel(sup)
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await cancel(sup)
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
-    assert svc._reset_armed, "the supervisor never escalated"
+    assert svc._phase >= _PHASE_ARMED, "the supervisor never escalated"
     assert again == [], f"{len(again)} later pass(es) awaited an already-logged dead task again"
     assert held == [None], held
     assert calls[0] > 4, calls  # later passes still restart, unfed
 
 
 def test_three_deaths_stay_inside_the_budget_and_decay() -> None:
-    svc = make_service(watchdog=machine.WDT())
+    svc = _make_service(watchdog=machine.WDT())
     calls = [0]
     parked = asyncio.Event()
 
@@ -2943,28 +2962,28 @@ def test_three_deaths_stay_inside_the_budget_and_decay() -> None:
 
     _supervised(svc, [three_then_parked], 60)
     assert calls[0] == 4  # every end restarted
-    assert svc._reset_armed is False
+    assert (svc._phase >= _PHASE_ARMED) is False
     assert _persisted(svc) == [code("E", "TASK_RETURNED")]  # three ends, one slot (the repeat rule)
     assert svc.pr._err_count == 3
 
 
 def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _real_store(path)
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt, cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])
+    svc = _make_service(watchdog=wdt, cfg_path=_scratch.dir(), config_stores=lambda: [store])
     run(svc.setup())
     calls = [0]
 
     async def scenario() -> None:
         assert (await store.write_config({"Count": 9}))[0] is True
-        await svc.start_tasks([_dead_starter(calls)])
+        await svc.start_tasks([_dead_starter(calls)], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
-        assert svc._reset_armed
+        assert svc._phase >= _PHASE_ARMED
         assert _file_count(path) == 9  # flushed before the arm
         fed = wdt.feed_count
         await _yields(20)  # two more supervisor passes
@@ -2972,68 +2991,49 @@ def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> N
         assert wdt.feed_count == fed
         svc.feed_watchdog()
         assert wdt.feed_count == fed  # one-way, whatever the budget does next
-        await _cancel(sup)
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await cancel(sup)
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(scenario())
 
 
 # ---------------------------------------------------------------------------
-# run_setups() - the boot setup list, fed and collected per unit; the config-fault and unpersisted lists
+# run_setups() - the boot setup list, fed per unit; the config-fault list
 # ---------------------------------------------------------------------------
 
 
-class _RecordingGc:
-    # Stands in for asy_system_service's `gc`, recording each collect with the watchdog feeds made so far.
-    def __init__(self, events: "list[object]", wdt: "WDT") -> None:
-        self._events = events
-        self._wdt = wdt
-
-    def collect(self) -> None:
-        self._events.append(("collect", self._wdt.feed_count))
-
-
 def _setup_unit(events: "list[object]", wdt: "WDT", n: int, *, raises: bool = False) -> "SetupFct":
-    async def setup() -> bool:
+    async def setup() -> None:
         await asyncio.sleep(0)
         events.append(("setup", n, wdt.feed_count))
         if raises:
             raise RuntimeError("injected setup failure")
-        return n != 1  # a False answer is discarded like a True one
 
     return setup
 
 
-def _with_recording_gc(svc: SystemService, events: "list[object]", wdt: "WDT", coro: "Coroutine[Any, Any, None]") -> None:
-    real_gc = asy_system_service.gc
-    asy_system_service.gc = _RecordingGc(events, wdt)  # type: ignore[assignment]
-    try:
-        run(coro)
-    finally:
-        asy_system_service.gc = real_gc
-
-
-def test_run_setups_awaits_in_order_feeds_after_each_and_collects_after_each_feed() -> None:
+def test_run_setups_awaits_in_order_and_feeds_after_each() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
     events: list[object] = []
-    _with_recording_gc(svc, events, wdt, svc.run_setups([_setup_unit(events, wdt, n) for n in range(3)]))
-    assert events == [("collect", 0), ("setup", 0, 0), ("collect", 1), ("setup", 1, 1), ("collect", 2), ("setup", 2, 2), ("collect", 3)], events
+    run(svc.run_setups([_setup_unit(events, wdt, n) for n in range(3)]))
+    assert events == [("setup", 0, 0), ("setup", 1, 1), ("setup", 2, 2)], events
+    assert wdt.feed_count == 3
 
 
 def test_a_raising_setup_propagates_and_nothing_after_it_runs() -> None:
     wdt = machine.WDT()
-    svc = make_service(watchdog=wdt)
+    svc = _make_service(watchdog=wdt)
     events: list[object] = []
     setups = [_setup_unit(events, wdt, 0), _setup_unit(events, wdt, 1, raises=True), _setup_unit(events, wdt, 2)]
     try:
-        _with_recording_gc(svc, events, wdt, svc.run_setups(setups))
+        run(svc.run_setups(setups))
     except RuntimeError:
         pass
     else:
         raise AssertionError("a raising setup() was swallowed")
-    assert events == [("collect", 0), ("setup", 0, 0), ("collect", 1), ("setup", 1, 1)], events
+    assert events == [("setup", 0, 0), ("setup", 1, 1)], events
     assert wdt.feed_count == 1
 
 
@@ -3045,15 +3045,16 @@ def _boot_with_stores(path: str, files: "list[tuple[str, str | None]]") -> "tupl
             with open(path + "config_" + name + ".cfg", "w") as f:
                 f.write(text)
     stores = [cm.ConfigManager(path + "config_" + name + ".cfg", _VAL_COUNT, name) for name, _text in files]
-    svc = make_service(cfg_path=path, config_stores=lambda: stores)
+    svc = _make_service(cfg_path=path, config_stores=lambda: stores)
 
     def unit(store: cm.ConfigManager) -> "SetupFct":
-        async def setup() -> bool:
+        async def setup() -> None:
             if not store.module_name.startswith("UNREAD"):
-                return await store.setup()
+                await store.setup()
+                return
             cm.os = _UnreadableOs()  # type: ignore[assignment]
             try:
-                return await store.setup()
+                await store.setup()
             finally:
                 cm.os = os
 
@@ -3070,43 +3071,12 @@ def test_get_config_faults_names_each_faulted_store_once_in_list_order() -> None
         ("CLEAN", '{"Count": 4}'), ("UNREAD", '{"Count": 4}'), ("MISSING", None), ("PARSE", "{not json"), ("EXTRA", '{"Count": 4, "Old": 1}'),
         ("REFUSED", '{"Count": 99}'), ("NOKEY", "{}"),
     ]
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     svc, stores = _boot_with_stores(path, files)
     assert svc.get_config_faults() == ["UNREAD", "PARSE", "REFUSED"], svc.get_config_faults()
     by_name = {s.module_name: s for s in stores}
     assert run(by_name["PARSE"].write_config({"Count": 6}))[0] is True  # a later good write
     assert svc.get_config_faults() == ["UNREAD", "PARSE", "REFUSED"]  # fixed for the boot
-
-
-async def _write_and_flush(store: cm.ConfigManager, count: int) -> bool:
-    # One accepted write and its flash write: write_config() only stages, its flush task writes the file.
-    persisted = (await store.write_config({"Count": count}))[0]
-    await store.flush_pending()
-    return persisted
-
-
-def test_get_config_unpersisted_lists_a_store_until_its_next_good_write() -> None:
-    path = _tmp_cfg_dir()
-    svc, stores = _boot_with_stores(path, [("FIRST", '{"Count": 4}'), ("SECOND", '{"Count": 4}')])
-    assert svc.get_config_unpersisted() == []
-    with WriteCountingOpen(cm, fail_writes=True):
-        assert run(_write_and_flush(stores[1], 6)) is True  # applied, its file write failed
-    assert svc.get_config_unpersisted() == ["SECOND"]
-    assert svc.get_config_faults() == []  # the two lists are independent
-    assert run(_write_and_flush(stores[1], 7)) is True
-    assert svc.get_config_unpersisted() == []
-    # A store whose defaults could not be written at its setup() is listed from the boot on.
-    path = _tmp_cfg_dir()
-    stores = [cm.ConfigManager(path + "config_FRESH.cfg", _VAL_COUNT, "FRESH")]
-    svc = make_service(cfg_path=path, config_stores=lambda: stores)
-    run(svc.setup())
-
-    async def refused_setup() -> bool:
-        with WriteCountingOpen(cm, fail_writes=True):
-            return await stores[0].setup()
-
-    run(svc.run_setups([refused_setup]))
-    assert (svc.get_config_unpersisted(), svc.get_config_faults()) == (["FRESH"], [])
 
 
 # ---------------------------------------------------------------------------
@@ -3115,12 +3085,6 @@ def test_get_config_unpersisted_lists_a_store_until_its_next_good_write() -> Non
 
 
 _Meas = namedtuple("_Meas", ("TS",))  # the config module's sample shape: one field is enough here
-
-
-class _Holder:
-    # Request.sock's stand-in for an in-process dispatch: no connection ends, so nothing is ever closed.
-    def hold(self, _closable: object) -> None:
-        pass
 
 
 def _count_in(path: str, name: str) -> int:
@@ -3134,7 +3098,7 @@ def _rest_rig() -> "tuple[_Rig, Microdot, SensorReaderConfig, str]":
     # A rig whose stores are SYSTEM's own and a real config module's (owner_lock = its PUT lock), served by a real
     # WebserverService whose system command callback answers like the generated one.
     rig = _Rig(stores=0)
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     module = SensorReaderConfig(_Meas(None), "RESTMOD", _VAL_COUNT, cfg_path=path)
     run(module.setup())
     rig.stores += [rig.svc.cfgmgr, module.cfgmgr]
@@ -3149,16 +3113,17 @@ def _rest_rig() -> "tuple[_Rig, Microdot, SensorReaderConfig, str]":
     app = Microdot()
     # A bare SensorReaderConfig has no get_dict_data(), which _ModuleLike asks of a registered sensor; no route here reads it.
     groups: dict[str, Sequence[SettingsGroup]] = {"system": [SettingsGroup(svc, ("DebugLevel",))]}
-    routes = RouteSources([module], groups, None, system_cmd, None, None, None, (), ())  # type: ignore[list-item]
+    assert rig.manager is not None
+    routes = RouteSources([module], groups, None, system_cmd, (svc.is_reset_decided, rig.manager.get_pause), None, None, None, (), ())  # type: ignore[list-item]
     serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
     WebserverService(app, routes, serving, svc.get_uptime, None, LogConfig(None, 10, None))
     return rig, app, module, path
 
 
-def _put(app: "Microdot", path: str, body: "dict[str, Any]") -> "Coroutine[Any, Any, Any]":
+def _put(app: "Microdot", path: str, body: "dict[str, object]") -> "Coroutine[object, object, Response]":
     raw = json.dumps(body).encode()
     headers = {"Content-Length": str(len(raw)), "Content-Type": "application/json"}
-    request = Request(app, ("127.0.0.1", 12345), "PUT", path, "1.1", headers, body=raw, sock=(_Holder(), _Holder()))  # type: ignore[arg-type]  # the stub types sock as the two asyncio streams
+    request = Request(app, ("127.0.0.1", 12345), "PUT", path, "1.1", headers, body=raw)
     return app.dispatch_request(request)
 
 
@@ -3177,15 +3142,15 @@ def test_every_command_over_rest_reaches_its_arm_without_an_owner_lock_deadlock(
             sup = await rig.start()
             assert _result(await _put(app, "/system", {"DebugLevel": 1, "SystemCmd": word})) == {"DebugLevel": "Valid", "SystemCmd": "Valid"}
             await rig.settle()
-            assert rig.svc._reset_armed and len(rig.svc._reset_timer.arms) == 1
+            assert (rig.svc._phase >= _PHASE_ARMED) and len(rig.svc._reset_timer.arms) == 1
             assert rig.svc.cfgmgr._pending_flush is None  # the DebugLevel half was flushed before the arm
             assert _result(await _put(app, "/sensors", {"RESTMOD": {"Count": 6}})) == {"RESTMOD": {"Count": "Failed"}}
             assert _result(await _put(app, "/system", {"DebugLevel": 2})) == {"DebugLevel": "Failed"}
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
-        assert machine.mem_backup(0)[1] == _src_const(purpose), purpose
+        assert machine.mem_backup(0)[1] == _const(purpose), purpose
         files = (_exists(path + "config_RESTMOD.cfg"), _exists(rig.svc.cfgmgr._config_file))
         assert files == ((False, False) if purpose == "_RR_CONFIG_RESET" else (True, True)), (purpose, files)
         if purpose != "_RR_CONFIG_RESET":
@@ -3212,8 +3177,8 @@ def test_a_config_put_mid_write_when_a_command_starts_is_flushed_before_the_arm(
             put = asyncio.create_task(_put(app, "/sensors", {"RESTMOD": {"Count": 9}}))
             await pushing.wait()
             assert _result(await _put(app, "/system", {"SystemCmd": _REST_WORDS[purpose]})) == {"SystemCmd": "Valid"}
-            await _real_time(50)
-            sequence = rig.svc._shutdown_task
+            await _real_time(_HELD_WINDOW_MS)
+            sequence = _sequence(rig.svc)
             assert sequence is not None and not sequence.done() and not _armed(rig.svc)  # S2 waits on the PUT's lock
             assert _count_in(path, "RESTMOD") == 5  # the PUT's value is not on flash while its push runs
             release.set()
@@ -3224,9 +3189,9 @@ def test_a_config_put_mid_write_when_a_command_starts_is_flushed_before_the_arm(
                 assert _count_in(path, "RESTMOD") == 9  # on flash before the arm
             await rig.stop(sup)
 
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             run(scenario())
-        assert machine.mem_backup(0)[1] == _src_const(purpose), purpose
+        assert machine.mem_backup(0)[1] == _const(purpose), purpose
 
 
 # ---------------------------------------------------------------------------
@@ -3245,148 +3210,380 @@ def test_every_intended_reset_path_decodes_to_its_code_and_is_cleared() -> None:
             assert await _command(svc, svc.reboot_system) is True
             await _fire(svc)
 
-        with _FastAsyncSleep():
-            run(scenario())
+        with FastAsyncSleep():
+            _run_into_reset(scenario())
 
     def bootloader(svc: SystemService) -> None:
         async def scenario() -> None:
             assert await _command(svc, svc.reboot_bootloader) is True
             await _fire(svc)
 
-        with _FastAsyncSleep():
-            run(scenario())
+        with FastAsyncSleep():
+            _run_into_reset(scenario(), machine.SimulatedBootloaderEntryError)
 
     def starve(svc: SystemService) -> None:
-        with _RaiseOnArm(), _FastAsyncSleep():
+        with RaiseOnArm(), FastAsyncSleep():
             assert run(_command(svc, svc.reboot_system)) is True  # the gate answers True; the arm then fails
         _watchdog_reset()
 
-    for path, name in ((reboot, "_RR_REBOOT"), (bootloader, "_RR_BOOTLOADER"), (starve, "_RR_STARVE_ARM_FAILED")):
+    # BOOTSEL loses both regions on silicon, as the fake models: the boot after the bootloader reads 2.
+    for path, name in ((reboot, "_RR_REBOOT"), (bootloader, "_RR_WATCHDOG"), (starve, "_RR_STARVE_ARM_FAILED")):
         machine.power_on()
         begin_boot()
-        path(make_service())
-        assert begin_boot() == _src_const(name), name
+        path(_make_service())
+        assert begin_boot() == _const(name), name
         assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
-        make_service().boot_phase(BOOT_DONE)
+        _make_service().boot_phase(BOOT_DONE)
         _watchdog_reset()
-        assert begin_boot() == _src_const("_RR_WATCHDOG")  # cleared: the next reset after a full boot reads unrecorded
+        assert begin_boot() == _const("_RR_WATCHDOG")  # cleared: the next reset after a full boot reads unrecorded
 
 
 def test_the_supervisor_escalation_decodes_to_code_5() -> None:
     machine.power_on()
     begin_boot()
-    svc = make_service()
-
-    def always_raising_starter() -> "asyncio.Task[None]":
-        raise RuntimeError("starter always fails")
+    svc = _make_service()
 
     async def scenario() -> None:
-        await svc.start_tasks([always_raising_starter])
+        await svc.start_tasks([_always_raising_starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
-        await _cancel(sup)
+        await cancel(sup)
         await _fire(svc)
 
-    with _FastAsyncSleep():
-        run(scenario())
-    assert begin_boot() == _src_const("_RR_TASK_BUDGET")
+    with FastAsyncSleep():
+        _run_into_reset(scenario())
+    assert begin_boot() == _const("_RR_TASK_BUDGET")
 
 
-def test_power_on_reads_1_even_with_a_stale_valid_record() -> None:
+def _stack_error() -> RuntimeError:
+    # A C-stack overflow's exception: the firmware's text, which test_asy_print_log.py pins to the interpreter's own.
+    return RuntimeError(src_const(_LOG_SRC, "_STACK_EXHAUSTED"))
+
+
+def test_a_recorded_stack_overflow_reboots_with_code_20_at_the_next_pass() -> None:
+    # Healthy tasks, the flag recorded by a handler: the next pass persists one E25, feeds once, starves and arms code
+    # 20 with no scan; nothing feeds after it, and the fired reset decodes as 20 at the next boot.
     machine.power_on()
-    write_reset_record(_src_const("_RR_REBOOT"))
-    machine.reset_cause_value = machine.PWRON_RESET
-    assert begin_boot() == _src_const("_RR_POWER_ON")
+    begin_boot()
+    machine.reset_count = 0
+    wdt = machine.WDT()
+    svc = _make_service(watchdog=wdt)
+    events: list[str] = []
+    seen: list[object] = []
+    calls = [0]
+    sleeping = _sleeping(events, "t0")
+
+    def starter() -> "asyncio.Task[None]":
+        calls[0] += 1
+        return sleeping()
+
+    async def scenario() -> None:
+        await svc.start_tasks([starter], task_names=["T"])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        await _yields(5)  # its first pass ran, healthy
+        fed = wdt.feed_count
+        asy_print_log.report_if_fatal(_stack_error())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._phase >= _PHASE_ARMED:
+                break
+        seen.extend((_armed(svc), svc.is_reset_decided(), machine.mem_backup(0)[1], wdt.feed_count - fed))
+        await _yields(10)
+        seen.extend((wdt.feed_count - fed, not sup.done(), list(events), calls[0]))  # nothing stopped or restarted
+        await cancel(sup)
+        await _fire(svc)
+
+    with FastAsyncSleep():
+        _run_into_reset(scenario())
+    assert seen == [True, True, _const("_RR_STACK_EXHAUSTED"), 1, 1, True, [], 1], seen
+    assert _persisted(svc) == [code("E", "STACK_EXHAUSTED")]  # one entry, no task end, no budget escalation
+    assert machine.reset_count == 1
+    assert begin_boot() == 20
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_supervisor() -> None:
+    # The real path: a setter that recurses until the C stack runs out keeps the push running, one E14 is persisted
+    # for it, and the supervisor's next pass escalates with code 20.
+    def bottomless(value: int) -> None:
+        bottomless(value + 1)
+
+    # Untraced: a limit reached inside the coverage tracer would end tracing for the whole file.
+    svc = _make_service(level_setters=lambda: [lambda value: untraced(lambda: bottomless(value))])
+
+    async def scenario() -> None:
+        await svc.setup()
+        await svc._apply_level(1)
+        assert asy_print_log.fatal_reported() is True
+        await svc.start_tasks([_long_lived_starter], task_names=["T"])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._phase >= _PHASE_ARMED:
+                break
+        await cancel(sup)
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert machine.mem_backup(0)[1] == _const("_RR_STACK_EXHAUSTED")
+    assert _persisted(svc) == [code("E", "CALLBACK"), code("E", "STACK_EXHAUSTED")]
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_task_ended_by_an_unrecorded_overflow_records_20_before_its_entry_write_that_never_ends() -> None:
+    # An overflow no handler recorded ends a task: code 20 is written before the dead-task entry, so a write that never
+    # ended would still let the watchdog's reset read 20 (owner, 2026-11-06: "Option A"); the record at the entry's start.
+    machine.power_on()
+    begin_boot()
+    svc = _make_service(watchdog=machine.WDT())
+    reached = asyncio.Event()
+    at_entry: list[int] = []
+
+    def noting_err_s(*_args: object, **_kwargs: object) -> None:
+        if not reached.is_set():
+            at_entry.append(machine.mem_backup(0)[1])
+        reached.set()
+
+    svc.pr.err_s = noting_err_s  # type: ignore[method-assign]
+
+    async def overflows() -> None:
+        raise _stack_error()
+
+    async def scenario() -> "tuple[bool, int]":
+        await svc.start_tasks([lambda: asyncio.create_task(overflows())], task_names=["T"])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        await _until_reached(reached)
+        await cancel(sup)
+        return asy_print_log.fatal_reported(), at_entry[0]
+
+    with FastAsyncSleep():
+        seen = run(scenario())
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+    assert seen == (True, _const("_RR_STACK_EXHAUSTED")), seen
+
+
+def test_a_command_during_the_stack_escalations_entry_write_is_refused_and_the_record_keeps_20() -> None:
+    # The C-stack escalation commits to the reset before its E25 write: a command then is refused, the record reads 20
+    # throughout, and the escalation's own reset arms once the entry is written.
+    rig = _Rig()
+    records: list[object] = []
+    release, reached = _gate_entry_write(rig, "STACK_EXHAUSTED")
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        asy_print_log.report_if_fatal(_stack_error())
+        await _until_reached(reached)
+        records.extend((machine.mem_backup(0)[1], await rig.svc.reboot_system(), machine.mem_backup(0)[1]))
+        release.set()
+        await _until_armed(rig.svc)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert records == [_const("_RR_STACK_EXHAUSTED"), False, _const("_RR_STACK_EXHAUSTED")], records
+    assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_STACK_EXHAUSTED")
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_fault_of_the_supervisor_itself_is_persisted_once_and_ends_it_unfed() -> None:
+    # Its own end logging raising a C-stack overflow's error: recorded for the reboot, one entry of its own code persisted,
+    # and the loop ends unfed, so the watchdog resets (code 2); ResetErrors is refused meanwhile, so the entry survives.
+    wdt = machine.WDT()
+    svc = _make_service(watchdog=wdt)
+
+    async def faulty_log(*_args: object, **_kwargs: object) -> None:
+        raise _stack_error()
+
+    svc._log_dead_task = faulty_log  # type: ignore[method-assign]
+
+    async def ends() -> None:
+        return
+
+    async def scenario() -> "tuple[bool, int, bool, bool]":
+        await svc.start_tasks([lambda: asyncio.create_task(ends())], task_names=["T"])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._supervisor_task is not None and svc._supervisor_task.done():
+                break
+        fed = wdt.feed_count
+        await _yields(10)
+        ended = svc._supervisor_task is not None and svc._supervisor_task.done()
+        await cancel(sup)
+        return ended, wdt.feed_count - fed, svc.is_reset_decided(), await svc.reset_error_counter()
+
+    with FastAsyncSleep():
+        ended, fed_after, decided, cleared = run(scenario())
+    assert ended and fed_after == 0
+    assert decided and not cleared, (decided, cleared)
+    assert asy_print_log.fatal_reported() is True
+    assert _persisted(svc) == [code("E", "SUPERVISOR_RAISED")]
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, stack: bool) -> "list[object]":
+    # One escalation on a heap full from its decision on: its entry and every star-call log line raise, so the
+    # supervisor ends unfed. Whether it armed, its record, the supervisor running on, no feed after, the cause lines.
+    no_room = _ExhaustionError("no room for the entry")
+    machine.power_on()
+    wdt = machine.WDT()
+    svc = _make_service(watchdog=wdt, log=LogConfig(None, 10, _ERR))
+    real_err_s = svc.pr.err_s
+    entries = (code("E", "STACK_EXHAUSTED"), code("E", "TASK_BUDGET_REBOOT"))
+    seen: list[object] = []
+
+    def full_heap_entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+        if errno in entries:
+            raise no_room  # the entry's argument tuple
+        real_err_s(*args, errno=errno, sep=sep, end=end)
+
+    def full_heap_line(*_args: object, **_kwargs: object) -> None:
+        raise no_room  # a star-call's argument tuple
+
+    svc.pr.err_s = full_heap_entry  # type: ignore[method-assign]
+    svc.pr.err = full_heap_line  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        await svc.start_tasks([starter], task_names=["T"])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        await _yields(5)
+        if stack:
+            asy_print_log.report_if_fatal(_stack_error())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if (svc._phase >= _PHASE_ARMED) or (svc._supervisor_task is not None and svc._supervisor_task.done()):
+                break
+        fed = wdt.feed_count
+        await _yields(50)
+        running = svc._supervisor_task is not None and not svc._supervisor_task.done()
+        seen.extend((_armed(svc), machine.mem_backup(0)[1], running, wdt.feed_count == fed))
+        await cancel(sup)
+
+    try:
+        with record_prints() as recorder, FastAsyncSleep():
+            run(scenario())
+    finally:
+        asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+    seen.append(sum(1 for line in recorder.lines if no_room in line))
+    return seen
+
+
+def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code() -> None:
+    # Building the entry allocates its argument tuple, and the arm's line its tuple: on a full heap the
+    # supervisor ends with nothing feeding, and the watchdog's reset reads the code recorded first. One line names it.
+    stack = _escalate_into_a_full_heap(_long_lived_starter, stack=True)
+    budget = _escalate_into_a_full_heap(_always_raising_starter, stack=False)
+    assert stack == [False, _const("_RR_STACK_EXHAUSTED"), False, True, 1], stack
+    assert budget == [False, _const("_RR_TASK_BUDGET"), False, True, 1], budget
+
+
+def test_a_console_soft_reset_after_a_power_on_boot_reads_the_recorded_code() -> None:
+    # A Ctrl-D inside the watchdog window re-runs main.py with no hard reset: the cause stays the power-on's, the regions
+    # keep the Ctrl-C arm's 21 (a loop end resets the chip itself), and the boot reads that code and clears it.
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_DONE)
+    write_reset_record(asy_system_service.RR_INTERRUPTED)
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == asy_system_service.RR_INTERRUPTED == 21
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_power_cycle_after_a_record_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    write_reset_record(asy_system_service.RR_INTERRUPTED)
+    machine.power_on()  # power-off clears both regions (SPECIFICATION.md F.5.4)
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_torn_record_under_a_power_on_cause_reads_1() -> None:
+    machine.power_on()
+    write_reset_record(_const("_RR_REBOOT"))
+    machine.mem_backup(0)[2] ^= 1
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == _const("_RR_POWER_ON")
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_boot_done_marker_under_a_power_on_cause_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_DONE)
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_power_cycle_during_boot_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_NTP)
+    machine.power_on()  # power-off clears both regions (SPECIFICATION.md F.5.4)
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_torn_record_beside_an_in_boot_phase_reads_10_plus_the_phase_under_either_cause() -> None:
+    # The phase marker is read before the power-on cause and the torn record (owner, 2026-10-26).
+    for cause in (machine.PWRON_RESET, machine.WDT_RESET):
+        machine.power_on()
+        begin_boot()  # marks phase 1
+        write_reset_record(_const("_RR_REBOOT"))
+        machine.mem_backup(0)[2] ^= 1
+        machine.reset_cause_value = cause
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + BOOT_CONSTRUCTION, cause
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], cause
 
 
 def test_no_record_after_a_complete_boot_reads_watchdog() -> None:
     machine.power_on()
     begin_boot()
-    make_service().boot_phase(BOOT_DONE)
+    _make_service().boot_phase(BOOT_DONE)
     _watchdog_reset()
-    assert begin_boot() == _src_const("_RR_WATCHDOG")
+    assert begin_boot() == _const("_RR_WATCHDOG")
 
 
 def test_a_record_with_a_wrong_check_word_reads_unknown() -> None:
     machine.power_on()
-    write_reset_record(_src_const("_RR_REBOOT"))
+    write_reset_record(_const("_RR_REBOOT"))
     machine.mem_backup(0)[2] ^= 1
     _watchdog_reset()
-    assert begin_boot() == _src_const("_RR_UNKNOWN")
+    assert begin_boot() == _const("_RR_UNKNOWN")
 
 
 def test_a_crash_in_each_boot_phase_decodes_to_10_plus_the_phase() -> None:
     for p in range(BOOT_CONSTRUCTION, BOOT_NTP + 1):
         machine.power_on()
         begin_boot()  # marks phase 1
-        svc = make_service()
+        svc = _make_service()
         for q in range(BOOT_CONSTRUCTION, p + 1):
             svc.boot_phase(q)
         _watchdog_reset()
-        assert begin_boot() == _src_const("_RR_BOOT_FAILURE") + p, p
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + p, p
 
 
 def test_the_command_codes_decode_like_every_other_record() -> None:
     for name in ("_RR_CONFIG_RESET", "_RR_FRAM_ERASED", "_RR_COMMAND_INCOMPLETE"):
         machine.power_on()
-        write_reset_record(_src_const(name))
+        write_reset_record(_const(name))
         _watchdog_reset()
-        assert begin_boot() == _src_const(name), name
+        assert begin_boot() == _const(name), name
 
 
 def test_the_record_and_the_phase_marker_stay_small_ints() -> None:
     # Every stored word lies below 2**30, so a store never needs a heap int on the target.
     for name in ("_RR_MAGIC", "_BP_MAGIC", "_RR_CHECK"):
-        assert 0 < _src_const(name) < 2**30, name
-    assert (_src_const("_RR_MAGIC") ^ _src_const("_RR_CHECK")) < 2**30
+        assert 0 < _const(name) < 2**30, name
+    assert (_const("_RR_MAGIC") ^ _const("_RR_CHECK")) < 2**30
 
 
 def _plant_reset_flags(reason: int, chip: int) -> None:
     # What the chip's WATCHDOG REASON and VREG_AND_CHIP_RESET CHIP_RESET registers read at this boot.
     machine.watchdog_reason_value = reason
     machine.chip_reset_value = chip
-
-
-def test_the_reset_flags_read_power_on_after_a_power_cycle() -> None:
-    machine.power_on()
-    assert begin_boot() == _src_const("_RR_POWER_ON")
-    assert make_service().get_reset_bits() == 0x100  # HAD_POR
-
-
-def test_the_reset_flags_after_a_reboot_read_force_with_had_por_kept() -> None:
-    machine.power_on()
-    begin_boot()
-    svc = make_service()
-
-    async def scenario() -> None:
-        assert await _command(svc, svc.reboot_system) is True
-        await _fire(svc)
-
-    with _FastAsyncSleep():
-        run(scenario())
-    assert begin_boot() == _src_const("_RR_REBOOT")
-    assert make_service().get_reset_bits() == 0x102  # FORCE, and HAD_POR survives a watchdog reset
-
-
-def test_the_reset_flags_keep_only_their_named_bits() -> None:
-    machine.power_on()
-    _plant_reset_flags(1, 0x10000)  # a watchdog timeout after a RUN-pin reset
-    begin_boot()
-    assert make_service().get_reset_bits() == 0x10001
-    _plant_reset_flags(0xFFFFFFFF, 0xFFFFFFFF)
-    begin_boot()
-    assert make_service().get_reset_bits() == 0x3 | 0x110100  # TIMER|FORCE, HAD_PSM_RESTART|HAD_RUN|HAD_POR
-
-
-def test_the_reset_flags_are_taken_once_at_boot() -> None:
-    machine.power_on()
-    begin_boot()
-    _plant_reset_flags(0x2, 0x10000)  # registers that change later never reach the reported value
-    assert make_service().get_reset_bits() == 0x100
 
 
 def test_the_reset_flags_never_change_the_decoded_reason() -> None:
@@ -3400,11 +3597,11 @@ def test_the_reset_flags_never_change_the_decoded_reason() -> None:
 
     def after_a_full_boot() -> None:
         begin_boot()
-        make_service().boot_phase(BOOT_DONE)
+        _make_service().boot_phase(BOOT_DONE)
         _watchdog_reset()
 
     def after_a_record() -> None:
-        write_reset_record(_src_const("_RR_REBOOT"))
+        write_reset_record(_const("_RR_REBOOT"))
         _watchdog_reset()
 
     for prepare in (lambda: None, after_a_full_boot, after_a_record):
@@ -3420,35 +3617,36 @@ def _set_level(svc: SystemService, level: int) -> "cm.WriteValidity":
     return run(svc._set_dict_cfg({"DebugLevel": level}, svc.get_cfg_schema()))
 
 
-def _recorder(calls: "list[int]") -> "Callable[[int], bool]":
-    # A level setter that records each level it is given and accepts it, as PrintLog.set_level() does.
-    def setter(value: int) -> bool:
+def _recorder(calls: "list[int]") -> "Callable[[int], None]":
+    # A level setter that records each level it is given, answering nothing, as PrintLog.set_level() does.
+    def setter(value: int) -> None:
         calls.append(value)
-        return True
 
     return setter
 
 
 def test_setup_resolves_cfgmgr_and_reads_the_default_level_on_first_boot() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    assert run(svc.setup()) is True
+    svc = _make_service(cfg_path=_scratch.dir())
+    run(svc.setup())
     assert svc.cfgmgr.valid is True
     assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": 0}}
 
 
 def test_setup_sets_up_its_own_logger_first() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     before = svc.pr.initialized  # __init__ never sets the logger up
-    assert run(svc.setup()) is True
+    run(svc.setup())
+    assert svc.cfgmgr.valid is True
     assert (before, svc.pr.initialized, svc.cfgmgr.pr.initialized) == (False, True, True)
 
 
-def test_setup_answers_false_for_an_unusable_store_and_still_sets_up_the_logger() -> None:
-    cfg_path = _tmp_cfg_dir()
+def test_setup_leaves_an_unusable_store_invalid_and_still_sets_up_the_logger() -> None:
+    cfg_path = _scratch.dir()
     os.mkdir(cfg_path + "config_SYSTEM.cfg")  # a directory where the settings file belongs
     try:
-        svc = make_service(cfg_path=cfg_path)
-        assert run(svc.setup()) is False
+        svc = _make_service(cfg_path=cfg_path)
+        run(svc.setup())
+        assert svc.cfgmgr.valid is False
         assert svc.pr.initialized is True
         assert run(svc.get_dict_cfg()) == {"SYSTEM": {"error": "unavailable"}}
     finally:
@@ -3456,7 +3654,7 @@ def test_setup_answers_false_for_an_unusable_store_and_still_sets_up_the_logger(
 
 
 def test_get_dict_cfg_answers_the_nested_shape_or_the_unavailable_marker() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     marker = run(svc.get_dict_cfg())
     assert marker == {"SYSTEM": {"error": "unavailable"}} == {"SYSTEM": {"error": UNAVAILABLE}}  # before setup(): the store is not valid
     run(svc.setup())
@@ -3465,7 +3663,7 @@ def test_get_dict_cfg_answers_the_nested_shape_or_the_unavailable_marker() -> No
 
 def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() -> None:
     calls: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls)])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls)])
     run(svc.setup())
     # First boot writes and uses the schema default (0); the registry is still called once, unchanged default or not.
     assert calls == [0]
@@ -3473,16 +3671,16 @@ def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() 
 
 class _UnreadableOs:
     # Stands in for asy_config_manager's `os`: the config file exists but every stat() fails with EIO.
-    def stat(self, _path: str) -> "tuple[int, ...]":
-        raise OSError(5, "EIO")
-
     def __getattr__(self, name: str) -> object:
         return getattr(os, name)
+
+    def stat(self, _path: str) -> "tuple[int, ...]":
+        raise OSError(5, "EIO")
 
 
 def test_an_unreadable_store_keeps_the_constructed_level() -> None:
     calls: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir(), log=LogConfig(None, 10, 3), level_setters=lambda: [_recorder(calls)])
+    svc = _make_service(cfg_path=_scratch.dir(), log=LogConfig(None, 10, 3), level_setters=lambda: [_recorder(calls)])
     original = cm.os
     cm.os = _UnreadableOs()  # type: ignore[assignment]
     try:
@@ -3498,11 +3696,11 @@ def test_an_unreadable_store_keeps_the_constructed_level() -> None:
 
 
 def test_a_stored_level_wins_over_the_constructed_one() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_SYSTEM.cfg", "w") as f:
         f.write('{"DebugLevel": 4}')
     holder: list[SystemService] = []
-    svc = make_service(
+    svc = _make_service(
         cfg_path=cfg_path, log=LogConfig(None, 10, 2),
         level_setters=lambda: [pr.set_level for pr in holder[0].get_loggers()],
     )
@@ -3514,7 +3712,7 @@ def test_a_stored_level_wins_over_the_constructed_one() -> None:
 def test_set_dict_cfg_persists_and_calls_every_setter() -> None:
     calls_a: list[int] = []
     calls_b: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls_a), _recorder(calls_b)])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls_a), _recorder(calls_b)])
     run(svc.setup())
     assert _set_level(svc, _ALL) == {"DebugLevel": "Valid"}
     assert calls_a == [0, _ALL]  # once from setup()'s own push, once from this call
@@ -3524,7 +3722,7 @@ def test_set_dict_cfg_persists_and_calls_every_setter() -> None:
 
 def test_an_out_of_range_level_is_invalid_and_never_reaches_the_registry() -> None:
     calls: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls)])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls)])
     run(svc.setup())
     calls.clear()  # drop setup()'s own push of the default, isolate this call's own effect
     assert _set_level(svc, 99) == {"DebugLevel": "Invalid"}  # outside the schema's 0-5 range
@@ -3533,12 +3731,12 @@ def test_an_out_of_range_level_is_invalid_and_never_reaches_the_registry() -> No
 
 
 def test_a_level_written_before_setup_fails_every_key() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     assert _set_level(svc, _ALL) == {"DebugLevel": "Failed"}  # cfgmgr.valid is False before setup()
 
 
 def test_a_level_without_any_registered_setters_still_persists() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     run(svc.setup())
     assert _set_level(svc, _WARN) == {"DebugLevel": "Valid"}
     assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": _WARN}}
@@ -3547,11 +3745,11 @@ def test_a_level_without_any_registered_setters_still_persists() -> None:
 def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     calls: list[int] = []
 
-    def _raising_setter(_value: int) -> bool:
+    def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
-    svc = make_service(
-        cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls), _raising_setter, _recorder(calls)],
+    svc = _make_service(
+        cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls), _raising_setter, _recorder(calls)],
     )
     run(svc.setup())
     assert _set_level(svc, _WARN) == {"DebugLevel": "Valid"}  # persistence itself is unaffected
@@ -3559,18 +3757,18 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
 
 
 def test_a_bad_setter_persists_one_callback_entry() -> None:
-    def _raising_setter(_value: int) -> bool:
+    def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
-    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_raising_setter])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_raising_setter])
     run(svc.setup())
     _set_level(svc, _WARN)
     assert _persisted(svc)[-1] == code("E", "CALLBACK")
 
 
 def test_the_debug_level_survives_a_simulated_reboot() -> None:
-    cfg_path = _tmp_cfg_dir()
-    svc = make_service(cfg_path=cfg_path)
+    cfg_path = _scratch.dir()
+    svc = _make_service(cfg_path=cfg_path)
 
     async def first_boot() -> None:
         await svc.setup()
@@ -3579,7 +3777,7 @@ def test_the_debug_level_survives_a_simulated_reboot() -> None:
 
     run(first_boot())
     holder: list[SystemService] = []
-    after = make_service(cfg_path=cfg_path, level_setters=lambda: [holder[0].pr.set_level])
+    after = _make_service(cfg_path=cfg_path, level_setters=lambda: [holder[0].pr.set_level])
     holder.append(after)
     run(after.setup())
     assert run(after.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": _EVENT}}
@@ -3587,7 +3785,7 @@ def test_the_debug_level_survives_a_simulated_reboot() -> None:
 
 
 def test_get_cfg_schema_returns_the_debug_level_field() -> None:
-    assert make_service().get_cfg_schema()[0][0] == "DebugLevel"
+    assert _make_service().get_cfg_schema()[0][0] == "DebugLevel"
 
 
 def test_the_level_setters_provider_is_resolved_once_in_setup() -> None:
@@ -3596,11 +3794,11 @@ def test_the_level_setters_provider_is_resolved_once_in_setup() -> None:
     resolved = [0]
     calls: list[int] = []
 
-    def provider() -> "list[Callable[[int], bool]]":
+    def provider() -> "list[Callable[[int], None]]":
         resolved[0] += 1
         return [_recorder(calls)]
 
-    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=provider)
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=provider)
     assert resolved[0] == 0
     run(svc.setup())
     assert resolved[0] == 1
@@ -3619,14 +3817,14 @@ def test_the_config_stores_provider_is_resolved_once_in_setup() -> None:
         resolved[0] += 1
         return [store]  # type: ignore[list-item]
 
-    svc = make_service(cfg_path=_tmp_cfg_dir(), config_stores=provider)
+    svc = _make_service(cfg_path=_scratch.dir(), config_stores=provider)
     assert resolved[0] == 0
     run(svc.setup())
     assert resolved[0] == 1
 
     async def scenario() -> None:
-        await svc._reboot(_src_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
-        await _cancel(svc._reset_task)  # type: ignore[arg-type]
+        await svc._reboot(_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
 
     run(scenario())
     assert resolved[0] == 1
@@ -3636,7 +3834,7 @@ def test_the_config_stores_provider_is_resolved_once_in_setup() -> None:
 def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
     # (exactly what every generated module's _collect_level_setters() does for every module, sysfunct's own included)
     holder: list[SystemService] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [holder[0].pr.set_level])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [holder[0].pr.set_level])
     holder.append(svc)
     run(svc.setup())
     _set_level(svc, _ERR)
@@ -3644,57 +3842,15 @@ def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
 
 
 # ---------------------------------------------------------------------------
-# CONFIG_LOST: a missing settings file beside surviving FRAM history
+# A fresh filesystem: the settings file written once with its defaults
 # ---------------------------------------------------------------------------
 
 
-def _history_chip() -> FakeMB85RS64V:
-    # A chip whose SYSTEM chunk holds one entry, from an earlier boot.
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    svc = make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=_tmp_cfg_dir())
-    run(svc.setup())
-    run(svc.pr.err_s("an earlier boot's entry", errno=code("E", "CALLBACK")))
-    return chip
-
-
-def _config_lost_count(*, chip: "FakeMB85RS64V | None", file_present: bool, reset_reason: int) -> "tuple[int, SystemService, str]":
-    cfg_path = _tmp_cfg_dir()
-    if file_present:
-        with open(cfg_path + "config_SYSTEM.cfg", "w") as f:
-            f.write('{"DebugLevel": 0}')
-    if chip is None:
-        svc = make_service(cfg_path=cfg_path, reset_reason=reset_reason)
-    else:
-        manager = _same_chip_manager(chip)
-        svc = make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=cfg_path, reset_reason=reset_reason)
-    run(svc.setup())
-    return _persisted(svc).count(code("W", "CONFIG_LOST")), svc, cfg_path
-
-
-def test_a_missing_settings_file_beside_restored_history_persists_config_lost() -> None:
-    watchdog = _src_const("_RR_WATCHDOG")
-    count, svc, cfg_path = _config_lost_count(chip=_history_chip(), file_present=False, reset_reason=watchdog)
-    assert count == 1
-    assert _persisted(svc)[-1] == code("W", "CONFIG_LOST")
-    with open(cfg_path + "config_SYSTEM.cfg") as f:
-        assert f.read().replace(" ", "") == '{"DebugLevel":0}'  # written with its defaults
-    # Controls, none of which persists it: a first boot on a blank chip, the file present, a commanded config
-    # reset (7) or an incomplete one (9), and a RAM-only logger.
-    blank_manager, blank_chip = make_fram_manager()
-    run(blank_manager.setup())
-    assert _config_lost_count(chip=blank_chip, file_present=False, reset_reason=watchdog)[0] == 0
-    assert _config_lost_count(chip=_history_chip(), file_present=True, reset_reason=watchdog)[0] == 0
-    for commanded in ("_RR_CONFIG_RESET", "_RR_COMMAND_INCOMPLETE"):
-        assert _config_lost_count(chip=_history_chip(), file_present=False, reset_reason=_src_const(commanded))[0] == 0
-    assert _config_lost_count(chip=None, file_present=False, reset_reason=watchdog)[0] == 0
-
-
 def test_a_fresh_filesystem_writes_the_settings_file_once() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with WriteCountingOpen(cm) as counter:
-        run(make_service(cfg_path=cfg_path).setup())
-        run(make_service(cfg_path=cfg_path).setup())
+        run(_make_service(cfg_path=cfg_path).setup())
+        run(_make_service(cfg_path=cfg_path).setup())
     assert counter.writes == 1
 
 
@@ -3761,6 +3917,8 @@ def _raised(exc: BaseException) -> BaseException:
     # The exception as asyncio hands it over: raised once, so it carries a traceback.
     try:
         raise exc
+    except KeyboardInterrupt:
+        raise  # the per-file timeout's interrupt ends the run, never a helper's answer
     except BaseException as caught:
         return caught
 
@@ -3812,7 +3970,7 @@ def _settled_alloc() -> int:
 
 
 def test_start_tasks_installs_the_report_when_no_handler_is_set() -> None:
-    svc = make_service()
+    svc = _make_service()
     with _HandlerSlot(None):
         _supervised(svc, [_long_lived_starter], 5)
         installed = asyncio.get_event_loop().get_exception_handler()
@@ -3828,12 +3986,12 @@ def test_start_tasks_never_replaces_an_installed_handler() -> None:
         pass
 
     with _HandlerSlot(keep):
-        _supervised(make_service(), [_long_lived_starter], 5)
+        _supervised(_make_service(), [_long_lived_starter], 5)
         assert asyncio.get_event_loop().get_exception_handler() is keep
 
 
 def test_the_report_prints_nothing_at_level_0_and_releases_the_dead_task() -> None:
-    svc = make_service()
+    svc = _make_service()
     assert svc.pr.level == 0
     for exc in (_raised(ValueError("probe")), _genuine_memory_error()):
         context = _context(exc)
@@ -3845,8 +4003,8 @@ def test_the_report_prints_nothing_at_level_0_and_releases_the_dead_task() -> No
 
 def test_from_level_1_the_report_prints_one_line_and_the_traceback() -> None:
     for level in (_ERR, _WARN, _EVENT, _ALL):
-        svc = make_service()
-        assert svc.pr.set_level(level)
+        svc = _make_service()
+        svc.pr.set_level(level)
         exc = _raised(ValueError("probe"))
         context = _context(exc)
         with _ReportRecorder() as recorder:
@@ -3867,8 +4025,8 @@ def test_the_report_returns_and_releases_the_task_with_the_heap_locked() -> None
         (_ERR, _raised(_ExhaustionError("simulated allocation failure"))),
     )
     for level, exc in cases:
-        svc = make_service()
-        assert svc.pr.set_level(level)
+        svc = _make_service()
+        svc.pr.set_level(level)
         context = _context(exc)
         _call_locked(svc.pr.report_unretrieved, context)
         assert context["exception"] is None and context["future"] is None, (level, exc)
@@ -3885,8 +4043,8 @@ def test_the_reports_outputs_allocate_nothing() -> None:
     finally:
         micropython.heap_unlock()
     for level in (0, _ERR):
-        svc = make_service()
-        assert svc.pr.set_level(level)
+        svc = _make_service()
+        svc.pr.set_level(level)
         context = _context(exc)
         cost = _call_cost()
         gc.collect()
@@ -3897,8 +4055,8 @@ def test_the_reports_outputs_allocate_nothing() -> None:
 
 
 def test_a_report_that_cannot_print_still_releases_the_task_and_never_raises() -> None:
-    svc = make_service()
-    assert svc.pr.set_level(_ERR)
+    svc = _make_service()
+    svc.pr.set_level(_ERR)
     context = _context(_raised(ValueError("probe")))
     with _ReportRecorder(fail=RuntimeError("console gone")):
         svc.pr.report_unretrieved(None, context)
@@ -3907,7 +4065,7 @@ def test_a_report_that_cannot_print_still_releases_the_task_and_never_raises() -
     svc.pr.report_unretrieved(None, bare)  # the missing "message" raises before anything prints
     assert bare == {"exception": None, "future": None}, bare
     for level in (0, _ERR):
-        assert svc.pr.set_level(level)
+        svc.pr.set_level(level)
         svc.pr.report_unretrieved(None, None)  # type: ignore[arg-type]  # not even a dict: the clearing raises too
 
 
@@ -3936,7 +4094,7 @@ def _deaths(n_tasks: int, *, first: int = 0) -> None:
 
 def test_a_thousand_unretrieved_deaths_through_the_real_loop_retain_nothing() -> None:
     # Level 0, the deployed default: silent, so the genuine allocation failures never reach the console.
-    svc = make_service()
+    svc = _make_service()
     with _HandlerSlot(None):
         _supervised(svc, [_long_lived_starter], 5)
         assert asyncio.get_event_loop().get_exception_handler() == svc.pr.report_unretrieved
@@ -3952,7 +4110,7 @@ def test_a_thousand_unretrieved_deaths_through_the_real_loop_retain_nothing() ->
 
 
 def test_the_report_releases_the_dead_task_the_default_handler_keeps() -> None:
-    svc = make_service()
+    svc = _make_service()
     try:
         with _HandlerSlot(svc.pr.report_unretrieved):
             _deaths(1)  # warm-up, and leaves asyncio's context clear
@@ -3967,6 +4125,15 @@ def test_the_report_releases_the_dead_task_the_default_handler_keeps() -> None:
         svc.pr.report_unretrieved(None, asyncio_core._exc_context)  # later tests start from a clear context
     assert kept >= _LARGE_LOCAL, kept
     assert released <= _HAMMER_DRIFT_BYTES, released
+
+
+def test_the_raised_helper_lets_an_interrupt_through() -> None:
+    # The per-file timeout's first signal is SIGINT: a helper catching BaseException must not answer it as its result.
+    try:
+        caught = _raised(KeyboardInterrupt())
+    except KeyboardInterrupt:
+        return
+    raise AssertionError(f"_raised() swallowed the interrupt: {caught!r}")
 
 
 if __name__ == "__main__":

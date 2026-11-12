@@ -1,0 +1,2912 @@
+{
+ "scripts/_digital_twin_scenarios.py::above_max_connections_all_flaky_survives": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::all_flaky_connections_dont_wedge_the_server": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::erasefram_concurrent_with_a_reboot_accepts_exactly_one": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::reboot_and_bootloader_at_once_accept_exactly_one": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::survives_bus_and_api_load_while_ntp_is_unreachable": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::survives_bus_and_api_load_while_ntp_is_unreachable_with_concurrent_config_writes": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::watchdog_fault_block": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::watchdog_fault_main_exit": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "scripts/_digital_twin_scenarios.py::watchdog_fault_supervisor_raise": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/_sensortask_scenarios.py::build_system_is_independently_callable_and_returns": {
+  "setup_credit_only": [
+   "justified",
+   "the claim is that build() returns; a hang fails the file's timeout (stated at :274-276)"
+  ]
+ },
+ "tests/_sensortask_scenarios.py::collect_task_starters_never_touches_start_tasks": {
+  "was:setup_credit_only": [
+   "fixed",
+   "spies on SystemService.start_tasks/start_timers: neither called, the starters collected; bite: start_tasks called inside the generated collector passes the old form, fails the new (S/u35/laneC/crr1c/r2/bite_scenario_collect_*.log)"
+  ]
+ },
+ "tests/test_asy_base_classes.py::test_recover_failed_push_unknown_key_is_a_defensive_noop": {
+  "was:no_assertion": [
+   "fixed",
+   "no correction write, both logs empty, the stored config unchanged; bite: a known key (SampleInterval) passes the old form, fails the new on its correction write (S/u35/laneC/crr1c/r1/bite_bc_unknown_key_*.log)"
+  ]
+ },
+ "tests/test_asy_base_classes.py::test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and one CFG_SNAPSHOT_RAISED slot; bite: the request repeated passes the old >= 1, fails the new (S/u35/laneC/crr1c/r1/bite_bc_snapshot_*.log)"
+  ]
+ },
+ "tests/test_asy_base_classes.py::test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and one RECOVERY_WRITE_RAISED slot; bite: the request repeated passes the old >= 1, fails the new (S/u35/laneC/crr1c/r1/bite_bc_correction_*.log)"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_config_write_accepts_every_legal_discrete_value": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_config_write_rejects_single_out_of_range_field": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_field": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_filter_coefficient_round_trip_every_valid_setting": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_pressure_oversampling_round_trip_every_valid_setting": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure": {
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one persisted E entry; bite: one extra entry passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure": {
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one persisted E entry; bite: one extra entry passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_bmp3xx_driver.py::test_temperature_oversampling_round_trip_every_valid_setting": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_captive_dns.py::test_dns_query_init_rejects_single_invalid_data_parameter_without_raising": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_captive_dns.py::test_dns_query_malformed_or_truncated_data_yields_empty_domain": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_captive_dns.py::test_response_rejects_invalid_ip_combined_with_empty_domain_state": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_captive_dns.py::test_response_rejects_single_invalid_ip_parameter_without_raising": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_captive_dns.py::test_run_rejects_single_invalid_netmask_parameter": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_captive_dns.py::test_run_rejects_single_invalid_server_ip_parameter": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_config_manager.py::test_coerce_wrong_type_entirely_rejected": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_config_manager.py::test_get_error_counter_matches_pr_get_log_shape": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_config_manager.py::test_name_cfg_single_field_literally_named_empty_string_quirk": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_config_manager.py::test_schema_names_and_schema_dict_tolerate_a_non_tuple_element_among_good_ones": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_crc_checks.py::test_crc32_matches_the_mpeg2_check_value": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_crc_checks.py::test_crc8_matches_sgp40_datasheet_vectors": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_dns_client.py::test_ipv4_to_int_accepts_every_valid_dotted_quad": {
+  "was:weak_only": [
+   "fixed",
+   "each quad's RFC 791 value, hand-computed; bite: an off-by-one value for 1.2.3.4 passes the old form, fails the new (bites_*.out)"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_aexit_tolerates_a_bus_lock_that_was_already_released": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_set_write_protected_wel_did_not_set_logs_a_persisted_warning": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wp_wel_not_set_*.log)"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_verify_present_before_setup_logs_a_persisted_error": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_not_init_*.log)"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_wrdi_stuck_after_retry_logs_a_persisted_warning": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (drop_next_wrdi 4 for the two runs) (S/u35/laneC/crr1c/r1/bite_fram_wel_stuck_*.log)"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_write_protected_and_access_not_locked_are_now_persisted": {
+  "ns_seed_text": [
+   "biting",
+   "(b) both refusals are provoked by the test, each expecting its persisted code"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_write_protected_readback_mismatch_logs_a_persisted_error": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wp_mismatch_*.log)"
+  ]
+ },
+ "tests/test_asy_fram_driver.py::test_write_wel_did_not_set_logs_a_persisted_warning": {
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wel_not_set_*.log)"
+  ]
+ },
+ "tests/test_asy_fram_manager.py::test_a_history_write_cancelled_at_each_await_keeps_one_readable_copy": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_fram_manager.py::test_all_zero_and_all_0xff_payloads_round_trip_without_sentinel_collision": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_i2c_driver.py::test_aexit_tolerates_a_lock_already_released_inside_the_block": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_i2c_driver.py::test_bus_busy_surfaces_as_etimedout": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_i2c_driver.py::test_get_register_struct_returns_none_when_unpack_itself_raises": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests/test_asy_i2c_driver.py::test_the_boot_clear_ends_at_the_bus_timeout_on_the_fake_clock": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_isl29125_driver.py::test_a_failed_partner_read_logs_a_read_error_and_puts_the_range_back": {
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one entry, READ; bite: one extra entry passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_isl29125_driver.py::test_a_periodic_only_switch_warns_after_five_consecutive_occurrences": {
+  "ns_seed_text": [
+   "biting",
+   "(b) five provoked switches expecting their warning"
+  ]
+ },
+ "tests/test_asy_isl29125_driver.py::test_is_bus_fault_pattern_tolerates_a_missing_triple": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_isl29125_driver.py::test_read_returns_a_narrow_results_tuple_without_cct": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_isl29125_driver.py::test_reset_does_not_read_the_destructive_status_register": {
+  "loop_vacuous": [
+   "justified",
+   "an absence claim: a reset reading nothing satisfies it too"
+  ]
+ },
+ "tests/test_asy_notification_service.py::test_check_one_never_raises": {
+  "no_assertion": [
+   "justified",
+   "the claim is the absence of a raise; run() propagates one (stated at :848)"
+  ]
+ },
+ "tests/test_asy_notification_service.py::test_each_int_float_field_boundary_values_accepted": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_notification_service.py::test_each_int_float_field_just_outside_bounds_rejected": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_notification_service.py::test_monitor_loop_restart_does_not_clobber_an_active_led_override": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_notification_service.py::test_write_all_valid_fields_at_once_succeeds": {
+  "was:loop_vacuous": [
+   "fixed",
+   "the result names every written field Valid; bite: a result missing one field passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_ntp_client.py::test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising": {
+  "was:setup_credit_only": [
+   "fixed",
+   "under a stepped clock: no resync 10 s before 12 h, one at 12 h, the two CFG_READ events in one slot; bite: the fallback planted as 11 h passes the old form, fails the new (S/u35/laneC/crr1c/r1/bite_ntp_fallback_*.log)"
+  ]
+ },
+ "tests/test_asy_ntp_client.py::test_the_shape_corpus_judges_ntp_host_and_dns_fallback": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_print_log.py::test_a_gated_line_at_its_level_prints_its_one_line_with_the_memory_error_in_it": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_print_log.py::test_a_gated_line_below_its_level_prints_a_caught_memory_error_once": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_scd30_driver.py::test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_sgp40_driver.py::test_read_sgp_without_compensation_data_yet_logs_nothing": {
+  "ns_seed_text": [
+   "biting",
+   "a normal situation asserting no entry: SGP40's first-boot wrnno 10 landed"
+  ]
+ },
+ "tests/test_asy_sgp40_driver.py::test_reset_tolerates_nak_at_general_call_address": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_chunk_that_cannot_be_blanked_stops_the_erase_before_any_overwrite": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_command_before_the_supervisor_runs_waits_for_its_first_pass": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_command_in_its_preflight_refuses_a_mempause_and_another_word_and_the_same_word_waits": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_command_that_hangs_before_its_arm_reads_command_incomplete_at_the_next_boot": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_config_put_mid_write_when_a_command_starts_is_flushed_before_the_arm": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_console_soft_reset_after_a_boot_phase_failure_reads_10_plus_the_phase": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_crash_in_each_boot_phase_decodes_to_10_plus_the_phase": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_deadline_crossed_after_an_accepted_command_leaves_storage_paused": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_fault_in_a_shutdown_step_is_logged_and_the_watchdog_still_resets": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_fram_write_in_flight_completes_both_blocks_and_a_later_one_is_refused": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_hang_in_any_step_is_never_fed": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_loop_ended_during_boot_writes_nothing_so_the_next_boot_reads_its_phase": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_power_cut_while_config_files_are_deleted_leaves_a_bootable_state": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_deletes_it": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_refused_command_never_stops_the_supervisor_feeding": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_outcome": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_staged_write_the_shutdown_cannot_put_on_flash_reads_9_unless_a_config_reset_deletes_it": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_store_running_on_config_the_flash_lacks_reads_9_unless_a_config_reset_deletes_it": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_supervisor_that_already_ended_lets_the_sequence_proceed_without_a_park": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_task_cancelled_inside_a_bus_session_frees_the_bus": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_after_the_takeover_no_other_site_feeds": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_arm_failure_in_the_sequence_starves_and_records_code_6": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_erase_under_an_active_mempause_completes": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_erase_whose_writes_stop_ends_in_code_9_with_every_block_marked_blank": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_erase_without_its_unit_buffer_blanks_the_chunks_and_ends_in_code_9": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_erased_chip_boots_like_a_new_one": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_escalation_armed_during_the_erase_preflight_refuses_the_command": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_an_escalation_whose_entry_write_waits_on_a_held_lock_still_records_code_20_in_budget": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_bootloader_takes_over_closes_quiesces_stops_then_enters_the_bootloader_with_code_4": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ],
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_erase_fram_zeroes_every_byte_and_reboots_with_code_8": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ],
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_every_command_over_rest_reaches_its_arm_without_an_owner_lock_deadlock": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_every_refusal_answers_false_and_changes_nothing": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_reboot_takes_over_closes_quiesces_stops_then_resets_with_code_3": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ],
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_code_7": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ],
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_reset_to_defaults_deletes_every_config_file_whatever_its_state": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_start_task_returns_the_real_task_on_success": {
+  "was:weak_only": [
+   "fixed",
+   "the returned task is the starter's own; bite: _start_task handing back another task passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_supervise_tasks_without_watchdog_does_not_raise": {
+  "no_assertion": [
+   "justified",
+   "the claim is the absence of a raise; _supervised() (:2912) propagates one"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_tasks_dying_while_a_command_runs_never_escalate": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_the_escalation_decides_the_reset_before_its_entry_write": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_the_same_command_again_answers_true_and_any_other_answers_false": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_two_commands_at_once_start_one_sequence_and_one_reset": {
+  "helper_swallows": [
+   "justified",
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_both_halves_of_each_pair_move_identical_bytes": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_get_error_counter_returns_the_shared_envelope": {
+  "log_existence_only": [
+   "biting",
+   "a shape test: the claim is the envelope's keys, no event is logged"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_the_default_chunk_bytes_is_the_reasoned_one": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_uart_driver.py::test_aexit_tolerates_a_lock_already_released_inside_the_block": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_uart_driver.py::test_into_methods_move_the_same_bytes_as_their_allocating_siblings": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_uart_driver.py::test_pass_through_codec_emits_exactly_what_it_always_did": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_uart_driver.py::test_writefrom_is_framed_exactly_like_write": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim": {
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one W entry and no other; bite: one extra entry passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_h2_add_value_is_byte_identical_to_json_dumps": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i2_hammer_concurrent_measurements_requests_stay_valid": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i2_hammer_concurrent_sensors_requests_stay_valid": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i2b_hammer_concurrent_networking_requests_stay_valid": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i2b_hammer_concurrent_notification_requests_stay_valid": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i2b_hammer_concurrent_system_requests_stay_valid": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i3_hammer_every_memory_bounded_get_route_concurrently": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_exception": {
+  "ns_seed_text": [
+   "biting",
+   "(b) a provoked raising callback expecting its Failed answer"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception": {
+  "ns_seed_text": [
+   "biting",
+   "(b) a provoked raising callback expecting its Failed answer"
+  ]
+ },
+ "tests/test_asy_webserver_service.py::test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_a_failed_period_arm_is_persisted_and_retried_in_the_silent_mode": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_a_failed_stations_query_counts_as_no_client": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_a_failed_window_arm_is_the_iterations_hardware_failure": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_hotspot_client_absent_starts_the_led_flash_task": {
+  "was:weak_only": [
+   "fixed",
+   "no task before, a running one after; bite: a flash task that ends at once passes the old form, fails the new"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_print_wlan_diagnostics_degrades_gracefully_when_ifconfig_raises": {
+  "no_assertion": [
+   "justified",
+   "a print-only diagnostic whose one contract is never raising (stated in place)"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_print_wlan_diagnostics_does_not_raise_on_success": {
+  "no_assertion": [
+   "justified",
+   "a print-only diagnostic whose one contract is never raising (stated in place)"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_run_sta_mode_stays_benign_across_many_cycles_when_isconnected_is_permanently_stuck_true": {
+  "ns_seed_text": [
+   "biting",
+   "asserts no failure counted and no reconnect, nothing tolerated"
+  ]
+ },
+ "tests/test_asy_wifi_service.py::test_the_window_started_line_follows_a_successful_arm_only": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_bus_hazard_generated.py::test_a_bus_key_names_its_port_for_both_bus_kinds": {
+  "except_pass": [
+   "biting",
+   "the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError"
+  ]
+ },
+ "tests/test_bus_hazard_multi_device.py::test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_digital_twin_bmp3xx.py::test_power_cycle_restores_the_power_up_registers_and_keeps_the_walk": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_digital_twin_bus_hazard_concurrency.py::test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_digital_twin_generic_wiring.py::test_fram_rdid_follows_the_plans_size": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_digital_twin_http_client.py::test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof": {
+  "was:no_assertion": [
+   "fixed",
+   "all four reads made, both None reads retried, the next response's bytes left unread; bite: n 3 -> 2 (the body's last byte never read) passes the old form, fails the new (S/u35/laneC/crr1c/r1/bite_http_drain_*.log)"
+  ]
+ },
+ "tests/test_digital_twin_http_client.py::test_drain_until_close_returns_for_an_immediately_closed_stream": {
+  "no_assertion": [
+   "justified",
+   "the claim is that the drain returns; run_timed()'s bound fails a hang (stated in place)"
+  ]
+ },
+ "tests/test_digital_twin_http_client.py::test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_digital_twin_isl29125.py::test_a_supply_brownout_raises_the_flag_the_reset_command_does_not": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests/test_digital_twin_isl29125.py::test_a_zero_length_write_is_ignored_rather_than_indexing_into_nothing": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_digital_twin_isl29125.py::test_no_interrupt_is_raised_when_intsel_is_disarmed": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests/test_digital_twin_launch.py::test_parse_fault_spec_and_parse_hang_spec_accept_every_op_of_their_tables": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_digital_twin_machine.py::test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling": {
+  "except_pass": [
+   "biting",
+   "the swallowing loop is the scenario's simulated product loop, its input"
+  ]
+ },
+ "tests/test_digital_twin_machine.py::test_i2c_general_call_address_is_always_tolerated": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ],
+  "setup_credit_only": [
+   "justified",
+   "the claim is the absence of a raise (stated in place)"
+  ]
+ },
+ "tests/test_digital_twin_machine.py::test_timer_deinit_outside_a_running_event_loop_does_not_raise": {
+  "setup_credit_only": [
+   "justified",
+   "the claim is the absence of a raise (stated at :1211); the scan's only credit is the driven clock's sleep, matched by name, which this test never calls"
+  ]
+ },
+ "tests/test_digital_twin_network_neopixel.py::test_connect_refuses_what_the_real_driver_cannot_take": {
+  "except_pass": [
+   "biting",
+   "the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError"
+  ]
+ },
+ "tests/test_digital_twin_run_generic_integration.py::test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_prints_where_it_was_raised": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_produce_new_reading_step_delta_is_clamped_to_the_default_step_bound": {
+  "no_assertion": [
+   "biting",
+   "the test-side FixedRandom asserts every uniform() bound the code under test passes (stated at :314-316)"
+  ]
+ },
+ "tests/test_digital_twin_uart_field_sweep.py::f'test_{field}_boundaries_crc16'": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_digital_twin_uart_field_sweep.py::f'test_{field}_sweep_nocrc'": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_digital_twin_uart_link.py::test_hammering_the_link_beside_the_graph_holds": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests/test_fakes.py::test_the_reset_hook_1_leaves_every_knob_set": {
+  "no_assertion": [
+   "justified",
+   "the setup half of a pair: hook 2, run after it, asserts the restore (stated at :687)"
+  ]
+ },
+ "tests/test_fakes.py::test_the_rtc_getter_recomputes_the_date_and_weekday": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_generated_boot_entry.py::test_a_console_interrupt_is_recorded_before_it_propagates": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_generated_boot_entry.py::test_any_other_exception_ending_the_loop_is_recorded_printed_and_ends_the_entry": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_generated_boot_entry.py::test_the_no_autostart_entry_prints_the_start_line_and_starts_nothing": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_machine_uart_link.py::test_fault_knobs_are_deterministic_across_identical_runs": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_math_helpers.py::test_wet_bulb_boundary_values_accepted": {
+  "was:weak_only": [
+   "fixed",
+   "each corner against Stull 2011 eq. 1, hand-computed; bite: a +0.01 offset passes the old form, fails the new"
+  ]
+ },
+ "tests/test_neopixel_wifi_integration.py::test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_strict_json.py::test_every_malformed_document_is_rejected_with_its_offset": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_strict_json.py::test_every_valid_document_passes_and_one_extra_comma_fails": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_strict_json.py::test_the_separator_slips_json_loads_accepts_are_rejected": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_ticks_rollover.py::test_ticks30_matches_the_real_module_away_from_the_wrap": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_tmp_scratch.py::test_an_existing_directory_and_an_absent_file_are_no_failure": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_tmp_scratch.py::test_construction_and_teardown_tolerate_a_missing_key_directory_entirely": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_a_stack_overflow_or_an_allocation_failure_in_the_state_codec_propagates": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_fix16_helpers_match_the_c_reference_vectors": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_process_after_blackout_produces_index_in_documented_range": {
+  "wide_tolerance": [
+   "justified",
+   "1..500 is the VOC index's documented output range, the claim itself"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_process_oscillating_extreme_readings_widens_the_variance_scaling": {
+  "wide_tolerance": [
+   "justified",
+   "1..500 is the VOC index's documented output range, the claim itself"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_process_sraw_out_of_valid_range_still_produces_an_index": {
+  "wide_tolerance": [
+   "justified",
+   "1..500 is the VOC index's documented output range, the claim itself"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_process_sustained_extreme_low_then_high_readings_clamps_the_sigmoid": {
+  "wide_tolerance": [
+   "justified",
+   "1..500 is the VOC index's documented output range, the claim itself"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_the_lowered_uptime_limit_leaves_the_output_unchanged": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_voc_algorithm.py::test_the_ports_own_state_always_restores": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ],
+  "wide_tolerance": [
+   "justified",
+   "int32 is the state codec's stored width; the claim is representability"
+  ]
+ },
+ "tests/test_write_counters.py::test_scd30_nvm_writes_refuses_a_log_that_dropped_entries": {
+  "except_pass": [
+   "biting",
+   "the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError"
+  ]
+ },
+ "tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ],
+  "no_assertion": [
+   "justified",
+   "boot latency is evidence, never a metric (CLAUDE.md boot-latency rule, stated in place); wait_until()'s ceiling fails a dead boot"
+  ]
+ },
+ "tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET"
+  ],
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET"
+  ]
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER E CALLBACK, E LOG_RAM_ONLY, SYSTEM W CONFIG_LOST, E CHIP_GET for BMP3XX/ISL29125/SCD30, E CFG_GET_RAISED for seven modules, E CFG_CALLBACK_RAISED for three"
+  ]
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET; it ends_unreachable, so an unanswered end carries its window to the next read"
+  ]
+ },
+ "tests_hardware/bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly": {
+  "ns_allow_list": [
+   "justified",
+   "(c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138)"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly": {
+  "was:ns_allow_list": [
+   "fixed",
+   "(b) exact: WEBSERVER holds W HTTP_BAD_HEAD alone, counted once (error_log_helpers.assert_module_logged_one_code). Bitten on synthetic errcount: nothing logged, and the code counted three times, pass the old allow-list and fail the new check"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ],
+  "setup_credit_only": [
+   "justified",
+   "wait_until()'s timeout on each cycle's lease is the check"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read": {
+  "was:ns_allow_list": [
+   "fixed",
+   "(b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it)"
+  ]
+ },
+ "tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage": {
+  "was:ns_seed_text": [
+   "fixed",
+   "(b) the provoked entry read exactly before the clear: NTP holds E NTP_NO_REPLY alone, counted once per attempt the block met. Bitten on synthetic errcount (the old test read nothing before its clear)"
+  ]
+ },
+ "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_measurements_endpoint_returns_plausible_values_for_every_real_sensor": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_calibrate_command_push_over_real_rest": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ],
+  "was:same_callee": [
+   "fixed",
+   "total is an int above 0 and intact == total. Bitten on synthetic output (both facts missing: old passes, new fails)"
+  ]
+ },
+ "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing": {
+  "was:ns_seed_text": [
+   "fixed",
+   "(b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check)"
+  ]
+ },
+ "tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ],
+  "log_existence_only": [
+   "biting",
+   "a transfer's errno, not a log: rp2's two transfer failures (ports/rp2/machine_i2c.c:152/:154, v1.29.0); the claim is the clear after"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_cross_device_concurrent_sessions_genuinely_interleave": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery": {
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one chip-lost entry: lost['errnos'].count(54) == 1, the driver's one entry per loss (src/asy_fram_driver.py _report_chip_lost). Bitten on synthetic output ([26, 54, 54]); the hijack is silicon-only (twin record)"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_same_device_concurrent_sessions_never_corrupt_each_other": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_scd30_same_device_read_write_concurrency": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py::test_a_malformed_country_code_reaction_is_recorded": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_irq_edge_drives_a_real_read": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py::test_single_precision_float_boundary_at_2pow24": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py::test_soft_timer_callback_drop_self_heals_under_scheduler_saturation": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py::test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_chip_conformance.py::test_fram_matches_its_twin_fake": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_config_float_round_trip.py::test_config_floats_round_trip_unchanged": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py::test_fram_chunk_write_read_roundtrips_against_the_real_chip": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py::test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py::test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_fram_storage.py::test_write_protection_actually_gates_a_real_write_and_a_real_read": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_heap_layout.py::test_the_live_arm_keeps_the_boot_survivors_under_the_high_band": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_heap_layout.py::test_the_suppressed_arm_breaks_the_high_band": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_memory_stress.py::test_flash_write_loop_gap_is_recorded": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_reboot_persistence.py::test_config_value_survives_a_genuine_hard_reset": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py::test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_real_reading_is_within_datasheet_plausible_bounds": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py::test_scd30_frc_window_sums_hold_in_float32": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py::test_scd30_real_reading_is_within_datasheet_plausible_bounds": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_voc_algorithm_produces_plausible_and_stable_results": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests_hardware/flash/test_system_commands.py::test_refused_commands_change_nothing_and_never_stop_the_feed": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_uart_crossover.py::test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset": {
+  "hw_no_log": [
+   "CRr2",
+   "the bench log fixture and marker / the flash tier's logs fact"
+  ]
+ },
+ "tests_hardware/manual/manual_bus_electrical.py::test_fram_cs_at_power_off": {
+  "no_assertion": [
+   "justified",
+   "an evidence-collection observation; 'not measured' is a stated outcome"
+  ]
+ },
+ "tests_hardware/manual/manual_wifi.py::test_real_phone_captive_portal_auto_detection": {
+  "no_assertion": [
+   "justified",
+   "an observation whose either outcome is data (stated in place)"
+  ]
+ },
+ "tests_js/definitions.test.js::passes a null through as a real value": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_js/live-backend-put-matrix.test.js::answers each send with its exact word through the page, its confirmation accepted": {
+  "no_assertion": [
+   "biting",
+   "dispatched through ACTION_PROBES (:54), whose methods carry the expects; the JS scan follows no subscript"
+  ]
+ },
+ "tests_js/mock-server-put-matrix.test.js::accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept)": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_js/render.test.js::reads a statusPath field's value from GET /status on a section that reads another route": {
+  "no_assertion": [
+   "justified",
+   "waitFor() (:20-31) throws when its polled condition never holds; that condition is the assertion"
+  ]
+ },
+ "tests_js/render.test.js::refreshes a writable field's caption through its statusPath on every poll": {
+  "no_assertion": [
+   "justified",
+   "waitFor() (:20-31) throws when its polled condition never holds; that condition is the assertion"
+  ]
+ },
+ "tests_js/site-functions.test.js::sets the Wi-Fi identity, the Wi-Fi LED and the NTP server": {
+  "was:weak_only": [
+   "fixed",
+   "each field's submitted group key and its own kind, exactly; bite: SSID made readonly passes the old toBeDefined, fails the new (S/u35/laneC/crr1c/r2/js_bite_*.log)"
+  ]
+ },
+ "tests_js/templates.test.js::leaves a null at the em dash even with a decimals hint": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_bench_control_restore.py::test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave": {
+  "no_assertion": [
+   "justified",
+   "the clean half of a pair: :191 pins the raise on the same listing path"
+  ]
+ },
+ "tests_scripts/test_bench_control_restore.py::test_a_failed_qdisc_delete_with_no_netem_left_is_clean": {
+  "no_assertion": [
+   "justified",
+   "the clean half of a pair: :88 pins the raise on the same listing path"
+  ]
+ },
+ "tests_scripts/test_bench_control_restore.py::test_a_rule_for_another_port_does_not_fail_this_ports_restore": {
+  "no_assertion": [
+   "justified",
+   "the clean half of a pair: :71 pins the raise on the same listing path"
+  ]
+ },
+ "tests_scripts/test_bench_harness_helpers.py::test_the_bench_toml_facts_come_from_the_toml_and_src": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_bench_no_task_ended_completeness.py::test_a_fault_script_passes_by_its_system_fact_or_by_starting_no_task": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_build_frozen_html_sh.py::test_two_builds_of_one_tree_are_byte_identical_and_carry_no_build_time": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_build_website_sh.py::test_prototype_only_files_are_never_staged": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_buildgen_definitions.py::test_cli_output_equals_the_graph_ordered_build": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_buildgen_generate.py::test_generated_text_carries_no_noqa_and_no_type_ignore": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_buildgen_generate.py::test_real_device_boot_entry_variants_share_one_head_and_differ_only_in_the_watchdog_and_the_tail": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_buildgen_generate.py::test_real_device_links_keep_the_protocol_default_limits": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_buildgen_generate.py::test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_buildgen_generate.py::test_real_device_passes_each_uart_bus_its_stated_rx_ring": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_buildgen_locale.py::test_every_devices_build_is_the_same_under_an_ascii_locale_as_in_utf8_mode": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_buildgen_source_ast.py::test_a_whole_build_of_every_device_leaves_every_shared_tree_as_parsed": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_buildgen_tag_comments.py::test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_buildgen_tag_comments.py::test_one_content_is_tokenized_once_whatever_its_path": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_buildgen_tag_comments.py::test_specs_for_returns_the_one_registered_family": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_buildgen_validate.py::test_every_shipped_device_claims_each_logger_name_once": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_edit_distance_just_outside_tolerance_stays_silent": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_real_measurement_decimals": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_ceiling_probe.py::test_the_drain_wait_returns_once_a_slot_is_free": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only)"
+  ]
+ },
+ "tests_scripts/test_citations.py::test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free": {
+  "no_assertion": [
+   "justified",
+   "the claim is that no scanned file is refused; _prose_blocks()'s ValueError is the refusal and fails naming the file"
+  ]
+ },
+ "tests_scripts/test_coverage_runner.py::test_a_raising_top_level_fails_and_its_lines_are_still_dumped": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests_scripts/test_cross_browser_smoke_probe.py::test_an_engine_missing_two_binaries_names_both": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_definitions_js_mirrors.py::test_the_expression_reader_evaluates_integer_arithmetic_and_refuses_anything_else": {
+  "except_pass": [
+   "biting",
+   "the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError"
+  ]
+ },
+ "tests_scripts/test_definitions_js_mirrors.py::test_the_format_readers_take_their_one_shape_and_refuse_anything_else": {
+  "except_pass": [
+   "biting",
+   "the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError"
+  ]
+ },
+ "tests_scripts/test_definitions_js_mirrors.py::test_the_string_set_reader_takes_string_literals_once_each_and_refuses_anything_else": {
+  "except_pass": [
+   "biting",
+   "the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError"
+  ]
+ },
+ "tests_scripts/test_device_script_config_flush.py::test_each_allowlisted_script_still_meets_the_reason_it_was_allowlisted": {
+  "loop_vacuous": [
+   "justified",
+   "an empty allow-list leaves nothing to meet a reason"
+  ]
+ },
+ "tests_scripts/test_device_tomls.py::test_no_declared_i2c_address_falls_in_a_reserved_range": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_devices_sh.py::test_sourcing_it_changes_none_of_the_callers_shell_options": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_digital_twin_boot_contiguity.py::test_no_device_script_keeps_a_copy_of_this_files_high_band": {
+  "setup_credit_only": [
+   "justified",
+   "reported, not failed (stated at :468)"
+  ]
+ },
+ "tests_scripts/test_digital_twin_boot_contiguity.py::test_the_live_arm_places_strictly_deeper_than_the_suppressed_one": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_digital_twin_ci_suite_ceiling.py::test_concurrent_get_records_a_refused_request_as_its_error_repr": {
+  "was:loop_vacuous": [
+   "fixed",
+   "one result per path; bite: an empty result passes the old form, fails the new"
+  ]
+ },
+ "tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate": {
+  "log_existence_only": [
+   "biting",
+   "set membership of suite constants, no log"
+  ]
+ },
+ "tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_ops_are_queued_reads_the_twin_raises_from": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests_scripts/test_error_catalog.py::test_mock_histories_hold_only_their_loggers_catalog_codes": {
+  "log_existence_only": [
+   "biting",
+   "the non-empty check is the vacuity guard; the next assertion is exact"
+  ]
+ },
+ "tests_scripts/test_frozen_inputs_reproducible.py::test_every_manifest_names_its_files_and_freezes_no_bare_directory": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_hardware_verdict.py::test_the_permanent_skip_names_a_test_that_exists": {
+  "loop_vacuous": [
+   "justified",
+   "an empty skip list leaves nothing to name"
+  ]
+ },
+ "tests_scripts/test_import_graph.py::test_every_image_holds_its_generated_modules_and_website": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_js_coverage_excludes_json.py::test_the_runtime_json_the_provider_choked_on_is_still_there": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_lint_ceilings.py::test_a_ceiling_raised_by_one_fails_the_check": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ]
+ },
+ "tests_scripts/test_manual_runner_summary.py::test_codes_the_ring_no_longer_holds_are_counted_not_dropped": {
+  "log_existence_only": [
+   "biting",
+   "an exact rendered line"
+  ]
+ },
+ "tests_scripts/test_micropython_overrides.py::test_apply_unix_kbd_intr_override_missing_real_manifest_is_tolerated": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_micropython_overrides.py::test_modlwip_readback_passes_on_cmakes_real_firmware_layout": {
+  "no_assertion": [
+   "justified",
+   "the accepting half: :1739-:1759 pin the refusals"
+  ]
+ },
+ "tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_accepts_the_rigs_stack": {
+  "no_assertion": [
+   "justified",
+   "the accepting half: :1479 and :1495 pin the refusals"
+  ]
+ },
+ "tests_scripts/test_micropython_overrides.py::test_the_host_variant_relays_the_standard_variant_and_swaps_in_the_patched_copy": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_micropython_overrides.py::test_the_kbd_readback_accepts_the_deferred_path": {
+  "no_assertion": [
+   "justified",
+   "the accepting half: :1341 pins each refusal"
+  ]
+ },
+ "tests_scripts/test_port_bands.py::test_each_device_gets_a_disjoint_block_inside_the_band": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_no_apt_get_install_tolerates_its_own_failure": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_setup_toolchain_env.py::test_the_bench_suite_derives_the_connection_names_from_this_module": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_setup_toolchain_env.py::test_the_summary_names_all_three_unix_binaries": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_strip_type_checking.py::test_every_src_guard_is_the_plain_two_line_form_and_is_removed": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_strip_type_checking.py::test_strips_bare_type_checking_block_and_its_import_guard_line_for_line": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_strip_type_checking.py::test_strips_multiple_type_checking_blocks_in_one_file": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_stripped_image_boots.py::test_each_image_holds_only_compiled_modules_and_the_stub_site": {
+  "loop_vacuous": [
+   "biting",
+   "the iterable is a fixed non-empty table, vector list, constant or the shipped device list"
+  ]
+ },
+ "tests_scripts/test_summary_block.py::test_a_failed_or_vacuous_item_raises_a_passing_code_to_1_in_the_block_and_the_status": {
+  "name_overclaims": [
+   "biting",
+   "the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it"
+  ],
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_summary_block.py::test_bash_and_python_render_the_same_input_byte_for_byte": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_summary_block.py::test_the_js_layout_renders_the_same_input_byte_for_byte": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_scripts/test_test_sh.py::test_a_leaked_fixture_is_reclaimed_at_session_start_too": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_test_sh.py::test_ci_gates_the_coverage_reruns_test_result_but_not_its_report": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_test_sh.py::test_every_report_render_tolerates_its_own_failure": {
+  "ns_seed_text": [
+   "biting",
+   "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_scripts/test_twin_board.py::test_conformance_diffs_protocol_keys_verbatim_and_physical_keys_by_their_independent_form": {
+  "wide_tolerance": [
+   "biting",
+   "the band is the fixture's 16-bit count check, an input; the test asserts 70000 is flagged"
+  ]
+ },
+ "tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level": {
+  "loop_vacuous": [
+   "justified",
+   "an absence claim over each module's imports"
+  ]
+ },
+ "tests_scripts/test_unix_port_sh.py::test_sourcing_it_changes_none_of_the_callers_shell_options": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_reset_errors_keeps_the_valid_frame_count": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_the_blind_resync_streak_saturates": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_a_refused_argument_is_logged_with_its_own_errno": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_an_answer_the_train_could_never_carry_is_refused_at_its_header": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py::bus_concurrency_cross_device_scd30_sgp40": {
+  "ds_facts": [
+   "fixed",
+   "flash test_bus_concurrency.py test_cross_device_concurrent_sessions_genuinely_interleave now asserts reset_sibling_reads > 0 and heater_off_sibling_reads > 0: the zero-failure checks around both rungs passed when nothing was read. Bitten on synthetic output (each count 0: old passes, new fails; healthy passes both) and passing on the twin; windows_with_interleaving is a diagnostic beside the asserted interleaved_total >= sgp_cycles (test_bus_concurrency.py:124)"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py::bmp3xx_same_device_rw_concurrency": {
+  "ds_facts": [
+   "fixed",
+   "test_bmp3xx_same_device_read_write_concurrency asserts reset_window_reads > 0 (a rung no read raced passed); reset_window_failures is the script's stated diagnostic (a read the reset lands in may fail cleanly). Bitten on synthetic output and passing on the twin"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_same_device_rw_concurrency.py::fram_same_device_rw_concurrency": {
+  "ds_facts": [
+   "fixed",
+   "test_fram_same_device_read_write_concurrency asserts baseline_read is True (a failed baseline compared every read against zeros); reads_torn is implied by reads_ok == reads_planned and the errors total. Bitten on synthetic output and passing on the twin"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_command_incomplete.py::reset_code_command_incomplete": {
+  "ds_facts": [
+   "fixed",
+   "bench test_reset_reasons.py test_an_incomplete_command_is_attributed asserts no_reset_after_ms absent, as flash test_system_commands.py:95 does. Bitten on synthetic output (bench-only, no twin leg); failure is implied (a pre-reset failure leaves answer or raised_at absent, both asserted); leftover_errno: the os.mkdir() of the same path follows (reset_code_command_incomplete.py:63) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_stack_exhausted.py::reset_code_stack_exhausted": {
+  "ds_facts": [
+   "fixed",
+   "bench test_reset_reasons.py's stack-exhaustion test asserts no_reset_after_ms absent. Bitten on synthetic output (bench-only, no twin leg); failure is implied (a pre-reset failure leaves the asserted reset absent); leftover_errno: the os.mkdir() of the same path follows (reset_code_stack_exhausted.py:63) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py::uart_dma_ring_interrupts_off": {
+  "ds_facts": [
+   "fixed",
+   "flash test_uart_crossover.py test_no_frame_is_lost_while_interrupts_are_off asserts _setup_ok(facts, \"rxdmae_setup\"), as for the other windows' setup. Bitten on synthetic output; the window is silicon-only (twin record: no disable_irq()); both config-write tests now assert scratch_remove_errno absent (test_uart_crossover.py:267), bitten on synthetic output (silicon-only: the config-write window); setup is asserted through _setup_ok, heap in the result_note, state/crc_mode/gc_threshold echo the run"
+  ]
+ },
+ "tests_hardware/device_scripts/allocation_need_per_source.py::allocation_need_per_source": {
+  "ds_facts": [
+   "justified",
+   "block and rungs echo the script's _BLOCK and _LADDER constants; the host reads the block from the raw BLOCK= line (allocation_need_per_source.py:104, heap_map.py:183) and every rung from the sieve lines test_every_source_and_route_fits_a_small_free_run asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py::bmp3xx_alone_survives_a_general_call": {
+  "ds_facts": [
+   "justified",
+   "naks is a stated diagnostic: a NAKed broadcast is counted as sent, 'counted, not a failure' (bmp3xx_alone_survives_a_general_call.py:70); devices_on_bus is recorded with it in the result_note (test_bus_concurrency.py:274); broadcasts, reads, before == after and por_after are asserted"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_conformance_probe.py::bmp3xx_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_plausibility_read.py::bmp3xx_plausibility_read": {
+  "ds_facts": [
+   "justified",
+   "polls is the count shown in the no-reading assertion's message (test_sensor_accuracy.py:139), a diagnostic"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py::bus_concurrency_isl29125_write_vs_siblings": {
+  "ds_facts": [
+   "fixed",
+   "the sibling reads now record their windows and the script reports overlapped_reads (sibling reads whose window intersects a write's, through ticks_diff); test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads asserts it > 0 before _no_errors, so reads that never met a write no longer pass. Bites: synthetic no-overlap output passes HEAD's test and fails the new one, an overlap passes both; through TwinBoard the healthy script passes and a plant stopping the siblings before the first write passes HEAD's test and fails the new one (S/u35/laneC/crr2b/bites_isl.out, twin_isl.log, plant_*.log). isl_windows stays the raw write timeline, a diagnostic (agent, 2026-10-27)"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py::bus_concurrency_same_device_scd30": {
+  "ds_facts": [
+   "justified",
+   "settle_failures counts the reads consumed to clear setup()'s first unsettled conversion, stated in the script (bus_concurrency_same_device_scd30.py:32); the measured phase is asserted (completed == planned, no errors)"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py::bus_concurrency_scd30_write_vs_siblings": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py::bus_deinit_is_a_noop_on_real_hardware": {
+  "ds_facts": [
+   "justified",
+   "fram_setup, chunk, chunk_cleared_after_setup, baseline_write and raw_spi_present are the preconditions of the asserted spi_singleton and spi_read_after_deinit: no chunk or no raw SPI leaves both absent, so the test's facts[...] raises (test_bus_concurrency.py:338), and a failed setup or baseline write makes the read compare unequal to the pattern; chunk_cleared is asserted"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py::bus_topology_autodetect_and_hazard_sweep": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep"
+  ]
+ },
+ "tests_hardware/device_scripts/c_stack_budget.py::c_stack_budget": {
+  "ds_facts": [
+   "justified",
+   "the dynamic key is read by both names: c_stack_peak asserted <= limit // 2 (test_memory_stress.py:192), twin_c_stack_peak the twin's stated diagnostic ('reported, never compared', test_memory_stress.py:190); leaf_peaks in the result_note; leftover_errno: the os.mkdir() of the same path follows (c_stack_budget.py:57) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/config_files_dump.py::config_files_dump": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: manual_persistence.py::test_power_loss_during_the_shutdown_commands, test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots, test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults"
+  ]
+ },
+ "tests_hardware/device_scripts/config_files_restore.py::config_files_restore": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: manual_persistence.py::test_power_loss_during_the_shutdown_commands, test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults"
+  ]
+ },
+ "tests_hardware/device_scripts/config_float_round_trip.py::config_float_round_trip": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_config_float_round_trip.py::test_config_floats_round_trip_unchanged"
+  ]
+ },
+ "tests_hardware/device_scripts/flash_write_loop_gap.py::flash_write_loop_gap": {
+  "ds_facts": [
+   "justified",
+   "flash_calls_us is stated recorded: 'the figure feeds F.3's flash stall row, so it is recorded here' (test_memory_stress.py:150), in the result_note"
+  ]
+ },
+ "tests_hardware/device_scripts/float_boundary_2pow24.py::float_boundary_2pow24": {
+  "ds_facts": [
+   "justified",
+   "above_rounded_to_2pow24 is the same comparison as the asserted above_value == 2**24 (test_bus_electrical_timing.py:61)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_busy_status_lockout.py::fram_busy_status_lockout": {
+  "ds_facts": [
+   "justified",
+   "setup and allocated: no chunk returns before baseline_ok (fram_busy_status_lockout.py:57), which the test asserts True with the other outcome facts (test_fram_storage.py:192); cleared_first is the run's own precondition, its failure showing in baseline_ok; failures lists the same check() outcomes the test asserts one by one. The extractor first counted setup/allocated/cleared_first read because another test in the file loops over keys of those names"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_capacity_after_full_system_build.py::fram_capacity_after_full_system_build": {
+  "ds_facts": [
+   "justified",
+   "allocated_size and size are the figures in the result_note (test_fram_storage.py:221), beside the asserted logger sets; leftover_errno: the os.mkdir() of the same path follows (fram_capacity_after_full_system_build.py:40) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_command_hold_timing.py::fram_command_hold_timing": {
+  "ds_facts": [
+   "justified",
+   "setup is implied: a FRAM that did not set up fails the asserted command_ok/block_ok (test_fram_storage.py:184). The extractor first counted it read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_conformance_probe.py::fram_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_fram_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py::fram_cs_hijack_fault_injection_and_recovery": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py::fram_error_log_reset_during_boot_window": {
+  "ds_facts": [
+   "justified",
+   "setup and initialized: an uninitialized store returns before seeding (fram_error_log_reset_during_boot_window.py:44), failing the asserted seeded_count == 3 (test_fram_storage.py:130), as CR3 classed it"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py::fram_error_log_reset_race_seed_and_race": {
+  "ds_facts": [
+   "justified",
+   "setup and initialized: an uninitialized store returns before SEEDED (fram_error_log_reset_race_seed_and_race.py:46), failing the asserted SEEDED/LANDED lines (test_fram_storage.py:104); baseline is the cleared history the seed starts from, implied by the asserted seeded ErrCount == 3; not_reset_after_transfers is printed only when no reset came, when no LANDED line is printed"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_race_verify.py::fram_error_log_reset_race_verify": {
+  "ds_facts": [
+   "fixed",
+   "test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write now asserts setup and initialized True (test_fram_storage.py:108): a store that never set up (no chunk) restores an empty history with ErrCount 0, which the accepted 'empty' outcome took, and every accepted outcome sets initialized. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_race.log"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_roundtrip.py::fram_error_log_roundtrip": {
+  "ds_facts": [
+   "justified",
+   "setup and initialized: an uninitialized store returns before restored (fram_error_log_roundtrip.py:41), failing restored is True; cleared_first and rebooted_setup are implied by the asserted exact history (ErrCount 1, only the seeded entry, test_fram_storage.py:89)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_manager_roundtrip.py::fram_manager_roundtrip": {
+  "ds_facts": [
+   "justified",
+   "rdid is the part ID in the result_note (test_fram_storage.py:61); every outcome fact is asserted in the loop after it"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_pause_unpause_and_gating.py::fram_pause_unpause_and_gating": {
+  "ds_facts": [
+   "justified",
+   "skipped is stated: 'a check whose premise failed is reported skipped' (fram_pause_unpause_and_gating.py:3), noted at test_fram_storage.py:167; setup/allocated: no chunk returns before the checks (fram_pause_unpause_and_gating.py:180), failing the asserted failures/cleared_last; cleared_first is the run's own precondition"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_raw_dump.py::fram_raw_dump": {
+  "ds_facts": [
+   "justified",
+   "saved evidence: the dump is saved verbatim with its facts before anything clears the part (harness.py:699), the stray-byte check reading its lines (test_system_commands.py:185)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py::fram_reset_race_during_write_seed_and_race": {
+  "ds_facts": [
+   "justified",
+   "initialized: an uninitialized FRAM returns before seeding (fram_reset_race_during_write_seed_and_race.py:54), failing the asserted seeded == [True, True, True] (test_bus_concurrency.py:318). The extractor first counted it read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py::fram_reset_race_during_write_verify_recovery": {
+  "ds_facts": [
+   "justified",
+   "initialized: an uninitialized FRAM returns before the guard reads (fram_reset_race_during_write_verify_recovery.py:63), so the test's facts['guard_before_ok'] raises (test_bus_concurrency.py:323). The extractor first counted it read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_write_protect_roundtrip.py::fram_write_protect_roundtrip": {
+  "ds_facts": [
+   "justified",
+   "setup and allocated: no chunk returns before the protection checks (fram_write_protect_roundtrip.py:76), failing the asserted blocked_write/blocked_read/data_survived/cleared_last (test_fram_storage.py:151). The extractor first counted both read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py::heap_headroom_after_full_system_build": {
+  "ds_facts": [
+   "justified",
+   "the heap_* stage figures are collected by prefix into the result_note (test_memory_stress.py:117), diagnostics beside the asserted used/largest-block bounds and the block map; gc_threshold names the stage in the note and messages; leftover_errno: the os.mkdir() of the same path follows (heap_headroom_after_full_system_build.py:61) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py::heap_layout_after_full_boot_sequence": {
+  "ds_facts": [
+   "justified",
+   "the heap_* figures and lists are per-stage diagnostics, counts/boot_ms/gc_threshold in the result_note (test_heap_layout.py:49); the verdict rests on the block maps, and the suppressed arm's control fails a boot whose lists build nothing (test_heap_layout.py:87); leftover_errno: the os.mkdir() of the same path follows (heap_layout_after_full_boot_sequence.py:142) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_under_connection_ceiling.py::heap_under_connection_ceiling": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held"
+  ]
+ },
+ "tests_hardware/device_scripts/i2c_held_sda_recovery.py::i2c_held_sda_recovery": {
+  "ds_facts": [
+   "justified",
+   "no unread fact it emits: errors is the included bus_reader_loops.py's report_errors() key, which this script never calls (i2c_held_sda_recovery.py:18); its own facts are asserted by test_a_held_sda_line_is_cleared_and_every_device_answers"
+  ]
+ },
+ "tests_hardware/device_scripts/setup_resets_each_chip_once.py::setup_resets_each_chip_once": {
+  "ds_facts": [
+   "biting",
+   "its one fact, setups, is read whole by test_every_chip_setup_resets_it_once_after_a_read_identified_it (test_bus_concurrency.py:279-295): each chip's driver, address, transfer record and read after setup asserted; no included helper's key is emitted (errors: report_errors() is never called); bitten under --twin on three plants (a setup without its reset, a reset before the identity read, a second reset) (agent, 2026-10-27)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py::isl29125_cross_device_concurrency": {
+  "ds_facts": [
+   "justified",
+   "windows_with_interleaving is a diagnostic beside the asserted interleaved > 0 (test_bus_concurrency.py:187)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_lighting_scenarios.py::isl29125_lighting_scenarios": {
+  "ds_facts": [
+   "biting",
+   "the scenario_<name> facts are read by prefix (test_sensor_accuracy.py:248) and each judged by _scenario_problems; the script emits one per scenario in its loop or dies without DONE"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_mechanism_envelope.py::isl29125_mechanism_envelope": {
+  "ds_facts": [
+   "fixed",
+   "test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration now asserts leftover_errno and scratch_remove_errno absent (test_sensor_accuracy.py:209): unlike the mkdir scripts, nothing fails a leftover here, so the reader set up over a stale scratch config; overrange_at_full is asserted (its if appends a problem); reset_error_counter is a diagnostic: a failed reset leaves setup entries in ascending_log, which _log_problems fails. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); silicon-only (twin record: NeoPixel sweep)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py::isl29125_mock_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: conformance.py::<module>"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_plausibility_read.py::isl29125_plausibility_read": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_sensor_accuracy.py::test_isl29125_real_reading_is_within_datasheet_plausible_bounds"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_real_irq_edge.py::isl29125_real_irq_edge": {
+  "ds_facts": [
+   "justified",
+   "config1_restart is stated reported-only: 'whether a CONFIG1 write restarts a conversion is reported only' (test_bus_concurrency.py:222), noted after it"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py::isl29125_same_device_rw_concurrency": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency"
+  ]
+ },
+ "tests_hardware/device_scripts/listener_close_leaves_the_pcb_pools.py::listener_close_leaves_the_pcb_pools": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_modlwip_listener_close.py::<module>, test_modlwip_listener_close.py::test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were"
+  ]
+ },
+ "tests_hardware/device_scripts/loop_lag_under_combined_load.py::loop_lag_under_combined_load": {
+  "ds_facts": [
+   "fixed",
+   "both tests now assert samples an int > 0 (test_memory_stress.py:180, test_memory_stress_bench.py:166): a probe that recorded nothing left lag_max 0 and passed the bound; lag_p99_us is in the result_note; leftover_errno: the os.mkdir() of the same path follows (loop_lag_under_combined_load.py:83) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); the flash test passes on the twin (S/u35/laneC/crr2a2/twin_lag.log)"
+  ]
+ },
+ "tests_hardware/device_scripts/loop_stretch_timing.py::loop_stretch_timing": {
+  "ds_facts": [
+   "justified",
+   "gc_threshold and crc_total_us are in the result_note (test_memory_stress.py:141) beside the asserted stretches; leftover_errno: the os.mkdir() of the same path follows (loop_stretch_timing.py:54) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py::reboot_fallback_starves_the_watchdog": {
+  "ds_facts": [
+   "justified",
+   "armed_ms echoes the script's watchdog timeout, shown in the elapsed messages (test_watchdog_starvation.py:69)"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_persist_read.py::reboot_persist_read": {
+  "ds_facts": [
+   "fixed",
+   "test_config_value_survives_a_genuine_hard_reset now asserts remove_errno absent (test_reboot_persistence.py:37), as test_config_float_round_trip.py does (test_config_float_round_trip.py:24). Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); passes on the twin (S/u35/laneC/crr2a2/twin_reboot.log)"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_persist_write.py::reboot_persist_write": {
+  "ds_facts": [
+   "justified",
+   "written's ok/validity is implied by the asserted marker == expected after the reset (test_reboot_persistence.py:36): a refused write leaves the default"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_boot_phase_hang.py::reset_code_boot_phase_hang": {
+  "ds_facts": [
+   "justified",
+   "phase echoes the host's PHASE; marked_phase, printed only inside the hang, is asserted == phase (test_reset_reasons.py:169); leftover_errno: the os.mkdir() of the same path follows (reset_code_boot_phase_hang.py:62) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_invalid_record.py::reset_code_invalid_record": {
+  "ds_facts": [
+   "justified",
+   "state echoes the host's STATE; invalid_record is asserted (test_reset_reasons.py:139)"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_loop_end.py::reset_code_loop_end": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_argument_reaction.py::scd30_argument_reaction": {
+  "ds_facts": [
+   "justified",
+   "stated 'Recorded, not judged: the datasheet states no reaction to either write' (test_chip_conformance.py:172), each figure in the result_note; skipped absent, restored and interval_after == interval_before asserted; a bad interval_before CRC ends in skipped (scd30_argument_reaction.py:150)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_conformance_probe.py::scd30_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_scd30_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_data_ready_wait.py::scd30_data_ready_wait": {
+  "ds_facts": [
+   "justified",
+   "co2/waited_s is the reading or the wait, a diagnostic; an error leaves measuring absent, which raises (scd30_prerequisite.py:55)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_measurement_interval_read.py::scd30_measurement_interval_read": {
+  "ds_facts": [
+   "justified",
+   "error leaves interval absent, which raises (scd30_prerequisite.py:47)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_plausibility_read.py::scd30_plausibility_read": {
+  "ds_facts": [
+   "justified",
+   "polls is the count in the no-reading message (test_sensor_accuracy.py:106)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_real_irq_edge.py::scd30_real_irq_edge": {
+  "ds_facts": [
+   "justified",
+   "trigger_s echoes the script's fallback period, shown in the message (test_bus_electrical_timing.py:53)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py::scd30_same_device_rw_concurrency": {
+  "ds_facts": [
+   "justified",
+   "settle_failures counts the reads consumed to clear the first unsettled conversion, stated in the script (scd30_same_device_rw_concurrency.py:30); ambient_sent is the value re-sent, beside the asserted write_done and absent write_error (test_bus_concurrency.py:103)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_start_continuous_measurement.py::scd30_start_continuous_measurement": {
+  "ds_facts": [
+   "justified",
+   "sent and invalid_readback raise when wrong (scd30_prerequisite.py:69); ambient is the value re-sent; an error leaves sent False, which raises"
+  ]
+ },
+ "tests_hardware/device_scripts/scheduler_saturation_drop.py::scheduler_saturation_drop": {
+  "ds_facts": [
+   "justified",
+   "counts_busy/counts_heal are the per-timer counts in the message of the asserted all_self_healed (test_bus_electrical_timing.py:37)"
+  ]
+ },
+ "tests_hardware/device_scripts/serving_at_default_gc.py::serving_at_default_gc": {
+  "ds_facts": [
+   "justified",
+   "failure_maps is in the result_note (test_serving_heap_at_default_gc.py:100); the allocation failures themselves are asserted absent from the output"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_conformance_probe.py::sgp40_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_sgp40_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_fram_backup_restore.py::sgp40_fram_backup_restore": {
+  "ds_facts": [
+   "justified",
+   "setup/allocated: no VOC-state chunk returns before the backup (sgp40_fram_backup_restore.py:60), failing the asserted backup_written; cleared_first and rebooted_setup are implied by the asserted restored_state_matches"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py::sgp40_general_call_reset_hazard": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py::sgp40_same_device_concurrent_sessions": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_sample_cadence.py::sgp40_sample_cadence": {
+  "ds_facts": [
+   "justified",
+   "stated: 'the figures are the deliverable (no pass threshold, SPECIFICATION.md M.3)' (test_sensor_accuracy.py:159), every figure in the result_note; leftover_errno: the os.mkdir() of the same path follows (sgp40_sample_cadence.py:56) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py::sgp40_voc_algorithm_quality": {
+  "ds_facts": [
+   "justified",
+   "blackout_s echoes the script's blackout constant; the post-blackout samples are asserted"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_config_reset.py::system_command_config_reset": {
+  "ds_facts": [
+   "justified",
+   "state echoes the host's STATE, an unknown one ending in the failure _reset_facts refuses (test_system_commands.py:96); mempause belongs to a state no test runs; leftover_errno: the os.mkdir() of the same path follows (system_command_config_reset.py:46) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_fram_erase.py::system_command_fram_erase": {
+  "ds_facts": [
+   "fixed",
+   "_attributed_reset now asserts the mempause answer Valid in the mempause state (test_system_commands.py:78): a refused pause reset unpaused and passed. state echoes STATE (an unknown one ends in failure); seeded_system is SYSTEM's seeded history beside the asserted seeded set, as CR3 classed it; leftover_errno: the os.mkdir() of the same path follows (system_command_fram_erase.py:102) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_paused.log"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_hang.py::system_command_hang": {
+  "ds_facts": [
+   "justified",
+   "command echoes COMMAND (an unknown one ends in failure); hung_store names the hung store beside the asserted HANG line (test_system_commands.py:230); leftover_errno: the os.mkdir() of the same path follows (system_command_hang.py:53) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_reboot.py::system_command_reboot": {
+  "ds_facts": [
+   "fixed",
+   "_attributed_reset now asserts the mempause answer Valid in the mempause state (test_system_commands.py:78); the extractor first counted mempause read through the STATE=\"mempause\" argument. command/state echo the host's arguments (an unknown one ends in failure); leftover_errno: the os.mkdir() of the same path follows (system_command_reboot.py:98) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_paused.log"
+  ]
+ },
+ "tests_hardware/device_scripts/system_debug_level_set_standard.py::system_debug_level_set_standard": {
+  "ds_facts": [
+   "justified",
+   "before and written raise when wrong (conftest.py:414); valid and validity are implied: a failed setup or refused write leaves written False with before off the standard"
+  ]
+ },
+ "tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py::system_service_restarts_a_real_dead_task": {
+  "ds_facts": [
+   "fixed",
+   "round_<n> is read by prefix, and its system value now carries the escalation's evidence: the script logs RAM-only (LogConfig(None, ...), :54), so test_the_supervisor_escalation_reboot_is_attributed asserts a round before the reset holds SYSTEM's E TASK_BUDGET_REBOOT (_round_holds_the_budget_entry) instead of production's FRAM history, which could pass only on a stale entry and failed on a cleared board. Bites: synthetic output with a stale board entry and no round holding it passes HEAD's test and fails the new one; rounds holding it pass the new test on a cleared board, where HEAD's fails; through TwinBoard the real script passes at both GC stages, 5 of 11 rounds holding it (S/u35/laneC/crr2b6/bites_escalation.log). The restart mode's facts are asserted in test_task_supervisor.py (agent, 2026-10-27)"
+  ]
+ },
+ "tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py::timer_alarm_pool_exhaustion": {
+  "ds_facts": [
+   "justified",
+   "constructed is in the result_note and the message (test_bus_electrical_timing.py:43) beside the asserted raised and errno"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_comm_hazards.py::uart_comm_hazards": {
+  "ds_facts": [
+   "justified",
+   "part echoes the PART default; setup is asserted through _setup_ok (test_uart_crossover.py:210)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_crossover_exchange.py::uart_crossover_exchange": {
+  "ds_facts": [
+   "justified",
+   "setup is asserted through _setup_ok; train_bytes/max_train_bytes echo constants in the message (test_uart_crossover.py:105); gc_threshold names the stage"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_crossover_recovery.py::uart_crossover_recovery": {
+  "ds_facts": [
+   "biting",
+   "setup is asserted through _setup_ok (test_uart_crossover.py:210), whose default key the extractor read as a bare string"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py::uart_driver_read_never_blocks_the_loop": {
+  "ds_facts": [
+   "justified",
+   "the gap figures are stated 'reported, not asserted (F.5.8)' (uart_driver_read_never_blocks_the_loop.py:72); txcopy_us is the writer's copy time; wire_us is in the span message (test_uart_crossover.py:142)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_idle_poll_rate.py::uart_idle_poll_rate": {
+  "ds_facts": [
+   "justified",
+   "setup is asserted through _setup_ok; sample_ms echoes the sample window in the message (test_uart_crossover.py:160)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py::uart_link_echo_under_serving_load": {
+  "ds_facts": [
+   "justified",
+   "echo_failures is implied by the asserted intact == total, total counting every round (test_uart_link_under_api_load.py:94); size echoes the payload size"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py::uart_link_under_concurrent_system_load": {
+  "ds_facts": [
+   "justified",
+   "setup is asserted through _setup_ok; timeout_ms and echo_mismatch are the detail in the messages of the asserted round-trip bound and echo_intact == set_total (test_uart_crossover.py:199)"
+  ]
+ },
+ "tests_hardware/device_scripts/unretrieved_task_exception_handler.py::unretrieved_task_exception_handler": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware"
+  ]
+ },
+ "tests_hardware/device_scripts/watchdog_starvation_reset.py::watchdog_starvation_reset": {
+  "ds_facts": [
+   "justified",
+   "armed_ms echoes the watchdog timeout in the elapsed message (test_watchdog_starvation.py:51)"
+  ]
+ },
+ "tests_hardware/device_scripts/wifi_country_code_reaction.py::wifi_country_code_reaction": {
+  "ds_facts": [
+   "justified",
+   "stated 'recorded, never judged' (test_bus_electrical_timing.py:64); country_before is in the result_note"
+  ]
+ },
+ "tests_hardware/device_scripts/wifi_radio_reinit_recovery.py::wifi_radio_reinit_recovery": {
+  "ds_facts": [
+   "justified",
+   "recover_returned is in the result_note (test_wifi_radio_reinit.py:30) beside the asserted reconnected and elapsed bound"
+  ]
+ },
+ "tests/test_digital_twin_network_neopixel.py::test_a_restarted_signal_task_ends_dark_with_the_overlay_restored": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops devices_with() and calls _restart_ends_dark(device), whose nested scenario() (driven by run()) asserts the restart's frames are black then the overlay grey, the one remaining wake, a live restarted task and SYSTEM's one persisted TASK_RAISED entry; the scanner does not descend into a nested async def (agent, 2026-10-27)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_raising_preflight_leaves_the_gate_as_a_refusal_does": {
+  "helper_swallows": [
+   "justified",
+   "the test never calls _retire() itself: the scan reaches it through the teardown rig.stop(sup) (_Rig.stop, :1252-1258), which retires the tasks a scenario leaves behind (tests/test_asy_system_service.py:1130-1137, its end not the claim, stated at :1137); the claim is asserted before it, at :1589-1593: the injected MemoryError reaches the caller, the gate is reopened ((_shutdown, _shutdown_task) == (0, None)), a mempause is accepted and the next erase runs its preflight afresh"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_a_reader_stamps_each_sample_with_the_clock_as_stepped": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _stepped_stamps_on(device) (:237-264), whose own assertions carry the claim: for each step (0, -3600, 86400 s) a fresh BMP3XX sample is awaited (:257) and its TS must be within 1 s of the stepped clock (:264)"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_a_backup_dated_after_a_backward_step_is_expired_under_a_max_age_and_kept_under_none": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _backup_after_a_backward_step_on(device) (:75-139), whose own assertions carry the claim: after the two-hour step back, BackupMaxAge 60 refuses the backup with exactly one W SGP_BACKUP_AGE (:137) and 0 restores its stamp (:139)"
+  ]
+ },
+ "tests/test_digital_twin_hot_replug.py::test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _power_cycled_bmp3xx_on(device) (:113-142), whose own assertions carry the claim: after the power cycle the only warning is W BMP_CHIP_RESET (:135), OSR/CONFIG are restored (:136), no task ended (:137) and the watchdog never would have fired (:138)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _restore_through_the_outage_on(device) (:340-387), whose own assertions carry the claim: no restore while the boot's sync attempt fails (:385), the restore after the sync takes the backup's stamp (:386) and SGP40 logs nothing (:387)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_a_product_socket_failing_its_setup_or_connect_is_torn_down_and_the_next_fetch_builds_one_that_syncs": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-step split: the test loops the two steps and calls _a_socket_failing_at(step) (:481-502), whose own assertions carry the claim: the fault fired once (:498), one E NTP_NOT_SENT and no request (:499), the attempt that synced added nothing (:500) and every socket made was closed (:502); bitten on a plant: a failed setup raising instead of self-healing failed it at its first wait (agent, 2026-10-27)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _lost_sync_on(device) (:258-293), whose own assertions carry the claim: once the sync is lost both flags read False (:291), the local time is kept (:292) and the alert flashes (:293)"
+  ]
+ },
+ "tests_scripts/test_twin_wiring_contract.py::test_identical_devices_share_one_run_on_the_first_of_them": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim (two planted devices, a and c, with identical SCD30 wiring read equal, :413; distinct_wirings() then keeps the first of each, :414-416)"
+  ]
+ },
+ "tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REQUEST_CAP, W HTTP_CALL_TIMEOUT, W HTTP_BAD_HEAD, W HTTP_PEER_RESET, W HTTP_REFUSED"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_a_marked_tests_entry_before_its_clear_inside_the_set_passes": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing over an in-set entry before the test's own clear, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; S/u35/laneC/crr2b5/plants_i1.log turns it red (the pre-clear read not kept, a second read taken for the check)"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_an_entry_a_marked_test_names_need_not_appear": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_a_test_that_ends_unreachable_hands_its_first_read_to_the_next_read": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
+  ]
+ },
+ "tests/test_digital_twin_sgp40.py::test_the_real_reader_publishes_vocstate_0_through_the_blackout_then_1": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite fails all three _sgp40_bus() callers on dev)"
+  ]
+ },
+ "tests/test_digital_twin_sgp40.py::test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_or_entry": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite fails all three _sgp40_bus() callers on dev)"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_a_year_forward_then_two_back_leave_sync_and_its_age_on_the_ticks": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's c1 bite, the driven wait never elapsing, fails all three clock_jump sites, and its swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_an_ntp_offset_change_clears_synced_and_the_next_sync_applies_it": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's c1 bite, the driven wait never elapsing, fails all three clock_jump sites, and its swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_each_failing_reply_leaves_synced_false_with_its_catalog_code": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_run_generic_integration.py::test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's generated FRAM max_size=0x40 bite fails it on grkizi)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_a_failed_deferred_flush_is_healed_by_the_next_accepted_put": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; its six assertions are the pre-widening body's, unchanged (lead, 2026-10-27: an AST compare against 111129f4), whose row read biting with no flag; the shared-bus bite passes it, its path reading nothing that bite garbles"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_the_real_reader_accepts_a_reading_at_the_largest_temperature_offset": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_ends_it": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_sgp40.py::test_the_driver_recovers_from_a_crc_failure_with_the_next_initialize": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite fails all three _sgp40_bus() callers on dev)"
+  ]
+ }
+}

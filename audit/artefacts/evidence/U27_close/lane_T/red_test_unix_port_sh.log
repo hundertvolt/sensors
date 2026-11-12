@@ -1,0 +1,1113 @@
+FFFFFFFFFFFFFFFFFF.FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF.                       [100%]
+=================================== FAILURES ===================================
+_______ test_unix_port_bin_names_each_flavours_build_directory[standard] _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_unix_port_bin_names_each_0')
+flavour = 'standard'
+
+    @pytest.mark.parametrize("flavour", _FLAVOURS)
+    def test_unix_port_bin_names_each_flavours_build_directory(tmp_path: Path, flavour: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), "unix_port_bin", flavour)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(tmp_path / 'toolchain', flavour)}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:164: AssertionError
+_______ test_unix_port_bin_names_each_flavours_build_directory[settrace] _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_unix_port_bin_names_each_1')
+flavour = 'settrace'
+
+    @pytest.mark.parametrize("flavour", _FLAVOURS)
+    def test_unix_port_bin_names_each_flavours_build_directory(tmp_path: Path, flavour: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), "unix_port_bin", flavour)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(tmp_path / 'toolchain', flavour)}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:164: AssertionError
+_________ test_unix_port_bin_names_each_flavours_build_directory[lwip] _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_unix_port_bin_names_each_2')
+flavour = 'lwip'
+
+    @pytest.mark.parametrize("flavour", _FLAVOURS)
+    def test_unix_port_bin_names_each_flavours_build_directory(tmp_path: Path, flavour: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), "unix_port_bin", flavour)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(tmp_path / 'toolchain', flavour)}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:164: AssertionError
+___ test_the_toolchain_defaults_to_home_and_a_relative_one_is_made_absolute ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_the_toolchain_defaults_to0')
+
+    def test_the_toolchain_defaults_to_home_and_a_relative_one_is_made_absolute(tmp_path: Path) -> None:
+        env = _env(tmp_path, tmp_path / "unused")
+        del env["PICO_TOOLCHAIN_DIR"]
+>       assert _run(env, "unix_port_bin", "standard").stdout == f"{_binary(tmp_path / 'home' / 'pico-toolchain', 'standard')}\n"
+E       AssertionError: assert '' == '/tmp/pytest-...micropython\n'
+E         
+E         - /tmp/pytest-of-root/pytest-9779/test_the_toolchain_defaults_to0/home/pico-toolchain/micropython/ports/unix/build-standard/micropython
+
+tests_scripts/test_unix_port_sh.py:170: AssertionError
+______ test_the_flavour_is_what_the_binary_reports_not_its_path[standard] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_the_flavour_is_what_the_b0')
+acts_as = 'standard'
+
+    @pytest.mark.parametrize("acts_as", [*_FLAVOURS, "unusable"])
+    def test_the_flavour_is_what_the_binary_reports_not_its_path(tmp_path: Path, acts_as: str) -> None:
+        binary = _plant_binary(tmp_path / "toolchain", "standard", acts_as=acts_as)
+        done = _sourced(_env(tmp_path, tmp_path / "toolchain"), f"unix_port_flavour {shlex.quote(str(binary))}")
+>       assert (done.returncode, done.stdout) == (0, f"{acts_as}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (1, '') == (0, 'standard\n')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:180: AssertionError
+______ test_the_flavour_is_what_the_binary_reports_not_its_path[settrace] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_the_flavour_is_what_the_b1')
+acts_as = 'settrace'
+
+    @pytest.mark.parametrize("acts_as", [*_FLAVOURS, "unusable"])
+    def test_the_flavour_is_what_the_binary_reports_not_its_path(tmp_path: Path, acts_as: str) -> None:
+        binary = _plant_binary(tmp_path / "toolchain", "standard", acts_as=acts_as)
+        done = _sourced(_env(tmp_path, tmp_path / "toolchain"), f"unix_port_flavour {shlex.quote(str(binary))}")
+>       assert (done.returncode, done.stdout) == (0, f"{acts_as}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (1, '') == (0, 'settrace\n')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:180: AssertionError
+________ test_the_flavour_is_what_the_binary_reports_not_its_path[lwip] ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_the_flavour_is_what_the_b2')
+acts_as = 'lwip'
+
+    @pytest.mark.parametrize("acts_as", [*_FLAVOURS, "unusable"])
+    def test_the_flavour_is_what_the_binary_reports_not_its_path(tmp_path: Path, acts_as: str) -> None:
+        binary = _plant_binary(tmp_path / "toolchain", "standard", acts_as=acts_as)
+        done = _sourced(_env(tmp_path, tmp_path / "toolchain"), f"unix_port_flavour {shlex.quote(str(binary))}")
+>       assert (done.returncode, done.stdout) == (0, f"{acts_as}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (1, '') == (0, 'lwip\n')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:180: AssertionError
+______ test_the_flavour_is_what_the_binary_reports_not_its_path[unusable] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_the_flavour_is_what_the_b3')
+acts_as = 'unusable'
+
+    @pytest.mark.parametrize("acts_as", [*_FLAVOURS, "unusable"])
+    def test_the_flavour_is_what_the_binary_reports_not_its_path(tmp_path: Path, acts_as: str) -> None:
+        binary = _plant_binary(tmp_path / "toolchain", "standard", acts_as=acts_as)
+        done = _sourced(_env(tmp_path, tmp_path / "toolchain"), f"unix_port_flavour {shlex.quote(str(binary))}")
+>       assert (done.returncode, done.stdout) == (0, f"{acts_as}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (1, '') == (0, 'unusable\n')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:180: AssertionError
+___________ test_a_missing_or_non_executable_binary_reports_unusable ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_missing_or_non_executab0')
+
+    def test_a_missing_or_non_executable_binary_reports_unusable(tmp_path: Path) -> None:
+        plain = tmp_path / "not_executable"
+        plain.write_text("#!/bin/sh\necho standard\n", encoding="utf-8")
+        done = _sourced(_env(tmp_path, tmp_path / "toolchain"), f"unix_port_flavour {shlex.quote(str(tmp_path / 'missing'))}", f"unix_port_flavour {shlex.quote(str(plain))}")
+>       assert (done.returncode, done.stdout) == (0, "unusable\nunusable\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (1, '') == (0, 'unusable\nunusable\n')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:187: AssertionError
+__________ test_check_prints_the_path_of_a_matching_binary[standard] ___________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_prints_the_path_of_0')
+flavour = 'standard'
+
+    @pytest.mark.parametrize("flavour", _FLAVOURS)
+    def test_check_prints_the_path_of_a_matching_binary(setup_toolchain: ModuleType, tmp_path: Path, flavour: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        done = _run(_env(tmp_path, toolchain), "check", flavour)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(toolchain, flavour)}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:194: AssertionError
+__________ test_check_prints_the_path_of_a_matching_binary[settrace] ___________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_prints_the_path_of_1')
+flavour = 'settrace'
+
+    @pytest.mark.parametrize("flavour", _FLAVOURS)
+    def test_check_prints_the_path_of_a_matching_binary(setup_toolchain: ModuleType, tmp_path: Path, flavour: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        done = _run(_env(tmp_path, toolchain), "check", flavour)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(toolchain, flavour)}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:194: AssertionError
+____________ test_check_prints_the_path_of_a_matching_binary[lwip] _____________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_prints_the_path_of_2')
+flavour = 'lwip'
+
+    @pytest.mark.parametrize("flavour", _FLAVOURS)
+    def test_check_prints_the_path_of_a_matching_binary(setup_toolchain: ModuleType, tmp_path: Path, flavour: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        done = _run(_env(tmp_path, toolchain), "check", flavour)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(toolchain, flavour)}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:194: AssertionError
+_ test_check_fails_naming_the_found_flavour_and_builds_nothing[settrace-standard] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_fails_naming_the_fo0')
+found = 'settrace', wanted = 'standard'
+
+    @pytest.mark.parametrize(("found", "wanted"), [("settrace", "standard"), ("standard", "settrace"), ("standard", "lwip"), ("unusable", "standard")])
+    def test_check_fails_naming_the_found_flavour_and_builds_nothing(setup_toolchain: ModuleType, tmp_path: Path, found: str, wanted: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _plant_binary(toolchain, wanted, acts_as=found)
+        done = _run(_env(tmp_path, toolchain), "check", wanted)
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:203: AssertionError
+_ test_check_fails_naming_the_found_flavour_and_builds_nothing[standard-settrace] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_fails_naming_the_fo1')
+found = 'standard', wanted = 'settrace'
+
+    @pytest.mark.parametrize(("found", "wanted"), [("settrace", "standard"), ("standard", "settrace"), ("standard", "lwip"), ("unusable", "standard")])
+    def test_check_fails_naming_the_found_flavour_and_builds_nothing(setup_toolchain: ModuleType, tmp_path: Path, found: str, wanted: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _plant_binary(toolchain, wanted, acts_as=found)
+        done = _run(_env(tmp_path, toolchain), "check", wanted)
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:203: AssertionError
+_ test_check_fails_naming_the_found_flavour_and_builds_nothing[standard-lwip] __
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_fails_naming_the_fo2')
+found = 'standard', wanted = 'lwip'
+
+    @pytest.mark.parametrize(("found", "wanted"), [("settrace", "standard"), ("standard", "settrace"), ("standard", "lwip"), ("unusable", "standard")])
+    def test_check_fails_naming_the_found_flavour_and_builds_nothing(setup_toolchain: ModuleType, tmp_path: Path, found: str, wanted: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _plant_binary(toolchain, wanted, acts_as=found)
+        done = _run(_env(tmp_path, toolchain), "check", wanted)
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:203: AssertionError
+_ test_check_fails_naming_the_found_flavour_and_builds_nothing[unusable-standard] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_fails_naming_the_fo3')
+found = 'unusable', wanted = 'standard'
+
+    @pytest.mark.parametrize(("found", "wanted"), [("settrace", "standard"), ("standard", "settrace"), ("standard", "lwip"), ("unusable", "standard")])
+    def test_check_fails_naming_the_found_flavour_and_builds_nothing(setup_toolchain: ModuleType, tmp_path: Path, found: str, wanted: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _plant_binary(toolchain, wanted, acts_as=found)
+        done = _run(_env(tmp_path, toolchain), "check", wanted)
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:203: AssertionError
+____________ test_check_fails_on_a_missing_binary_naming_the_build _____________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_check_fails_on_a_missing_0')
+
+    def test_check_fails_on_a_missing_binary_naming_the_build(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _binary(toolchain, "settrace").unlink()
+        done = _run(_env(tmp_path, toolchain), "check", "settrace")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:212: AssertionError
+_______________ test_ensure_on_a_current_toolchain_runs_no_setup _______________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_on_a_current_toolc0')
+
+    def test_ensure_on_a_current_toolchain_runs_no_setup(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout, done.stderr) == (0, f"{_binary(toolchain, 'standard')}\n", "")
+E       AssertionError: assert (127, '', '/b... directory\n') == (0, '/tmp/pyt...python\n', '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:220: AssertionError
+_ test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[missing binary] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_runs_setup_once_an0')
+why = 'missing binary'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'standard')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:252: AssertionError
+_ test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[wrong flavour] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_runs_setup_once_an1')
+why = 'wrong flavour'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'standard')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:252: AssertionError
+_ test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[no record] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_runs_setup_once_an2')
+why = 'no record'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'standard')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:252: AssertionError
+_ test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[stale versions.toml] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_runs_setup_once_an3')
+why = 'stale versions.toml'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'standard')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:252: AssertionError
+_ test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[stale setup_toolchain.py] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_runs_setup_once_an4')
+why = 'stale setup_toolchain.py'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'standard')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:252: AssertionError
+_ test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[stale micropython_overrides.py] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_runs_setup_once_an5')
+why = 'stale micropython_overrides.py'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'standard')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:252: AssertionError
+_ test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[missing binary] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_fails_naming_what_0')
+why = 'missing binary'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:262: AssertionError
+_ test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[wrong flavour] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_fails_naming_what_1')
+why = 'wrong flavour'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:262: AssertionError
+_ test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[no record] __
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_fails_naming_what_2')
+why = 'no record'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:262: AssertionError
+_ test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[stale versions.toml] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_fails_naming_what_3')
+why = 'stale versions.toml'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:262: AssertionError
+_ test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[stale setup_toolchain.py] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_fails_naming_what_4')
+why = 'stale setup_toolchain.py'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:262: AssertionError
+_ test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[stale micropython_overrides.py] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_fails_naming_what_5')
+why = 'stale micropython_overrides.py'
+
+    @pytest.mark.parametrize("why", _REASONS)
+    def test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup(setup_toolchain: ModuleType, tmp_path: Path, why: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, why)
+        done = _run(_env(tmp_path, toolchain), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:262: AssertionError
+____________ test_ensure_builds_a_toolchain_that_does_not_exist_yet ____________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_builds_a_toolchain0')
+
+    def test_ensure_builds_a_toolchain_that_does_not_exist_yet(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        after = _toolchain(setup_toolchain, tmp_path / "after")
+        toolchain = tmp_path / "fresh"
+        done = _run(_env(tmp_path, toolchain, STUB_UV_AFTER=str(after)), "ensure", "lwip")
+>       assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'lwip')}\n"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (0, '/tmp/pyt...icropython\n')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:277: AssertionError
+_____________________ test_ensure_passes_skip_apt_through ______________________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_ensure_passes_skip_apt_th0')
+
+    def test_ensure_passes_skip_apt_through(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, "no record")
+        _run(_env(tmp_path, toolchain, SKIP_APT="1"), "ensure", "standard")
+>       assert [call["argv"] for call in _calls(tmp_path)] == [[*_SETUP_ARGV, str(toolchain), "--skip-apt"]]
+E       AssertionError: assert [] == [['run', 'too...'--skip-apt']]
+E         
+E         Right contains one more item: ['run', 'toolchain/setup_toolchain.py', 'setup', '--toolchain-dir', '/tmp/pytest-of-root/pytest-9779/test_ensure_passes_skip_apt_th0/toolchain', '--skip-apt']
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:285: AssertionError
+_______________ test_a_failing_setup_ends_ensure_once_naming_it ________________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_failing_setup_ends_ensu0')
+
+    def test_a_failing_setup_ends_ensure_once_naming_it(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        _broken(setup_toolchain, toolchain, "missing binary")
+        done = _run(_env(tmp_path, toolchain, STUB_UV_EXIT="3"), "ensure", "standard")
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:292: AssertionError
+_ test_a_setup_holding_the_toolchain_lock_fails_a_run_at_once_naming_it[check] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_setup_holding_the_toolc0')
+command = 'check'
+
+    @pytest.mark.parametrize("command", ["check", "ensure"])
+    def test_a_setup_holding_the_toolchain_lock_fails_a_run_at_once_naming_it(setup_toolchain: ModuleType, tmp_path: Path, command: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        with _exclusive_holder(toolchain) as holder:
+            started = time.monotonic()
+            done = _run(_env(tmp_path, toolchain), command, "standard")
+            elapsed = time.monotonic() - started
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:304: AssertionError
+_ test_a_setup_holding_the_toolchain_lock_fails_a_run_at_once_naming_it[ensure] _
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_setup_holding_the_toolc1')
+command = 'ensure'
+
+    @pytest.mark.parametrize("command", ["check", "ensure"])
+    def test_a_setup_holding_the_toolchain_lock_fails_a_run_at_once_naming_it(setup_toolchain: ModuleType, tmp_path: Path, command: str) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        with _exclusive_holder(toolchain) as holder:
+            started = time.monotonic()
+            done = _run(_env(tmp_path, toolchain), command, "standard")
+            elapsed = time.monotonic() - started
+>       assert (done.returncode, done.stdout) == (1, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (1, '')
+E         
+E         At index 0 diff: 127 != 1
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:304: AssertionError
+____ test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit _____
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_run_holds_the_lock_shar0')
+
+    def test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        env = _env(tmp_path, toolchain)
+        script = "\n".join(["set -euo pipefail", f"source {shlex.quote(str(_LIB))}", "unix_port_ensure standard", "unix_port_check lwip", 'echo "ready"', "read -r _ || true"])
+        run = subprocess.Popen(["/bin/bash", "-c", script], cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            assert run.stdout is not None
+>           assert run.stdout.readline().strip() == "ready", run.stderr.read() if run.stderr else ""
+E           AssertionError: /bin/bash: line 2: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E             
+E           assert '' == 'ready'
+E             
+E             - ready
+
+tests_scripts/test_unix_port_sh.py:317: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_run_holds_the_lock_shar0')
+
+    def test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        env = _env(tmp_path, toolchain)
+        script = "\n".join(["set -euo pipefail", f"source {shlex.quote(str(_LIB))}", "unix_port_ensure standard", "unix_port_check lwip", 'echo "ready"', "read -r _ || true"])
+        run = subprocess.Popen(["/bin/bash", "-c", script], cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            assert run.stdout is not None
+            assert run.stdout.readline().strip() == "ready", run.stderr.read() if run.stderr else ""
+            assert _run(env, "check", "settrace").returncode == 0, "a second run sharing the lock was refused"
+            with pytest.raises(setup_toolchain.SetupError, match=r"another setup or firmware build"), setup_toolchain.toolchain_lock(toolchain):
+                pass
+        finally:
+            if run.stdin is not None:
+                run.stdin.close()
+>           assert run.wait(timeout=_TIMEOUT_S) == 0
+E           AssertionError: assert 1 == 0
+E            +  where 1 = wait(timeout=60)
+E            +    where wait = <Popen: returncode: 1 args: ['/bin/bash', '-c', 'set -euo pipefail\nsource /...>.wait
+
+tests_scripts/test_unix_port_sh.py:324: AssertionError
+_____________ test_micropypath_prints_the_layout_files_value[unit] _____________
+
+layout = 'unit'
+
+    @pytest.mark.parametrize("layout", ["unit", "twin"])
+    def test_micropypath_prints_the_layout_files_value(layout: str) -> None:
+>       expected = tomllib.loads((REPO_ROOT / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))[layout]
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_unix_port_sh.py:331: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+_____________ test_micropypath_prints_the_layout_files_value[twin] _____________
+
+layout = 'twin'
+
+    @pytest.mark.parametrize("layout", ["unit", "twin"])
+    def test_micropypath_prints_the_layout_files_value(layout: str) -> None:
+>       expected = tomllib.loads((REPO_ROOT / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))[layout]
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_unix_port_sh.py:331: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+_____________ test_a_layout_file_without_the_line_fails_naming_it ______________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_layout_file_without_the0')
+
+    def test_a_layout_file_without_the_line_fails_naming_it(tmp_path: Path) -> None:
+        (tmp_path / "scripts").mkdir()
+>       shutil.copy2(_LIB, tmp_path / "scripts" / "_unix_port.sh")
+
+tests_scripts/test_unix_port_sh.py:338: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_layout_file_without_the0/scripts/_unix_port.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+_______________ test_a_malformed_command_is_a_usage_error[none] ________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_0')
+args = (), message = 'error: no command given'
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+__________ test_a_malformed_command_is_a_usage_error[unknown-command] __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_1')
+args = ('frobnicate', 'standard')
+message = "error: unknown command 'frobnicate'"
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+____________ test_a_malformed_command_is_a_usage_error[no-flavour] _____________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_2')
+args = ('check',), message = 'error: check needs one build flavour'
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+__________ test_a_malformed_command_is_a_usage_error[extra-argument] ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_3')
+args = ('ensure', 'standard', 'extra')
+message = 'error: ensure needs one build flavour'
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+__________ test_a_malformed_command_is_a_usage_error[unknown-flavour] __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_4')
+args = ('check', 'plain')
+message = "error: unknown build flavour 'plain' - one of: standard settrace lwip"
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+_____ test_a_malformed_command_is_a_usage_error[probe-word-is-no-flavour] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_5')
+args = ('unix_port_bin', 'unusable')
+message = "error: unknown build flavour 'unusable' - one of: standard settrace lwip"
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+__________ test_a_malformed_command_is_a_usage_error[unknown-layout] ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9779/test_a_malformed_command_is_a_6')
+args = ('micropypath', 'frozen')
+message = "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ((), "error: no command given"),
+            (("frobnicate", "standard"), "error: unknown command 'frobnicate'"),
+            (("check",), "error: check needs one build flavour"),
+            (("ensure", "standard", "extra"), "error: ensure needs one build flavour"),
+            (("check", "plain"), "error: unknown build flavour 'plain' - one of: standard settrace lwip"),
+            (("unix_port_bin", "unusable"), "error: unknown build flavour 'unusable' - one of: standard settrace lwip"),
+            (("micropypath", "frozen"), "error: unknown MICROPYPATH layout 'frozen' - one of: unit twin"),
+        ],
+        ids=["none", "unknown-command", "no-flavour", "extra-argument", "unknown-flavour", "probe-word-is-no-flavour", "unknown-layout"],
+    )
+    def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, ...], message: str) -> None:
+        done = _run(_env(tmp_path, tmp_path / "toolchain"), *args)
+>       assert (done.returncode, done.stdout) == (2, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '') == (2, '')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:360: AssertionError
+_____________________ test_help_answers_with_the_usage[-h] _____________________
+
+flag = '-h'
+
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_help_answers_with_the_usage(flag: str) -> None:
+        done = _run(dict(os.environ), flag)
+>       assert (done.returncode, done.stderr) == (0, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '/bin/b... directory\n') == (0, '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:369: AssertionError
+___________________ test_help_answers_with_the_usage[--help] ___________________
+
+flag = '--help'
+
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_help_answers_with_the_usage(flag: str) -> None:
+        done = _run(dict(os.environ), flag)
+>       assert (done.returncode, done.stderr) == (0, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...er-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_unix_port.sh: No such file or directory
+E         ')
+E       assert (127, '/bin/b... directory\n') == (0, '')
+E         
+E         At index 0 diff: 127 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:369: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_unix_port_sh.py::test_unix_port_bin_names_each_flavours_build_directory[standard]
+FAILED tests_scripts/test_unix_port_sh.py::test_unix_port_bin_names_each_flavours_build_directory[settrace]
+FAILED tests_scripts/test_unix_port_sh.py::test_unix_port_bin_names_each_flavours_build_directory[lwip]
+FAILED tests_scripts/test_unix_port_sh.py::test_the_toolchain_defaults_to_home_and_a_relative_one_is_made_absolute
+FAILED tests_scripts/test_unix_port_sh.py::test_the_flavour_is_what_the_binary_reports_not_its_path[standard]
+FAILED tests_scripts/test_unix_port_sh.py::test_the_flavour_is_what_the_binary_reports_not_its_path[settrace]
+FAILED tests_scripts/test_unix_port_sh.py::test_the_flavour_is_what_the_binary_reports_not_its_path[lwip]
+FAILED tests_scripts/test_unix_port_sh.py::test_the_flavour_is_what_the_binary_reports_not_its_path[unusable]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_missing_or_non_executable_binary_reports_unusable
+FAILED tests_scripts/test_unix_port_sh.py::test_check_prints_the_path_of_a_matching_binary[standard]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_prints_the_path_of_a_matching_binary[settrace]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_prints_the_path_of_a_matching_binary[lwip]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_fails_naming_the_found_flavour_and_builds_nothing[settrace-standard]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_fails_naming_the_found_flavour_and_builds_nothing[standard-settrace]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_fails_naming_the_found_flavour_and_builds_nothing[standard-lwip]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_fails_naming_the_found_flavour_and_builds_nothing[unusable-standard]
+FAILED tests_scripts/test_unix_port_sh.py::test_check_fails_on_a_missing_binary_naming_the_build
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_on_a_current_toolchain_runs_no_setup
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[missing binary]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[wrong flavour]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[no record]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[stale versions.toml]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[stale setup_toolchain.py]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_runs_setup_once_and_succeeds_once_the_rebuild_fixed_it[stale micropython_overrides.py]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[missing binary]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[wrong flavour]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[no record]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[stale versions.toml]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[stale setup_toolchain.py]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_fails_naming_what_is_still_wrong_after_its_one_setup[stale micropython_overrides.py]
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_builds_a_toolchain_that_does_not_exist_yet
+FAILED tests_scripts/test_unix_port_sh.py::test_ensure_passes_skip_apt_through
+FAILED tests_scripts/test_unix_port_sh.py::test_a_failing_setup_ends_ensure_once_naming_it
+FAILED tests_scripts/test_unix_port_sh.py::test_a_setup_holding_the_toolchain_lock_fails_a_run_at_once_naming_it[check]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_setup_holding_the_toolchain_lock_fails_a_run_at_once_naming_it[ensure]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit
+FAILED tests_scripts/test_unix_port_sh.py::test_micropypath_prints_the_layout_files_value[unit]
+FAILED tests_scripts/test_unix_port_sh.py::test_micropypath_prints_the_layout_files_value[twin]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_layout_file_without_the_line_fails_naming_it
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[none]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[unknown-command]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[no-flavour]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[extra-argument]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[unknown-flavour]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[probe-word-is-no-flavour]
+FAILED tests_scripts/test_unix_port_sh.py::test_a_malformed_command_is_a_usage_error[unknown-layout]
+FAILED tests_scripts/test_unix_port_sh.py::test_help_answers_with_the_usage[-h]
+FAILED tests_scripts/test_unix_port_sh.py::test_help_answers_with_the_usage[--help]
+48 failed, 2 passed in 2.15s

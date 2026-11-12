@@ -1,0 +1,25 @@
+test_asy_system_service@-1 rc=0 24.648789829 mem=0 178/178 passed, 0 failed, 0 skipped fails=0
+test_reset_call_site_invariant@-1 rc=0 .303828170 mem=0 3/3 passed, 0 failed, 0 skipped fails=0
+test_sensortask_arzi@-1 rc=0 27.639911532 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_dev@-1 rc=0 44.266627975 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_grkizi@-1 rc=0 27.687162807 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_klkizi@-1 rc=0 27.951645431 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_schlafzi@-1 rc=0 27.867770282 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_wozi@-1 rc=0 31.400459740 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_asy_system_service@32768 rc=0 25.939179649 mem=0 178/178 passed, 0 failed, 0 skipped fails=0
+test_reset_call_site_invariant@32768 rc=0 .311772681 mem=0 3/3 passed, 0 failed, 0 skipped fails=0
+test_sensortask_arzi@32768 rc=0 31.800438797 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_dev@32768 rc=0 52.871930176 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_grkizi@32768 rc=0 31.641389005 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_klkizi@32768 rc=0 31.494384943 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_schlafzi@32768 rc=0 31.147200391 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_wozi@32768 rc=0 35.244115714 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+py_scans2 rc=0 68.625495770 mem=0 871 passed, 1 warning in 67.93s (0:01:07)
+py_r2_test_watchdog_feed_sites rc=0 13.490012899 mem=0 22 passed in 12.95s
+py_r2_test_await_depth rc=0 4.783388003 mem=0 22 passed in 4.07s
+py_r2_test_fatal_report_sites rc=0 2.350773471 mem=0 19 passed in 1.83s
+py_r2_test_digital_twin_generated_boot rc=0 56.305768177 mem=0 22 passed in 55.81s
+py_r2_test_stripped_image_boots rc=0 6.667855598 mem=0 2 passed in 6.07s
+py_r2_test_generate_sensortask_modules rc=0 2.714624716 mem=0 16 passed in 2.15s
+py_r2_test_error_catalog rc=0 6.345326985 mem=0 40 passed in 5.29s
+DONE

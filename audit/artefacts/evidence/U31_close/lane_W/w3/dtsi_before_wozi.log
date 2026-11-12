@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "tests/test_digital_twin_sensortask_integration.py", line 98, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31w/tests/_src_const.py", line 85, in src_float
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31w/tests/_src_const.py", line 64, in src_const
+KeyError: _STA_CONNECT_POLL_S is not a const() in src/asy_wifi_service.py

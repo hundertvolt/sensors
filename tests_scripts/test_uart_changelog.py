@@ -207,10 +207,10 @@ def test_a_changed_module_constant_fails(copies: tuple[Path, Path]) -> None:
 def test_a_constant_without_a_row_and_a_row_without_a_constant_fail(copies: tuple[Path, Path]) -> None:
     module, changelog = copies
     _replace(module, "_RESYNC_NUM = const(3)", "_RESYNC_NUM = const(3)\n_NEW_BOUND = const(7)")
-    _replace(module, "_GATE_STEP_MS = const(20)", "_GATE_STEP_MS = 20")
+    _replace(module, "_POLL_JITTER_MS = const(5)", "_POLL_JITTER_MS = 5")
     assert findings(module, changelog) == [
-        f"_GATE_STEP_MS: module value none, table value 20 - {_FIX}",
         f"_NEW_BOUND: module value 7, table value none - {_FIX}",
+        f"_POLL_JITTER_MS: module value none, table value 5 - {_FIX}",
     ]
 
 
@@ -236,10 +236,10 @@ def test_a_last_entry_whose_change_does_not_name_the_constant_fails(copies: tupl
 
 def test_a_last_entry_naming_no_row_and_a_bad_class_fail(copies: tuple[Path, Path]) -> None:
     module, changelog = copies
-    _replace(changelog, "| `_GATE_STEP_MS` | 20 | B | baseline |", "| `_GATE_STEP_MS` | 20 | C | B999 |")
+    _replace(changelog, "| `_POLL_JITTER_MS` | 5 | B | baseline |", "| `_POLL_JITTER_MS` | 5 | C | B999 |")
     assert findings(module, changelog) == [
-        "_GATE_STEP_MS: Class 'C' is neither A nor B",
-        "_GATE_STEP_MS: Last entry 'B999' is neither baseline nor an existing row",
+        "_POLL_JITTER_MS: Class 'C' is neither A nor B",
+        "_POLL_JITTER_MS: Last entry 'B999' is neither baseline nor an existing row",
     ]
 
 
@@ -259,5 +259,5 @@ def test_a_constant_the_parser_cannot_evaluate_fails_rather_than_dropping_out(co
 
 def test_a_duplicated_table_row_fails(copies: tuple[Path, Path]) -> None:
     module, changelog = copies
-    _replace(changelog, "| `_GATE_STEP_MS` | 20 | B | baseline |\n", "| `_GATE_STEP_MS` | 20 | B | baseline |\n| `_GATE_STEP_MS` | 30 | B | baseline |\n")
-    assert findings(module, changelog) == ["_GATE_STEP_MS: listed twice in the constants table"]
+    _replace(changelog, "| `_POLL_JITTER_MS` | 5 | B | baseline |\n", "| `_POLL_JITTER_MS` | 5 | B | baseline |\n| `_POLL_JITTER_MS` | 30 | B | baseline |\n")
+    assert findings(module, changelog) == ["_POLL_JITTER_MS: listed twice in the constants table"]

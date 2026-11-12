@@ -1,0 +1,24 @@
+...................                                                      [100%]
+============================== slowest durations ===============================
+0.51s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[toolchain/setup_toolchain.py]
+0.41s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_firmware.py]
+0.40s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/cross_browser_smoke.mjs]
+0.39s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_manual_hardware_tests.sh]
+0.36s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/setup_cross_browser_toolchain.sh]
+0.35s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/test.sh]
+0.34s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_website.sh]
+0.34s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_frozen_html.sh]
+0.34s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[digital_twin/launch.py]
+0.34s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_device_websites.sh]
+0.33s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_digital_twin_ci.sh]
+0.33s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_unix_port_integration.sh]
+0.32s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_flash_hardware_suite.sh]
+0.32s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_bench_soak_tests.sh]
+0.32s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/mpremote_connect.sh]
+0.31s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_bench_hardware_suite.sh]
+0.31s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/lint.sh]
+0.30s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/typecheck.sh]
+0.01s setup    tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/test.sh]
+
+(38 durations < 0.005s hidden.  Use -vv to show these durations.)
+19 passed in 6.55s

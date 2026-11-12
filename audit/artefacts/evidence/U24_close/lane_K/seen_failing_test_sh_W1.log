@@ -1,0 +1,64 @@
+E         Recovery passes: none
+E         Notes: none
+E         Checked nothing: none
+E         Result: FAIL
+E         Exit code: 1
+E         
+E       assert 'Failed:\n  - tests/test_x.py: 2 of 4 tests failed (FAIL test_b: AssertionError: x; ABORT test_c: KeyboardInterrupt:)\nSkipped:' in '== Summary: scripts/test.sh ==\nCommit: unknown\nLevels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py on...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+E        +  where '== Summary: scripts/test.sh ==\nCommit: unknown\nLevels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py on...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n' = _block('== Evidence archived in /tmp/pytest-of-root/pytest-8258/test_an_aborted_test_is_named_0/repo/build/archive/test_sh/20...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n')
+
+tests_scripts/test_test_sh.py:1206: AssertionError
+_ test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/w1tree')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8258/test_the_per_file_timeout_inte0')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+
+    def test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
+        # SIGINT, which microtest turns into its ABORT line and the summary names; the job leaves nothing running.
+        planted = tmp_path / "test_hung.py"
+        planted.write_text(_HUNG_FILE)
+        attempt = f'exec env MICROPYPATH="{repo_root / "tests"}:.frozen" "{micropython_bin}" "{planted}"'
+        token = uuid.uuid4().hex
+        results = _run_file_job(repo_root, tmp_path, attempt, attempt, timeout_s=3, attempts=1, env={**os.environ, _MARKER_VAR: token})
+        left = _processes_carrying(token)
+        _kill_all(left)
+        status, log, _ = _job_files(results)
+        assert status == "FAIL\n", log
+>       assert log is not None and "[test_x] ABORT test_b_hangs:\n" in log, log
+E       AssertionError: [test_x] == attempt 1/1
+E         [test_x] PASS test_a_pass
+E         
+E       assert ('[test_x] == attempt 1/1\n[test_x] PASS test_a_pass\n' is not None and '[test_x] ABORT test_b_hangs:\n' in '[test_x] == attempt 1/1\n[test_x] PASS test_a_pass\n')
+
+tests_scripts/test_test_sh.py:1366: AssertionError
+___ test_an_aborted_run_ends_every_file_job_before_it_releases_the_port_lock ___
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/w1tree')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8258/test_an_aborted_run_ends_every0')
+
+    def test_an_aborted_run_ends_every_file_job_before_it_releases_the_port_lock(repo_root: Path, tmp_path: Path) -> None:
+        # The EXIT trap stops the per-file jobs too, by the pids it started, and waits for them: a twin test still running
+        # would hold port 53 after the lock said it was free.
+        code, left, reports, locks, out = _planted_run(repo_root, tmp_path)
+        assert code == 1, out
+>       assert left == [], f"the aborted run left {left} running\n{out}"
+E       AssertionError: the aborted run left [5133, 5139, 5141, 5142, 5143, 5146, 5149, 5150, 5151, 5152, 5153, 5155] running
+E         == Running tests/test_a.py
+E         == Running tests/test_b.py
+E         
+E       assert [5133, 5139, ...43, 5146, ...] == []
+E         
+E         Left contains 12 more items, first extra item: 5133
+E         Use -v to get more diff
+
+tests_scripts/test_test_sh.py:1418: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_an_aborted_test_is_named_in_its_files_reason_as_a_failing_one_is
+FAILED tests_scripts/test_test_sh.py::test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends
+FAILED tests_scripts/test_test_sh.py::test_an_aborted_run_ends_every_file_job_before_it_releases_the_port_lock
+3 failed, 125 deselected in 4.23s
+
+real	0m4.461s
+user	0m3.954s
+sys	0m0.289s

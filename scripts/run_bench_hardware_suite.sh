@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# L4: lower levels (scripts/_run_lower_levels.sh L4), then L3 as its own clean step, then
-# tests_hardware/bench/ against a real board and WiFi bridge, with soak and the rollover wait
-# excluded (each runs only through its own opt-in). Provisioning: tests_hardware/README.md.
+# L4: lower levels (scripts/_run_lower_levels.sh L4), then L3 as its own clean step, then tests_hardware/bench/
+# against a real board and WiFi bridge; soak and the rollover wait never run here, whatever -m a caller passes (it
+# narrows). Provisioning: tests_hardware/README.md.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -14,14 +14,15 @@ must pass before tests_hardware/bench/ (L4) runs; each step prints its summary b
   --skip-lower-levels  skip L0-L2; for iterative debugging, never reported clean (exit 4)
   --scope NAME         run only the flash and bench tests tests_hardware/run_scopes.py lists for NAME, the
                        ones one change reaches; never reported clean (exit 4), never with test paths, and
-                       never with the global --allow-persistence-writes (name the groups instead:
-                       --allow-persistence-writes-to=GROUP)
+                       never with the global --allow-persistence-write (name the groups instead:
+                       --allow-persistence-write-to=GROUP)
   -h, --help           this text
-Other arguments go to pytest. Test paths (arguments starting with tests_hardware/) go to the bench
-step only and replace its tests_hardware/bench; every other argument goes to both steps (an option
-whose value starts with tests_hardware/ is written --option=VALUE). Environment: MPREMOTE_DEVICE (the
-board's serial device; default: the one MicroPython board found by its /dev/serial/by-id name),
-BENCH_AP_PASSWORD (default: read from the bench bridge), PICO_TOOLCHAIN_DIR (default ~/pico-toolchain).
+Other arguments go to pytest; a -m you pass narrows the selection, and soak and rollover tests never run
+here. Test paths (arguments starting with tests_hardware/) go to the bench step only and replace its
+tests_hardware/bench; every other argument goes to both steps (an option whose value starts with
+tests_hardware/ is written --option=VALUE). Environment: MPREMOTE_DEVICE (the board's serial device;
+default: the one MicroPython board found by its /dev/serial/by-id name), BENCH_AP_PASSWORD (default:
+read from the bench bridge), PICO_TOOLCHAIN_DIR (default ~/pico-toolchain).
 USAGE
 }
 
@@ -59,8 +60,8 @@ if [ -n "$scope" ]; then
     listed_bench="$(python3 tests_hardware/run_scopes.py "$scope" bench)" || exit 2
     writes="$(python3 tests_hardware/run_scopes.py "$scope" writes | paste -sd, -)"
     for arg in "${args[@]}"; do
-        if [ "$arg" = "--allow-persistence-writes" ]; then
-            echo "error: a scoped run never takes the global --allow-persistence-writes; pass --allow-persistence-writes-to=$writes, the groups scope $scope writes" >&2
+        if [ "$arg" = "--allow-persistence-write" ]; then
+            echo "error: a scoped run never takes the global --allow-persistence-write; pass --allow-persistence-write-to=$writes, the groups scope $scope writes" >&2
             exit 2
         fi
     done
@@ -88,7 +89,7 @@ if [ "${#reasons[@]}" -gt 0 ]; then
     levels+=("--not-clean-reason" "$reason")
 fi
 
-floor="not long_soak and not multi_day_rollover"
+floor="not soak_duration and not multi_day_rollover"
 # The flash step has its own runner name, so its evidence keeps its own newest three.
-scripts/_require_clean_hardware_run.sh --runner "${runner}_flash_step" --levels "L3$scope_label" "${flash_paths[@]}" -m "$floor" "${args[@]}"
-scripts/_require_clean_hardware_run.sh --runner "$runner" "${levels[@]}" "${paths[@]}" -m "$floor" "${args[@]}"
+scripts/_require_clean_hardware_run.sh --runner "${runner}_flash_step" --levels "L3$scope_label" --marker-floor "$floor" "${flash_paths[@]}" "${args[@]}"
+scripts/_require_clean_hardware_run.sh --runner "$runner" "${levels[@]}" --marker-floor "$floor" "${paths[@]}" "${args[@]}"

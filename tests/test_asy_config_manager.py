@@ -1,30 +1,29 @@
+"""ConfigManager and its schema helpers: type and range checks with their specials, coercion, defaults, the file's
+repair and fallbacks, typed reads, compare-before-write and the deferred, logged writes."""
+
 import asyncio
 import json
 import os
 from collections import namedtuple
 
+from _async_harness import run
 from _error_codes import code
+from _littlefs_fake import LittlefsOpen
+from _recording_print import record_prints
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 
 import asy_config_manager as cm
-import asy_print_log
 from asy_print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+    from collections.abc import Coroutine, Sequence
+    from typing import NoReturn
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -63,19 +62,6 @@ _LARGE_SAME_TYPE_SCHEMA: "cm.ConfigSchema" = (
     _VAL_I1 + _VAL_I2 + _VAL_I3 + _VAL_I4 + _VAL_I5 + _VAL_I6 + _VAL_I7 + _VAL_I8
 )
 _LARGE_MIXED_SCHEMA: "cm.ConfigSchema" = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL_BOOL + _VAL_I1 + _VAL_I2 + _VAL_I3 + _VAL_I4
-
-
-class _PrintRecorder:
-    # Shadows print() inside asy_print_log only, so every console line a logger emits is captured.
-    def __init__(self) -> None:
-        self.lines: list[tuple[object, ...]] = []
-        asy_print_log.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **_kwargs: object) -> None:
-        self.lines.append(args)
-
-    def restore(self) -> None:
-        del asy_print_log.print  # type: ignore[attr-defined]
 
 
 def _tmp_path(name: str) -> str:
@@ -564,9 +550,9 @@ def test_type_or_range_error_int_discrete_set_malformed_element_type_rejects_any
 
 
 def test_type_or_range_error_int_discrete_set_bool_element_rejected_like_scalar_case() -> None:
-    # `type(check_val) is not int` already distinguishes bool from int for the checked value; the
-    # same distinction must hold for a discrete-set element (bool subclasses int in Python/
-    # MicroPython, but `type(v) is int` still correctly excludes it).
+    # `type(check_val) is not int` already distinguishes bool from int for the checked value; the same must hold for a
+    # discrete-set element. On MicroPython bool is not an int subclass (py/objbool.c), while CPython's is - `type(x) is
+    # int` states the rule the same way on both.
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, True, 8))  # bool subclasses int for mypy - no ignore needed here, only at runtime (type() is int excludes it)
     assert cm.type_or_range_error(1, field)[0] is True  # malformed set (a bool element) rejects everything
 
@@ -710,9 +696,8 @@ def test_type_or_range_error_bool_ignores_nonsensical_min_max() -> None:
 
 
 def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
-    # `type(check_val) is not int` correctly distinguishes bool from int (unlike isinstance, which
-    # would treat True/False as ints too, since bool subclasses int) - the reverse direction of the
-    # existing "int value against a bool field" tests above.
+    # On MicroPython bool is not an int subclass (py/objbool.c), while CPython's is - `type(x) is int` states the rule
+    # the same way on both; the reverse direction of the "int value against a bool field" tests above.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
     assert cm.type_or_range_error(check_val=True, field=field)[0] is True
     assert cm.type_or_range_error(check_val=False, field=field)[0] is True
@@ -841,18 +826,20 @@ def test_schema_names_and_schema_dict_tolerate_a_non_tuple_element_among_good_on
 
 
 def test_configmanager_writes_the_defaults_once_when_the_file_is_absent() -> None:
+    # An absent file persists one warning, "not found", where its defaults are then written; it is no config fault.
     path = _tmp_path("fresh.cfg")
     _remove(path)
-    mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+    mgr = cm.ConfigManager(path, _SCHEMA, "TEST", log=LogConfig(None, 10, 2))
     try:
-        with WriteCountingOpen(cm) as counter:
-            assert run(mgr.setup()) is True
+        with WriteCountingOpen(cm) as counter, record_prints() as recorder:
+            run(mgr.setup())
         assert counter.writes == 1
         with open(path) as f:
             on_disk = json.load(f)
         assert on_disk == {"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True}
-        assert mgr.pr._err_count == 0  # absence alone persists nothing: a console line only
-        assert (mgr.absent_at_boot, mgr.faulted, mgr.unpersisted) == (True, False, False)
+        assert (mgr.pr._err_count, _newest_code(mgr)) == (1, code("W", "CFG_FILE_UNREADABLE"))
+        assert [line[1:4] for line in recorder.lines if "not found:" in line] == [("Config file", path, "not found:")], recorder.lines
+        assert (mgr.faulted, mgr.unpersisted) == (False, False)
     finally:
         _remove(path)
 
@@ -871,7 +858,7 @@ def test_an_absent_file_is_written_once_per_boot_and_never_again() -> None:
             run(again.setup())
             assert run(_write_flushed(again, {"Count": 5})) == (True, {"Count": "Unchanged"})
         assert counter.writes == 1
-        assert again.absent_at_boot is False
+        assert again.pr._err_count == 0  # the file the first boot wrote: nothing to warn of
     finally:
         _remove(path)
 
@@ -883,7 +870,7 @@ def test_an_absent_files_refused_defaults_write_leaves_the_store_unpersisted() -
     with WriteCountingOpen(cm, fail_writes=True) as counter:
         run(mgr.setup())
     assert counter.writes == 1
-    assert (mgr.valid, mgr.absent_at_boot, mgr.unpersisted, mgr.faulted) == (True, True, True, False)
+    assert (mgr.valid, mgr.unpersisted, mgr.faulted) == (True, True, False)
     assert _log_entry(mgr) == (1, [code("E", "CFG_FILE_WRITE")])
     assert run(mgr.get_dict(["Count", "Name"])) == {"Count": 5, "Name": "abc"}  # the defaults, from RAM
 
@@ -903,7 +890,7 @@ def test_a_damaged_file_is_a_config_fault_still_listed_after_its_repair() -> Non
             assert counter.writes == 1, content
             with open(path) as f:
                 assert json.load(f) == {"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True}, content
-            assert (mgr.valid, mgr.faulted, mgr.absent_at_boot, mgr.writable) == (True, True, False, True), content
+            assert (mgr.valid, mgr.faulted, mgr.writable) == (True, True, True), content
         finally:
             _remove(path)
 
@@ -920,7 +907,7 @@ def test_schema_drift_is_repaired_without_a_config_fault() -> None:
             with WriteCountingOpen(cm) as counter:
                 run(mgr.setup())
             assert counter.writes == 1, content
-            assert (mgr.faulted, mgr.absent_at_boot) == (False, False), content
+            assert mgr.faulted is False, content
         finally:
             _remove(path)
 
@@ -932,7 +919,7 @@ def test_an_absent_or_valid_file_is_no_config_fault() -> None:
         again = cm.ConfigManager(path, _SCHEMA, "TEST")
         with WriteCountingOpen(cm) as counter:
             run(again.setup())
-        assert (counter.writes, again.faulted, again.absent_at_boot) == (0, False, False)
+        assert (counter.writes, again.faulted, again.pr._err_count) == (0, False, 0)
     finally:
         _remove(path)
 
@@ -940,9 +927,6 @@ def test_an_absent_or_valid_file_is_no_config_fault() -> None:
 class _LittlefsOs:
     # The Unix port's os.remove() is unlink(), which refuses a directory; littlefs's remove (vfs_lfsx.c's
     # remove) deletes an empty one and refuses a non-empty one. This stand-in gives the test that semantics.
-    def stat(self, path: str) -> object:
-        return os.stat(path)
-
     def remove(self, path: str) -> None:
         try:
             os.remove(path)
@@ -950,6 +934,9 @@ class _LittlefsOs:
             if e.errno != 21:  # EISDIR
                 raise
             os.rmdir(path)
+
+    def stat(self, path: str) -> object:
+        return os.stat(path)
 
 
 def test_a_config_path_that_is_a_directory_is_a_file_fault() -> None:
@@ -959,7 +946,8 @@ def test_a_config_path_that_is_a_directory_is_a_file_fault() -> None:
     original_os = cm.os
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
+        assert mgr.valid is False
         assert mgr.faulted is True
         assert _log_entry(mgr) == (1, [code("E", "CFG_PATH_IS_DIR")])
         assert os.stat(path)[0] & 0x4000  # untouched: still the directory
@@ -990,7 +978,7 @@ def test_configmanager_directory_path_is_invalid() -> None:
     os.mkdir(path)
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
         assert mgr.valid is False
     finally:
         os.rmdir(path)
@@ -1000,7 +988,8 @@ def test_configmanager_empty_schema_is_invalid() -> None:
     mgr, path = _make("emptyschema.cfg", cfg_vals=())
     try:
         assert mgr.valid is False
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
+        assert mgr.valid is False
     finally:
         _remove(path)
 
@@ -1012,7 +1001,7 @@ def test_configmanager_corrupt_json_falls_back_to_defaults() -> None:
         f.write("{not valid json")
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is True
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -1317,7 +1306,7 @@ def test_configmanager_non_string_field_name_quirk() -> None:
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f) == {"123": 5}
-        assert run(mgr.get_dict([123])) == {123: 5}  # type: ignore[list-item, comparison-overlap]  # matches _cache's own int key
+        assert run(mgr.get_dict([123])) == {123: 5}  # type: ignore[comparison-overlap, list-item]  # matches _cache's own int key
         assert run(mgr.get_dict(["123"])) is None  # the on-disk string key was never the cache's key
     finally:
         _remove(path)
@@ -1348,7 +1337,7 @@ def test_configmanager_file_is_json_array_not_dict() -> None:
         f.write("[1, 2, 3]")
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is True
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -1586,7 +1575,7 @@ def test_get_typed_values_happy_path() -> None:
         _remove(path)
 
 
-def _refused_with_one_contract_entry(mgr: "cm.ConfigManager", read: "Coroutine[Any, Any, object]") -> bool:
+def _refused_with_one_contract_entry(mgr: "cm.ConfigManager", read: "Coroutine[object, object, object]") -> bool:
     # True when `read` returns None and leaves exactly one CONTRACT entry (setup()'s own entries cleared first).
     run(mgr.reset_error_counter())
     result = run(read)
@@ -2336,6 +2325,47 @@ def test_get_error_counter_accumulates_across_later_calls_too() -> None:
         os.rmdir(path)
 
 
+def _count_and_lines(mgr: "cm.ConfigManager", reads: "Sequence[Coroutine[object, object, object]]") -> "tuple[int, int]":
+    # The history's count after the reads, and the console lines they printed; each read answers None.
+    with record_prints(mgr.pr) as recorder:
+        for read in reads:
+            assert run(read) is None
+    return run(mgr.get_error_counter())[mgr.name]["ErrCount"], len(recorder.lines)
+
+
+def test_an_invalid_store_counts_and_prints_every_failed_read_in_one_slot() -> None:
+    # A store invalid for the boot fails every read: each persists and prints, the history keeping one slot for the
+    # repeats (the logger's newest-entry rule); a cleared history counts afresh.
+    path = _tmp_path("invalidrun.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST", log=LogConfig(None, 10, 1))
+        with record_prints():
+            run(mgr.setup())  # its own entry: the path is a directory
+        reads = [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT), mgr.get_dict(["Count"]), mgr.get_str_values(_VAL_STR)]
+        assert _count_and_lines(mgr, reads) == (5, 4)
+        assert _newest_code(mgr) == code("E", "CFG_NOT_VALID")
+        assert run(mgr.get_error_counter())[mgr.name]["ErrNum"].count(code("E", "CFG_NOT_VALID")) == 1
+        assert run(mgr.reset_error_counter()) is True
+        assert _count_and_lines(mgr, [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT)]) == (2, 2)
+    finally:
+        os.rmdir(path)
+
+
+def test_a_wrong_typed_value_is_counted_and_printed_at_every_read() -> None:
+    mgr, path = _make("wrongtyperun.cfg")
+    mgr.pr.level = 1  # the entry's console line prints at the error level
+    try:
+        run(mgr.reset_error_counter())
+        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR), mgr.get_dict(["Missing"])]) == (3, 3)
+        assert run(mgr.get_str_values(_VAL_STR)) == ["abc"]  # a good read logs nothing
+        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR)]) == (5, 2)
+        assert _newest_code(mgr) == code("E", "CONTRACT")
+    finally:
+        _remove(path)
+
+
 def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
     # setup()'s "JSON Data ... is invalid" branch uses wrn_s (real, counted history) - the file
     # still self-heals to valid despite the recorded warning.
@@ -2384,14 +2414,14 @@ class _MemoryErrorJson:
             raise MemoryError("simulated allocation failure")
         return json.dumps(obj)
 
-    def loads(self, text: str) -> object:
-        decoded: object = json.loads(text)
-        return decoded
-
     def load(self, stream: object) -> object:
         if self.raise_on_load:
             raise MemoryError("simulated allocation failure")
         decoded: object = json.load(stream)
+        return decoded
+
+    def loads(self, text: str) -> object:
+        decoded: object = json.loads(text)
         return decoded
 
 
@@ -2483,11 +2513,11 @@ class _FailingOs:
     def __init__(self, errno_value: int) -> None:
         self.errno_value = errno_value
 
-    def stat(self, path: str) -> object:
-        raise OSError(self.errno_value)
-
     def remove(self, path: str) -> None:
         os.remove(path)
+
+    def stat(self, path: str) -> object:
+        raise OSError(self.errno_value)
 
 
 class _ReadFailingOpen(WriteCountingOpen):
@@ -2543,8 +2573,8 @@ def test_an_enoent_from_the_same_stand_in_is_the_absent_file_path() -> None:
         cm.os = original_os
     try:
         assert counter.writes == 1  # the absent file's one defaults write
-        assert (mgr.absent_at_boot, mgr.faulted, mgr.writable) == (True, False, True)
-        assert mgr.pr._err_count == 0
+        assert (mgr.faulted, mgr.writable) == (False, True)
+        assert (mgr.pr._err_count, _newest_code(mgr)) == (1, code("W", "CFG_FILE_UNREADABLE"))  # its "not found" warning
     finally:
         _remove(path)
 
@@ -2594,7 +2624,7 @@ def _log_entry(mgr: "cm.ConfigManager") -> "tuple[int, list[int]]":
     entry = run(mgr.pr.get_log())[mgr.name]
     nums, types = entry["ErrNum"], entry["ErrType"]
     assert isinstance(nums, list) and isinstance(types, list)
-    errs = [int(n) for n, t in zip(nums, types) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
+    errs = [int(n) for n, t in zip(nums, types) if t == "E"]
     return len(errs), errs
 
 
@@ -2794,13 +2824,14 @@ def test_an_unserialisable_snapshot_ends_the_flush_task_with_one_unexpected_entr
 
 
 def test_the_only_flash_writes_in_config_manager_are_the_two_known_sites() -> None:
-    # Structural half of the write-loop guarantee: exactly setup()'s and _flush_staged()'s opens
-    # for writing, and nothing in the module that could re-run one on its own - no timer, no sleep,
+    # Structural half of the write-loop guarantee: exactly one open for writing, _write_file()'s, called by setup() and
+    # _flush_staged(), and nothing in the module that could re-run one on its own - no timer, no sleep,
     # no loop that waits. A new write site or retry mechanism has to come through here.
     with open(cm.__file__) as f:
         source = f.read()
-    assert source.count('open(self._config_file, "w")') == 2
-    assert source.count('"w"') == 2
+    assert source.count('open(self._config_file, "w")') == 1
+    assert source.count("self._write_file(text)") == 2
+    assert source.count('"w"') == 1
     assert source.count("json.dump(") == 0  # every write serialises first, then opens
     code = [line.split("#")[0] for line in source.split("\n")]  # comments may say anything
     for forbidden in ("Timer", "sleep", "while "):
@@ -2832,31 +2863,28 @@ def test_a_float_equal_in_stored_form_is_unchanged() -> None:
 class _NoTaskAsyncio:
     # Stands in for asy_config_manager's `asyncio` during a write: building the flush task fails by allocation.
     Lock = asyncio.Lock
-    Event = asyncio.Event
     current_task = asyncio.current_task
 
     @staticmethod
-    def create_task(coro: "Coroutine[Any, Any, None]") -> None:
+    def create_task(coro: "Coroutine[object, object, None]") -> None:
         coro.close()
         raise MemoryError("injected for the flush task")
 
 
 def test_a_failed_task_creation_stages_nothing() -> None:
-    for defer in (False, True):
-        mgr, path = _make("notask.cfg", cfg_vals=_VAL_INT)
-        original = cm.asyncio
-        cm.asyncio = _NoTaskAsyncio  # type: ignore[assignment]
-        try:
-            assert run(mgr.write_config({"Count": 8}, defer=defer)) == (False, {}), defer
-        finally:
-            cm.asyncio = original
-        try:
-            assert run(mgr.get_dict(["Count"])) == {"Count": 5}, defer
-            assert mgr._staged is None and mgr._pending_flush is None, defer
-            assert mgr._commit_ready.is_set(), defer  # a later deferred write is not held by this one
-            assert _log_entry(mgr) == (1, [code("E", "ALLOC")]), defer
-        finally:
-            _remove(path)
+    mgr, path = _make("notask.cfg", cfg_vals=_VAL_INT)
+    original = cm.asyncio
+    cm.asyncio = _NoTaskAsyncio  # type: ignore[assignment]
+    try:
+        assert run(mgr.write_config({"Count": 8})) == (False, {})
+    finally:
+        cm.asyncio = original
+    try:
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        assert mgr._staged is None and mgr._pending_flush is None
+        assert _log_entry(mgr) == (1, [code("E", "ALLOC")])
+    finally:
+        _remove(path)
 
 
 def test_a_flush_equal_to_the_cache_opens_nothing() -> None:
@@ -2872,20 +2900,22 @@ def test_a_flush_equal_to_the_cache_opens_nothing() -> None:
         _remove(path)
 
 
-def test_two_deferred_writes_then_one_commit_write_the_second_once() -> None:
+def test_two_writes_staged_under_the_owner_lock_write_the_second_once_it_frees() -> None:
+    # Stage, push, then one write: a flush waits for its module's PUT lock, so the pushes end before the flash write.
     mgr, path = _make("twodeferred.cfg", cfg_vals=_VAL_INT)
+    mgr.owner_lock = asyncio.Lock()
     try:
 
         async def scenario() -> "tuple[int, int]":
             with WriteCountingOpen(cm) as counter:
-                await mgr.write_config({"Count": 7}, defer=True)
-                first = mgr._pending_flush
-                assert first is not None
-                await mgr.write_config({"Count": 9}, defer=True)
-                for _ in range(3):
-                    await asyncio.sleep(0)
-                held = counter.writes  # both wait for the commit
-                mgr.commit()
+                async with mgr.owner_lock:  # type: ignore[union-attr]  # set above: a PUT holding its module's lock
+                    await mgr.write_config({"Count": 7})
+                    first = mgr._pending_flush
+                    assert first is not None
+                    await mgr.write_config({"Count": 9})
+                    for _ in range(3):
+                        await asyncio.sleep(0)
+                    held = counter.writes  # both wait for the PUT's lock
                 await mgr.flush_pending()
                 await first  # superseded: returns without writing
             return held, counter.writes
@@ -2893,21 +2923,6 @@ def test_two_deferred_writes_then_one_commit_write_the_second_once() -> None:
         assert run(scenario()) == (0, 1)
         with open(path) as f:
             assert json.load(f) == {"Count": 9}
-    finally:
-        _remove(path)
-
-
-def test_flush_pending_releases_an_uncommitted_deferred_write() -> None:
-    mgr, path = _make("releasedeferred.cfg", cfg_vals=_VAL_INT)
-    try:
-
-        async def scenario() -> None:
-            await mgr.write_config({"Count": 6}, defer=True)
-            await mgr.flush_pending()  # no commit(): the flush is released here
-
-        run(scenario())
-        with open(path) as f:
-            assert json.load(f) == {"Count": 6}
     finally:
         _remove(path)
 
@@ -2984,14 +2999,14 @@ class _RemoveFailingOs:
         self.failures = failures
         self.calls = 0
 
-    def stat(self, path: str) -> object:
-        return os.stat(path)
-
     def remove(self, path: str) -> None:
         self.calls += 1
         if self.calls <= self.failures:
             raise OSError(5)
         os.remove(path)
+
+    def stat(self, path: str) -> object:
+        return os.stat(path)
 
 
 def _exists(path: str) -> bool:
@@ -3013,8 +3028,9 @@ def test_delete_file_removes_the_file_and_closes_the_store() -> None:
         _remove(path)
 
 
-def test_delete_file_retries_once_then_reports_a_failure() -> None:
-    for failures, deleted in ((1, True), (2, False)):
+def test_delete_file_removes_once_and_reports_a_failure() -> None:
+    # A littlefs remove is synchronous on the device's own flash: one try, a failure reported, never retried.
+    for failures, deleted in ((0, True), (1, False)):
         path = _tmp_path("deleteretry.cfg")
         _remove(path)
         mgr = cm.ConfigManager(path, _VAL_INT, "TEST", log=LogConfig(None, 10, 1))
@@ -3022,14 +3038,13 @@ def test_delete_file_retries_once_then_reports_a_failure() -> None:
         stand_in = _RemoveFailingOs(failures)
         original_os = cm.os
         cm.os = stand_in  # type: ignore[assignment]
-        recorder = _PrintRecorder()
         try:
-            assert run(mgr.delete_file()) is deleted, failures
+            with record_prints() as recorder:
+                assert run(mgr.delete_file()) is deleted, failures
         finally:
-            recorder.restore()
             cm.os = original_os
         try:
-            assert stand_in.calls == 2, failures  # the one retry
+            assert stand_in.calls == 1, failures  # one remove, no retry
             assert _exists(path) is not deleted, failures
             failed_lines = [line for line in recorder.lines if "- could not be deleted:" in line]
             assert len(failed_lines) == (0 if deleted else 1), failures
@@ -3090,38 +3105,6 @@ def test_a_flush_held_at_the_lock_lands_after_close_and_flush_pending() -> None:
         _remove(path)
 
 
-def test_a_write_suspended_inside_the_lock_finishes_and_its_flush_is_awaited() -> None:
-    mgr, path = _make("suspendedwrite.cfg", cfg_vals=_VAL_INT)
-    try:
-        gate = asyncio.Event()
-        real_err_s = mgr.pr.err_s
-
-        async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
-            await gate.wait()
-            await real_err_s(*args, errno=errno, sep=sep, end=end)
-
-        mgr.pr.err_s = gated_err_s  # type: ignore[method-assign]
-
-        async def scenario() -> "tuple[bool, cm.WriteValidity]":
-            writer = asyncio.create_task(mgr.write_config({"Count": 8, "Ghost": 1}))
-            for _ in range(3):
-                await asyncio.sleep(0)  # the writer now waits in its err_s() for "Ghost", inside the lock
-            mgr.close_writes()
-            flusher = asyncio.create_task(mgr.flush_pending())
-            for _ in range(3):
-                await asyncio.sleep(0)
-            gate.set()
-            result = await writer
-            await flusher
-            return result
-
-        assert run(scenario()) == (True, {"Count": "Valid", "Ghost": "Invalid"})
-        with open(path) as f:
-            assert json.load(f) == {"Count": 8}
-    finally:
-        _remove(path)
-
-
 def test_a_write_queued_behind_the_lock_at_close_time_is_refused() -> None:
     mgr, path = _make("queuedwrite.cfg", cfg_vals=_VAL_INT)
     try:
@@ -3140,6 +3123,198 @@ def test_a_write_queued_behind_the_lock_at_close_time_is_refused() -> None:
         assert counter.writes == 0
         with open(path) as f:
             assert json.load(f) == {"Count": 5}
+    finally:
+        _remove(path)
+
+
+# ---------------------------------------------------------------------------
+# The one direct write: every filesystem call the store makes, recorded
+# ---------------------------------------------------------------------------
+
+
+class _FsCalls(WriteCountingOpen):
+    # While entered, asy_config_manager's `open` and `os`, every call the real one: `calls` holds each as (operation,
+    # path, ...), a file opened for writing adding its writes and its close.
+    def __init__(self) -> None:
+        super().__init__(cm)
+        self.calls: list[tuple[object, ...]] = []
+
+    def __call__(self, path: str, mode: str = "r") -> object:
+        self.calls.append(("open", path, mode))
+        f = super().__call__(path, mode)
+        return _RecordedFile(self.calls, path, f) if "w" in mode else f
+
+    def __enter__(self) -> "_FsCalls":
+        super().__enter__()
+        cm.os = _RecordedOs(self.calls)  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        cm.os = os
+        super().__exit__(*exc)
+
+
+class _RecordedFile:
+    # A file the store opened for writing: each write and the close is recorded, then run on the real file.
+    def __init__(self, calls: "list[tuple[object, ...]]", path: str, f: object) -> None:
+        self._calls = calls
+        self._path = path
+        self._f = f
+
+    def __enter__(self) -> "_RecordedFile":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._calls.append(("close", self._path))
+        self._f.close()  # type: ignore[attr-defined]
+
+    def write(self, data: str) -> int:
+        self._calls.append(("write", self._path))
+        written: int = self._f.write(data)  # type: ignore[attr-defined]
+        return written
+
+
+class _RecordedOs:
+    # asy_config_manager's `os` inside _FsCalls: each function it calls is recorded with its arguments, then run.
+    def __init__(self, calls: "list[tuple[object, ...]]") -> None:
+        self._calls = calls
+
+    def __getattr__(self, name: str) -> object:
+        real = getattr(os, name)
+
+        def call(*args: object) -> object:
+            self._calls.append((name,) + args)
+            return real(*args)
+
+        return call
+
+
+def test_a_put_that_changes_a_value_is_one_open_one_write_and_its_close() -> None:
+    mgr, path = _make("fs_put.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _FsCalls() as fs:
+            assert run(_write_flushed(mgr, {"Count": 8})) == (True, {"Count": "Valid"})
+        assert fs.calls == [("open", path, "w"), ("write", path), ("close", path)], fs.calls
+        with open(path) as f:
+            assert json.load(f) == {"Count": 8}
+    finally:
+        _remove(path)
+
+
+def test_a_put_that_changes_nothing_makes_no_filesystem_call() -> None:
+    mgr, path = _make("fs_put_same.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _FsCalls() as fs:
+            assert run(_write_flushed(mgr, {"Count": 5})) == (True, {"Count": "Unchanged"})
+        assert fs.calls == [], fs.calls
+    finally:
+        _remove(path)
+
+
+def test_a_boot_over_a_valid_file_reads_it_and_writes_nothing() -> None:
+    path = _tmp_path("fs_boot_valid.cfg")
+    _remove(path)
+    try:
+        run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        with _FsCalls() as fs:
+            run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        assert fs.calls == [("stat", path), ("open", path, "r")], fs.calls
+    finally:
+        _remove(path)
+
+
+def test_a_boot_over_an_absent_file_writes_it_once() -> None:
+    path = _tmp_path("fs_boot_absent.cfg")
+    _remove(path)
+    try:
+        with _FsCalls() as fs:
+            run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        assert fs.calls == [("stat", path), ("open", path, "w"), ("write", path), ("close", path)], fs.calls
+    finally:
+        _remove(path)
+
+
+def test_a_reset_removes_each_stores_file_once_and_nothing_else() -> None:
+    # Two stores, one file present and one already absent: one os.remove() each, and no other call.
+    present, path = _make("fs_reset_present.cfg", cfg_vals=_VAL_INT)
+    absent_path = _tmp_path("fs_reset_absent.cfg")
+    _remove(absent_path)
+    absent = cm.ConfigManager(absent_path, _VAL_INT, "TEST")
+    try:
+        with _FsCalls() as fs:
+            assert run(present.delete_file()) is True
+            assert run(absent.delete_file()) is True
+        assert fs.calls == [("remove", path), ("remove", absent_path)], fs.calls
+        assert not _exists(path)
+    finally:
+        _remove(path)
+
+
+def test_a_write_error_is_not_retried_and_keeps_the_old_document() -> None:
+    # On littlefs a file opened "w" is committed at its close, and the close after a failed write commits nothing
+    # (lfs2.c:3250-3253, v1.29.0): the one write's error leaves the old document, logged and never retried.
+    mgr, path = _make("fs_write_error.cfg", cfg_vals=_VAL_INT)
+    try:
+        old_text = json.dumps(mgr._cache)
+        files = LittlefsOpen(cm, {path: old_text})
+        files.fail_at = 1
+        with files:
+            assert run(_write_flushed(mgr, {"Count": 8})) == (True, {"Count": "Valid"})
+        assert (files.writes, files.write_calls) == (1, 1), (files.writes, files.write_calls)
+        assert files.docs[path] == old_text
+        assert mgr.unpersisted
+        assert _newest_code(mgr) == code("E", "CFG_FILE_WRITE")
+    finally:
+        _remove(path)
+
+
+def test_reset_error_counter_answers_false_when_the_history_clear_fails() -> None:
+    # The clear refused (its FRAM chunk write failing): the store answers its logger's False.
+    mgr, path = _make("resetrefused.cfg")
+    try:
+        async def refused() -> bool:
+            return False
+
+        mgr.pr.reset = refused  # type: ignore[method-assign]
+        assert run(mgr.reset_error_counter()) is False
+    finally:
+        _remove(path)
+
+
+def test_a_schema_field_with_no_default_leaves_the_manager_invalid_and_writes_no_file() -> None:
+    path = _tmp_path("nodefault.cfg")
+    _remove(path)
+    mgr = cm.ConfigManager(path, _VAL_INT + (("Bad", "int", None, 0, 10, None),), "TEST")
+    try:
+        run(mgr.setup())
+        assert mgr.valid is False
+        assert _newest_code(mgr) == code("E", "CFG_BAD_DEFAULT")
+        assert not _exists(path)
+    finally:
+        _remove(path)
+
+
+def test_a_compare_that_exhausts_the_heap_fails_the_write_with_no_file_io() -> None:
+    mgr, path = _make("compareexhausted.cfg")
+    try:
+        stored = _file_bytes(path)
+        real = cm.compare_before_write
+
+        def exhausted(*_args: object, **_kwargs: object) -> "NoReturn":
+            raise MemoryError("simulated allocation failure")  # worded clear of the memory gates' markers
+
+        cm.compare_before_write = exhausted
+        try:
+            assert run(_write_flushed(mgr, {"Count": 7})) == (False, {})
+        finally:
+            cm.compare_before_write = real
+        assert _newest_code(mgr) == code("E", "ALLOC")
+        assert mgr._pending_flush is None
+        assert _file_bytes(path) == stored
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
     finally:
         _remove(path)
 

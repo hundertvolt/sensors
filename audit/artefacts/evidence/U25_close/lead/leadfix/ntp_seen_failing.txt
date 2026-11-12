@@ -1,0 +1,8 @@
+E       AssertionError: planted ['DNSFallback', 'NTPHost'], the store reads ['DNSFallback', 'DSTOffset', 'GMTOffset', 'NTPHost', 'NTPInterval', 'NTPOffset']
+E       assert {'DNSFallback', 'NTPHost'} == {'DNSFallback..., 'NTPOffset'}
+E         
+E         Extra items in the right set:
+E         'NTPOffset'
+E         'DSTOffset'
+E         'GMTOffset'
+E         'NTPInterval'

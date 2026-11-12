@@ -1,0 +1,23 @@
+PASS test_a_cleanup_failure_other_than_absence_is_raised_naming_its_path
+PASS test_a_key_still_in_use_is_refused_until_teardown_all_releases_it
+PASS test_an_existing_directory_and_an_absent_file_are_no_failure
+PASS test_constructing_a_new_scratch_wipes_a_stale_directory_left_by_an_earlier_process
+FAIL test_construction_and_teardown_tolerate_a_missing_key_directory_entirely:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/bite_scratch/test_tmp_scratch.py", line 135, in test_construction_and_teardown_tolerate_a_missing_key_directory_entirely
+AssertionError: [('ilistdir', 'tests/_tmp/scratchtest_never_used_before'), ('listdir', 'tests/_tmp'), ('ilistdir', 'tests/_tmp/scratchtest_never_used_before'), ('listdir', 'tests/_tmp'), ('ilistdir', 'tests/_tmp/scratchtest_never_used_before')]
+PASS test_dir_accepts_an_optional_label_for_readability
+PASS test_dir_returns_a_fresh_existing_directory_each_call
+FAIL test_no_operation_ever_reads_the_shared_root_only_its_own_key_subtree:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/bite_scratch/test_tmp_scratch.py", line 282, in test_no_operation_ever_reads_the_shared_root_only_its_own_key_subtree
+AssertionError: listdir('tests/_tmp') reads tests/_tmp's shared root - the one thing TmpScratch must never do, since that allocation scales with every other file's entries
+PASS test_path_removes_a_value_left_by_an_earlier_call_with_the_same_name
+PASS test_path_returns_a_file_location_not_yet_present
+PASS test_teardown_all_clears_every_registered_scratch_and_the_registry_itself
+PASS test_teardown_removes_the_whole_subtree_including_nested_files
+PASS test_two_scratch_keys_never_touch_each_others_directories
+PASS test_unrelated_siblings_in_the_shared_root_do_not_affect_a_scratchs_own_behavior
+12/14 passed, 2 failed, 0 skipped

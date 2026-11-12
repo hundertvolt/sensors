@@ -1,0 +1,25 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included[a load window] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx3/bite/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11798/test_every_window_the_load_spa1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f4b164aac90>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f4b164ab150>, over = 2
+expected = 'under load'
+
+    @pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load")], ids=["the boot window", "a load window"])
+    def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
+        bound_us = smallest_hard_consumer(load_device(device_toml(DEVICE_NAMES[0])), harness.SRC_DIR).ms * 1000
+        windows = [240000, 3000, 2500, 2800]
+        windows[over] = bound_us + 1
+        failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, windows)
+>       assert any(f"lagged {bound_us + 1} us {expected}" in f for f in failures), failures
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included.<locals>.<genexpr> at 0x7f4b1693fa60>)
+
+tests_scripts/test_digital_twin_scenarios.py:257: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included[a load window]
+1 failed, 1 passed, 52 deselected in 0.29s

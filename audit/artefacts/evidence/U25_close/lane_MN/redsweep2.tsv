@@ -1,0 +1,9 @@
+tests/test_digital_twin_run_generic_integration.py	1	12/26 passed, 14 failed, 0 skipped	FAIL test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too:
+tests/test_digital_twin_webserver_concurrency_arzi.py	1	1/20 passed, 19 failed, 0 skipped	FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+tests/test_digital_twin_webserver_concurrency_dev.py	1	1/20 passed, 19 failed, 0 skipped	FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+tests/test_digital_twin_webserver_concurrency_grkizi.py	1	1/20 passed, 19 failed, 0 skipped	FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+tests/test_digital_twin_webserver_concurrency_klkizi.py	1	1/20 passed, 19 failed, 0 skipped	FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+tests/test_digital_twin_webserver_concurrency_schlafzi.py	1	1/20 passed, 19 failed, 0 skipped	FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+tests/test_digital_twin_webserver_concurrency_wozi.py	1	1/20 passed, 19 failed, 0 skipped	FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+tests/test_digital_twin_wifi_modes.py	0	1/1 passed, 0 failed, 0 skipped	
+SWEEP_DONE

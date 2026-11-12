@@ -1,0 +1,23 @@
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           host_typecheck.ini	it holds two trivial fixtures - an accepted gap (B.15).
+E           scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
+E           scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
+E           tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
+E           tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
+E           tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
+E           tests_scripts/test_lint_sh.py	tests/ and digital_twin/ carry ~157 of these deliberately - that IS the mocking
+E       assert not [('host_typecheck.ini', 'it holds two trivial fixtures - an accepted gap (B.15).'), ('scripts/build_firmware.py', 'The...ter_microdot_integration.py', 'setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta'), ...]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 5 passed in 8.64s

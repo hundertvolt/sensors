@@ -37,8 +37,8 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[RequiresTag, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
-    return parse_requires_tags(path, "dev", "x")
+    path.write_text(source, encoding="utf-8")
+    return parse_requires_tags(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None" = None) -> None:
@@ -56,7 +56,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None"
 
 
 @pytest.mark.parametrize("op", _OPS)
-@pytest.mark.parametrize("raw,expected,expected_type", _VALUES)
+@pytest.mark.parametrize(("raw", "expected", "expected_type"), _VALUES)
 def test_parse_requires_tags_operator_value_cross_product(tmp_path: Path, op: str, raw: str, expected: "int | float", expected_type: type) -> None:
     (tag,) = _parse(tmp_path, f"# @requires bus.timeout{op}{raw}\n")
     assert (tag.field, tag.op, tag.value) == ("timeout", op, expected)
@@ -147,7 +147,7 @@ def test_parse_requires_tags_line_break_lookalike_does_not_fake_an_indented_tag(
     # level". See test_buildgen_tag_comments.py for the mechanism.
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
-    (tag,) = parse_requires_tags(path, "dev", "x")
+    (tag,) = parse_requires_tags(path, "fixture", "x")
     assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
 
 
@@ -175,7 +175,7 @@ def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str) -> No
 
 
 @pytest.mark.parametrize(
-    "driver,instance,expected",
+    ("driver", "instance", "expected"),
     [
         # Every real tag any src/ driver declares today, each traced to its own datasheet citation
         # in the driver file itself. A driver gaining or losing one is a deliberate change that has
@@ -185,13 +185,13 @@ def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str) -> No
     ],
 )
 def test_parse_requires_tags_real_drivers(src_dir: Path, driver: str, instance: str, expected: "tuple[RequiresTag, ...]") -> None:
-    assert parse_requires_tags(src_dir / driver, "dev", instance) == expected
+    assert parse_requires_tags(src_dir / driver, "fixture", instance) == expected
 
 
 def test_no_other_src_driver_declares_an_unnoticed_tag(src_dir: Path) -> None:
     # The near-miss detector only fires on comments that *look* like tags; this is the other half -
     # a tag added to some other driver without a test here would otherwise go unrecorded.
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_requires_tags(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_requires_tags(p, "fixture", "x")}
     assert tagged == {"asy_scd30_driver.py", "asy_sgp40_driver.py"}
 
 
@@ -203,7 +203,7 @@ def test_no_other_src_driver_declares_an_unnoticed_tag(src_dir: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         # D2 wording
         ("# @require bus.timeout>=200000\n", "misspelled @requires tag", "tag.misspelled"),
@@ -289,7 +289,7 @@ def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str) 
 
 
 @pytest.mark.parametrize(
-    "op,actual,value,satisfied",
+    ("op", "actual", "value", "satisfied"),
     [
         (">=", 100, 50, True), (">=", 100, 100, True), (">=", 100, 200, False),
         ("<=", 100, 200, True), ("<=", 100, 100, True), ("<=", 100, 50, False),
@@ -302,34 +302,34 @@ def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str) 
 def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, value: int, *, satisfied: bool) -> None:
     tags = (RequiresTag("timeout", op, value, f"@requires bus.timeout{op}{value}"),)
     if satisfied:
-        check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")  # no raise; the raising rows prove the comparison
+        check_requires_tags(tags, {"timeout": actual}, "fixture", "scd30", "i2c0")  # no raise; the raising rows prove the comparison
     else:
         with pytest.raises(BuildError, match="does not satisfy") as raised:
-            check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")
+            check_requires_tags(tags, {"timeout": actual}, "fixture", "scd30", "i2c0")
         assert raised.value.rule == "requires.unsatisfied"
 
 
-@pytest.mark.parametrize("actual,value", [(100, 99.5), (100.5, 100), (100.0, 100)])
+@pytest.mark.parametrize(("actual", "value"), [(100, 99.5), (100.5, 100), (100.0, 100)])
 def test_check_requires_tags_mixed_int_float_comparison(actual: "int | float", value: "int | float") -> None:
     # The second call, one unit below the bound, proves the comparison ran.
     tags = (RequiresTag("frequency", ">=", value, "@requires bus.frequency>=x"),)
-    check_requires_tags(tags, {"frequency": actual}, "dev", "scd30", "i2c0")
+    check_requires_tags(tags, {"frequency": actual}, "fixture", "scd30", "i2c0")
     with pytest.raises(BuildError, match="does not satisfy"):
-        check_requires_tags(tags, {"frequency": actual - 1}, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, {"frequency": actual - 1}, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_zero_is_a_present_value_not_a_missing_field() -> None:
     # bus_table.get() returning a falsy 0 must go down the comparison path, not the "missing field"
     # path - a `if not actual` bug here would report the wrong error for a perfectly valid table.
-    check_requires_tags((RequiresTag("offset", "==", 0, "@requires bus.offset==0"),), {"offset": 0}, "dev", "scd30", "i2c0")
+    check_requires_tags((RequiresTag("offset", "==", 0, "@requires bus.offset==0"),), {"offset": 0}, "fixture", "scd30", "i2c0")
     with pytest.raises(BuildError, match="does not satisfy"):
-        check_requires_tags((RequiresTag("offset", "!=", 0, "@requires bus.offset!=0"),), {"offset": 0}, "dev", "scd30", "i2c0")
+        check_requires_tags((RequiresTag("offset", "!=", 0, "@requires bus.offset!=0"),), {"offset": 0}, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_missing_bus_field() -> None:
     tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
     with pytest.raises(BuildError, match="is missing field") as raised:
-        check_requires_tags(tags, {}, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, {}, "fixture", "scd30", "i2c0")
     assert raised.value.rule == "requires.missing-bus-field"
 
 
@@ -341,7 +341,7 @@ def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback(actual: "
     bus_table: TomlDoc = {} if actual is None else {"timeout": actual}
     expected = "is missing field" if actual is None else "not comparable"
     with pytest.raises(BuildError, match=expected):
-        check_requires_tags(tags, bus_table, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, bus_table, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_reports_the_first_violated_tag_of_several() -> None:
@@ -350,7 +350,7 @@ def test_check_requires_tags_reports_the_first_violated_tag_of_several() -> None
         RequiresTag("frequency", "<=", 100000, "@requires bus.frequency<=100000"),
     )
     with pytest.raises(BuildError, match="frequency"):
-        check_requires_tags(tags, {"timeout": 250000, "frequency": 400000}, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, {"timeout": 250000, "frequency": 400000}, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_all_satisfied() -> None:
@@ -359,6 +359,6 @@ def test_check_requires_tags_all_satisfied() -> None:
         RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),
         RequiresTag("frequency", "<=", 400000, "@requires bus.frequency<=400000"),
     )
-    check_requires_tags(tags, {"timeout": 250000, "frequency": 100000}, "dev", "scd30", "i2c0")
+    check_requires_tags(tags, {"timeout": 250000, "frequency": 100000}, "fixture", "scd30", "i2c0")
     with pytest.raises(BuildError, match="frequency"):
-        check_requires_tags(tags, {"timeout": 250000, "frequency": 400001}, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, {"timeout": 250000, "frequency": 400001}, "fixture", "scd30", "i2c0")

@@ -1,6 +1,6 @@
 """tests_hardware/run_scopes.py, checked by a real --collect-only: every listed node exists in its tier and
 survives the bench runner's own marker floor, and a scope's writes are exactly the groups its tests' markers
-name, so --allow-persistence-writes-to with them selects the whole scope and permits nothing beyond it."""
+name, so --allow-persistence-write-to with them selects the whole scope and permits nothing beyond it."""
 
 import ast
 import re
@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"
 from persistence_groups import persistence_groups
 from run_scopes import SCOPES, Scope
 
-_FLOOR = "not long_soak and not multi_day_rollover"  # scripts/run_bench_hardware_suite.sh's own -m
-_SOAKS = "long_soak or multi_day_rollover"  # what that floor leaves to the soak runners
+_FLOOR = "not soak_duration and not multi_day_rollover"  # scripts/run_bench_hardware_suite.sh's own --marker-floor
+_SOAKS = "soak_duration or multi_day_rollover"  # what that floor leaves to the soak runners
 
 
 def _collect(repo_root: Path, nodes: "list[str]", *extra: str, marks: str = _FLOOR) -> str:
@@ -43,7 +43,7 @@ def test_every_listed_node_collects_in_its_tier_and_nothing_is_deselected(repo_r
     assert all(node.startswith(f"tests_hardware/{part}/") for node in nodes), nodes
     assert len(set(nodes)) == len(nodes), f"scope {name} lists a {part} node twice"
     assert all(reason.strip() for _node, reason in (scope.flash if part == "flash" else scope.bench)), "every entry says why the change reaches it"
-    writes = [f"--allow-persistence-writes-to={g}" for g in scope.writes]
+    writes = [f"--allow-persistence-write-to={g}" for g in scope.writes]
     output = _collect(repo_root, nodes, *writes)
     # A whole-module entry may hold a soak test, which the floor leaves to the soak runner; a listed test may not.
     soaks = {line for line in _collect(repo_root, nodes, *writes, marks=_SOAKS).splitlines() if "::" in line}
@@ -59,9 +59,9 @@ def test_a_scopes_writes_are_exactly_what_its_marked_tests_name(repo_root: Path,
     scope = SCOPES[name]
     assert set(scope.writes) <= persistence_groups(), scope.writes
     nodes = _nodes(scope, "flash") + _nodes(scope, "bench")
-    floor = _deselected(_collect(repo_root, nodes, *(f"--allow-persistence-writes-to={g}" for g in scope.writes)))
+    floor = _deselected(_collect(repo_root, nodes, *(f"--allow-persistence-write-to={g}" for g in scope.writes)))
     for group in scope.writes:
-        others = [f"--allow-persistence-writes-to={g}" for g in scope.writes if g != group]
+        others = [f"--allow-persistence-write-to={g}" for g in scope.writes if g != group]
         output = _collect(repo_root, nodes, *others) if others else _collect(repo_root, nodes)
         assert _deselected(output) > floor, f"scope {name} lists {group}, but no test of it needs that group"
 

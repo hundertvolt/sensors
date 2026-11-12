@@ -1,0 +1,34 @@
+..........F.                                                             [100%]
+=================================== FAILURES ===================================
+_ test_new_task_raised_counts_only_the_entries_since_the_first_read[before8-after8-1] _
+
+helpers = <module 'error_log_helpers_for_contract' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests_hardware/error_log_helpers.py'>
+before = {'SYSTEM': {'counter': 1, 'history': [{'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, ...]}}
+after = {'SYSTEM': {'counter': 2, 'history': [{'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, ...]}}
+expected = 1
+
+    @pytest.mark.parametrize(
+        ("before", "after", "expected"),
+        [
+            (_log(0), _log(0), 0),
+            (_log(0), _log(1, ("E", 42)), 1),
+            (_log(1, ("E", 42)), _log(1, ("E", 42)), 0),  # an old entry, nothing new
+            (_log(1, ("E", 42)), _log(2, ("E", 42)), 1),  # a repeat into the newest slot spends no slot but counts
+            (_log(1, ("E", 42)), _log(2, ("E", 42), ("E", 43)), 0),  # a new cancelled end, the old raised one stays old
+            (_log(5, ("E", 42)), _log(1, ("E", 42)), 1),  # cleared in between: what the log holds is new
+            ({}, _log(2, ("E", 44), ("E", 42)), 1),
+            (_log(0), _log(2, ("W", 42), ("E", 41)), 0),  # a warning with the same number is no task end
+            (_log(1, ("E", 42)), _log(2, ("E", 42), ("E", 115)), 1),  # the supervisor's own fault is a task-level raise too
+            (_log(0), _log(1, ("W", 115)), 0),
+        ],
+    )
+    def test_new_task_raised_counts_only_the_entries_since_the_first_read(helpers: "ModuleType", before: dict[str, object], after: dict[str, object], expected: int) -> None:
+>       assert helpers.new_task_raised(before, after) == expected
+E       AssertionError: assert 0 == 1
+E        +  where 0 = <function new_task_raised at 0x7f44bc018180>({'SYSTEM': {'counter': 1, 'history': [{'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, ...]}}, {'SYSTEM': {'counter': 2, 'history': [{'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, {'num': 0, 'type': 'N'}, ...]}})
+E        +    where <function new_task_raised at 0x7f44bc018180> = <module 'error_log_helpers_for_contract' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests_hardware/error_log_helpers.py'>.new_task_raised
+
+tests_scripts/test_exception_handler_contract.py:739: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_exception_handler_contract.py::test_new_task_raised_counts_only_the_entries_since_the_first_read[before8-after8-1]
+1 failed, 11 passed, 52 deselected in 0.14s

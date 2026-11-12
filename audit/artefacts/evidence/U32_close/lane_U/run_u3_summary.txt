@@ -1,0 +1,16 @@
+comm_-1 rc=0 62.365521267s mem=0 198/198 passed, 0 failed, 0 skipped
+link_-1 rc=0 2.400678286s mem=0 36/36 passed, 0 failed, 0 skipped
+twin_-1 rc=0 55.235143197s mem=0 20/20 passed, 0 failed, 0 skipped
+cancel_-1 rc=0 39.972174597s mem=0 10/10 passed, 0 failed, 0 skipped
+hazard_-1 rc=0 105.736878942s mem=0 121/121 passed, 0 failed, 0 skipped
+comm_32768 rc=0 63.255675642s mem=0 198/198 passed, 0 failed, 0 skipped
+link_32768 rc=0 2.429465684s mem=0 36/36 passed, 0 failed, 0 skipped
+twin_32768 rc=0 59.273283721s mem=0 20/20 passed, 0 failed, 0 skipped
+cancel_32768 rc=0 43.786582207s mem=0 10/10 passed, 0 failed, 0 skipped
+hazard_32768 rc=0 109.068787662s mem=0 121/121 passed, 0 failed, 0 skipped
+scans rc=0 115.992017323s mem=0 1318 passed, 1 warning in 112.23s (0:01:52)
+gen rc=0 5.540074784s mem=0 368 passed in 4.84s
+validate rc=0 6.181563294s mem=0 414 passed in 5.04s
+scenarios rc=0 2.348344445s mem=0 60 passed in 1.97s
+contiguity rc=0 11.866163199s mem=0 36 passed in 11.62s
+ALLDONE

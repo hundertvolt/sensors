@@ -1,0 +1,2 @@
+PASS test_system_put_of_a_valid_offset_persists_without_a_resync
+1/1 passed, 0 failed, 0 skipped

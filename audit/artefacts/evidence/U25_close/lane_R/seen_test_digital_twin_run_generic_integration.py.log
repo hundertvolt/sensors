@@ -1,0 +1,95 @@
+FAIL test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 233, in test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name
+TypeError: unexpected keyword argument 'source'
+FAIL test_a_feed_span_the_watchdog_dropped_is_no_gap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 184, in test_a_feed_span_the_watchdog_dropped_is_no_gap
+AttributeError: module 'run_generic_integration' has no attribute '_FeedGaps'
+FAIL test_a_simulated_reset_maps_to_its_exit_code_and_its_line:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 151, in test_a_simulated_reset_maps_to_its_exit_code_and_its_line
+AttributeError: module 'run_generic_integration' has no attribute '_exit_code'
+FAIL test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 226, in test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper
+TypeError: _collect_chips() takes 2 positional arguments but 1 were given
+FAIL test_ensure_dir_creates_or_keeps_a_dir_and_names_one_it_cannot_create:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 207, in test_ensure_dir_creates_or_keeps_a_dir_and_names_one_it_cannot_create
+AssertionError: a config dir whose parent is missing must be refused, not swallowed
+FAIL test_every_test_only_flag_is_off_by_default_and_parses_when_named:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 95, in test_every_test_only_flag_is_off_by_default_and_parses_when_named
+AttributeError: module 'run_generic_integration' has no attribute '_NO_TEST_FLAGS'
+FAIL test_link_directions_finds_each_instances_bus_by_its_generated_construction_line:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 245, in test_link_directions_finds_each_instances_bus_by_its_generated_construction_line
+AttributeError: module 'run_generic_integration' has no attribute '_link_directions'
+FAIL test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 343, in test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+PASS test_parse_args_device_host_port_and_the_run_limits
+FAIL test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 124, in test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers
+  File "tests/test_digital_twin_run_generic_integration.py", line 60, in _parse
+  File "digital_twin/run_generic_integration.py", line 423, in parse_args
+  File "digital_twin/launch.py", line 54, in parse_fault_spec
+ValueError: malformed --fault 'sgp40:writeto:2:59' - expected DEVICE:OP[:TIMES]
+FAIL test_parse_args_help_exits_zero_before_parsing_anything_else:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 138, in test_parse_args_help_exits_zero_before_parsing_anything_else
+  File "digital_twin/run_generic_integration.py", line 437, in parse_args
+ValueError: unrecognized argument: '--help'
+FAIL test_parse_args_minimal_valid_config_takes_every_persistent_default:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 77, in test_parse_args_minimal_valid_config_takes_every_persistent_default
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+PASS test_parse_args_rejects_an_unrecognized_flag_or_a_missing_value
+PASS test_parse_args_requires_module_and_wiring_plan
+FAIL test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_state:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 87, in test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_state
+  File "tests/test_digital_twin_run_generic_integration.py", line 60, in _parse
+  File "digital_twin/run_generic_integration.py", line 437, in parse_args
+ValueError: unrecognized argument: '--config-dir'
+FAIL test_run_config_compares_and_prints_its_grouped_fields:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 109, in test_run_config_compares_and_prints_its_grouped_fields
+TypeError: unexpected keyword argument 'config_dir'
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+PASS test_serving_ends_at_once_when_the_stop_file_already_exists
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+PASS test_serving_ends_once_the_stop_file_appears
+PASS test_serving_without_the_stop_file_lasts_the_whole_duration
+FAIL test_the_runner_shares_launchs_one_chip_lookup_and_fault_plumbing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 212, in test_the_runner_shares_launchs_one_chip_lookup_and_fault_plumbing
+AttributeError: module 'launch' has no attribute '_collect_chips'
+FAIL test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 170, in test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers
+AttributeError: module 'run_generic_integration' has no attribute '_FeedGaps'
+FAIL test_the_wire_log_clearer_clears_each_bounded_log_in_place:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneR/base_tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_run_generic_integration.py", line 286, in test_the_wire_log_clearer_clears_each_bounded_log_in_place
+AssertionError: a cleared log must stay the link's own object
+6/22 passed, 16 failed, 0 skipped

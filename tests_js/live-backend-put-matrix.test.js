@@ -8,6 +8,7 @@ import { neverUnchanged } from "../js/definitions.js";
 import { expectedDisplay } from "./_expected_display.js";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 import { collectPutFieldCases, dedupePutFieldCases, shardPutFieldCases, validStringValue } from "./_put_field_cases.js";
+import offlineNtpConfigSource from "../digital_twin/unixport/_offline_ntp_config.py?raw";
 
 /** @typedef {import("./_put_field_cases.js").PutFieldCase} PutFieldCase */
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
@@ -22,74 +23,45 @@ const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
 // Generous per-case ceiling: one real nav-drawer click, one real fill/select/toggle, one real
 // Apply click, a data-apply-status poll, and (for most cases) a second real remount+read - all
 // against a local twin, but under real browser/event-loop scheduling.
-// @tunable l0.put_matrix_case_timeout_ms = 15000
 const CASE_TIMEOUT_MS = 15000;
+// The ResetErrors probe's wait for NTP to sync over a station link: one loopback round trip to the twin's responder.
+const NTP_SYNC_TIMEOUT_MS = 5000;
+// The twin's local NTP responder, read from the module that points every boot at it: no copy to drift (agent, 2026-10-27).
+const RESPONDER_HOST = responderHost(offlineNtpConfigSource);
 
-/**
- * The value the twin holds for `testCase`'s field right now, read straight from its GET (undefined when absent).
- * @param {PutFieldCase} testCase
- * @returns {Promise<unknown>}
- */
-async function readCurrentValue({ sectionKey, groupKey, field, putPath }) {
-    const real = await commands.getRealCurrentValues([putPath]);
-    const body = /** @type {Record<string, unknown>} */ (real[putPath]);
-    const scoped = sectionKey === "sensors" ? /** @type {Record<string, unknown> | undefined} */ (body[groupKey]) : body;
-    return scoped?.[field.key];
-}
+// The skips a full run takes, each with its reason, keyed by the case's section, the group its device wires and the
+// field: a skip not listed, or a listed case that ran, fails the file in its last hook. Each case runs on the first
+// device that wires it (dedupePutFieldCases); a case outside the run's shard is never reached, so never judged.
+/** @type {Map<string, string>} */
+const EXPECTED_SKIPS = new Map([
+    // An empty string has no resubmit gesture (Part H.4): SSID's source default, and the DNSFallback the twin runner
+    // plants empty so no run reaches a public DNS host (digital_twin/unixport/_offline_ntp_config.py). Neither is seeded:
+    // an SSID boots the twin in STA, and every case here runs in AP (agent, 2026-10-22).
+    ["networking/identity/SSID resubmit", "no current value to resubmit"],
+    ["networking/dns/DNSFallback resubmit", "no current value to resubmit"],
+    // Each enum field's boot option: selecting it is the resubmit case.
+    ["sensors/BMP3XX/PresOvers option 1", "the current option: the resubmit probe covers it"],
+    ["sensors/BMP3XX/TempOvers option 1", "the current option: the resubmit probe covers it"],
+    ["sensors/BMP3XX/FiltCoeff option 0", "the current option: the resubmit probe covers it"],
+    ["sensors/ISL29125/IRCompOffset option 0", "the current option: the resubmit probe covers it"],
+]);
+/** @type {Map<string, {id: string, reason: string | null}>} */
+const SKIP_DECISIONS = new Map();
 
-/**
- * The value a never-"Unchanged" field is sent with: On for a toggle (a dispatch toggle acts only when On, an
- * always-executed one is sent whenever set), an enum's first option, a number's minimum.
- * @param {FieldDef} field
- * @returns {unknown}
- */
-function actionValue(field) {
-    if (field.kind === "toggle") {
-        return true;
-    }
-    if (field.kind === "enum") {
-        return field.options?.[0]?.value;
-    }
-    return field.min;
-}
+// The one option an enum action's probe sends.
+/** @type {Map<string, unknown>} */
+const PROBED_OPTIONS = new Map([["SystemCmd", "mempause"]]);
 
-/**
- * The confirmation the page asks before sending `value` for a `confirm` field: an enum names the option, a toggle
- * its card's submit label (SPECIFICATION.md Part H.4).
- * @param {PutFieldCase} testCase
- * @param {unknown} value
- * @returns {string}
- */
-function confirmationFor({ defs, sectionKey, groupKey, field }, value) {
-    if (field.kind === "enum") {
-        return `${(field.options ?? []).find((option) => option.value === value)?.label ?? String(value)}?`;
-    }
-    const group = defs.sections.find((section) => section.key === sectionKey)?.groups.find((candidate) => candidate.key === groupKey);
-    return `${(group && "submitLabel" in group ? group.submitLabel : undefined) ?? field.label}?`;
-}
-
-/**
- * The status section's group holding `fieldKey`, or its errcount group when `fieldKey` is null.
- * @param {SiteDefinitions} defs
- * @param {string | null} fieldKey
- * @returns {string}
- */
-function statusGroupKey(defs, fieldKey) {
-    const status = defs.sections.find((section) => section.key === "status");
-    const group = status?.groups.find((candidate) => (fieldKey === null ? "kind" in candidate && candidate.kind === "errcount" : "fields" in candidate && candidate.fields.some((field) => field.key === fieldKey && field.kind === "readonly")));
-    if (group === undefined) {
-        throw new Error(`the status section has no group for ${fieldKey ?? "the error counts"}`);
-    }
-    return group.key;
-}
-
-// The four action fields' probes, run in this order: mempause holds storage for five minutes, and a ResetErrors after
-// it answers Failed (the FRAM logs cannot be cleared then). Reboot, bootloader, resetconfig and erasefram end the
-// twin process: covered by the unit tier's shutdown scenarios (reboot on silicon too), not driven here.
+// The four action fields' probes, in this order: mempause holds storage for five minutes, and a ResetErrors after it
+// answers Failed (the FRAM logs cannot be cleared then). An action no probe drives is listed in NOT_DRIVEN.
 /** @type {Record<string, (testCase: PutFieldCase) => Promise<void>>} */
 const ACTION_PROBES = {
     async ResetErrors(testCase) {
         const { device, defs, sectionKey, groupKey, field } = testCase;
+        // A backup round that read its interval before this PUT ends long before the reset, several served requests later.
+        await turnBackupsOff(defs);
+        await pointNtpAtResponder(defs);
+        await expectNtpStill(defs);
         const archived = await commands.archiveErrcount(`${device}-before-reset`);
         expect(archived).toContain(`build/archive/live_twin/`);
         const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: true, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, true), readCaption: false });
@@ -118,10 +90,22 @@ const ACTION_PROBES = {
     },
     async SystemCmd(testCase) {
         const { sectionKey, groupKey, field } = testCase;
-        const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: "mempause", expectRenderedValue: null, confirmMessage: confirmationFor(testCase, "mempause"), readCaption: false });
+        const value = PROBED_OPTIONS.get(field.key);
+        const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, value), readCaption: false });
         expect(applied.applyStatus).toBe("valid");
     },
 };
+
+const ENDS_THE_TWIN = "ends the twin process: covered at L1, by the twin CI suite's Run 13, and reboot on silicon";
+// Every action no probe drives, as `<key>` or an enum's `<key> <option>`, with its reason.
+/** @type {Map<string, string>} */
+const NOT_DRIVEN = new Map([
+    ["SystemCmd reboot", ENDS_THE_TWIN],
+    ["SystemCmd bootloader", ENDS_THE_TWIN],
+    ["SystemCmd resetconfig", ENDS_THE_TWIN],
+    ["SystemCmd erasefram", ENDS_THE_TWIN],
+    ["UartHazards", "a bench-only hazard run across the crossover jumper, which only a device wiring a UART link pair offers"],
+]);
 
 /**
  * The action fields the live tier drives itself, each with its own probe below; a field another device lacks is
@@ -138,31 +122,240 @@ function actionCasesOf(device) {
         .sort((a, b) => order.indexOf(a.field.key) - order.indexOf(b.field.key));
 }
 
+/**
+ * The value a never-"Unchanged" field is sent with: On for a toggle (a dispatch toggle acts only when On, an
+ * always-executed one is sent whenever set), an enum's first option, a number's minimum.
+ * @param {FieldDef} field
+ * @returns {unknown}
+ */
+function actionValue(field) {
+    if (field.kind === "toggle") {
+        return true;
+    }
+    if (field.kind === "enum") {
+        return field.options?.[0]?.value;
+    }
+    return field.min;
+}
+
+/**
+ * Every action `defsList` holds and whether a probe drives it: each never-"Unchanged" field outside the sensors section
+ * (whose class has its own block below), and each option of such an enum.
+ * @param {SiteDefinitions[]} defsList
+ * @returns {{name: string, driven: boolean}[]}
+ */
+function actionsOf(defsList) {
+    return defsList.flatMap((defs) => defs.sections).filter((section) => section.key !== "sensors")
+        .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])))
+        .filter(neverUnchanged)
+        .flatMap((field) => {
+            const probed = Object.hasOwn(ACTION_PROBES, field.key);
+            if (field.kind !== "enum") {
+                return [{ name: field.key, driven: probed }];
+            }
+            return (field.options ?? []).map((option) => ({ name: `${field.key} ${String(option.value)}`, driven: probed && PROBED_OPTIONS.get(field.key) === option.value }));
+        });
+}
+
+/**
+ * The confirmation the page asks before sending `value` for a `confirm` field: an enum names the option, a toggle
+ * its card's submit label (SPECIFICATION.md Part H.4).
+ * @param {PutFieldCase} testCase
+ * @param {unknown} value
+ * @returns {string}
+ */
+function confirmationFor({ defs, sectionKey, groupKey, field }, value) {
+    if (field.kind === "enum") {
+        return `${(field.options ?? []).find((option) => option.value === value)?.label ?? String(value)}?`;
+    }
+    const group = defs.sections.find((section) => section.key === sectionKey)?.groups.find((candidate) => candidate.key === groupKey);
+    return `${(group && "submitLabel" in group ? group.submitLabel : undefined) ?? field.label}?`;
+}
+
+/**
+ * Skips the running case's `probe` when `skip` holds, recording the decision for the file's last hook.
+ * @param {import("vitest").TestContext} ctx
+ * @param {PutFieldCase} testCase
+ * @param {string} probe
+ * @param {boolean} skip
+ * @param {string} reason
+ */
+function decideSkip(ctx, { device, sectionKey, groupKey, field }, probe, skip, reason) {
+    const id = `${sectionKey}/${groupKey}/${field.key} ${probe}`;
+    SKIP_DECISIONS.set(`${device} ${id}`, { id, reason: skip ? reason : null });
+    ctx.skip(skip, reason);
+}
+
+/**
+ * Waits, bounded, until the status page shows NTP synced or the Wi-Fi off a station link, where NTP tries nothing;
+ * fails naming NTP otherwise, since each failed try logs an error that a reset's all-zero read would race.
+ * @param {SiteDefinitions} defs
+ */
+async function expectNtpStill(defs) {
+    /** @param {string} fieldKey */
+    const shown = async (fieldKey) => (await commands.remountAndReadField({ sectionKey: "status", groupKey: statusGroupKey(defs, fieldKey), fieldKey, kind: "readonly" })).valueText;
+    if ((await shown("Mode")) !== expectedDisplay({ kind: "readonly" }, "STA")) {
+        return;
+    }
+    const synced = expectedDisplay({ kind: "readonly" }, true);
+    const deadline = Date.now() + NTP_SYNC_TIMEOUT_MS;
+    let text = await shown("NTPSynced");
+    while (text !== synced && Date.now() < deadline) {
+        // eslint-disable-next-line no-await-in-loop -- one status read after another, as a visitor reloads the page
+        text = await shown("NTPSynced");
+    }
+    expect(text, "NTP reads unsynced on a station link before the reset").toBe(synced);
+}
+
+/**
+ * Points NTPHost back at the twin's local responder through the page, as a visitor would: over a station link, a host
+ * the twin cannot resolve makes every NTP try log an error (the matrix's string cases leave one behind).
+ * @param {SiteDefinitions} defs
+ */
+async function pointNtpAtResponder(defs) {
+    const networking = defs.sections.find((section) => section.key === "networking");
+    const cards = (networking?.groups ?? []).flatMap((group) => ("fields" in group ? group.fields : []).filter((field) => field.key === "NTPHost").map((field) => ({ groupKey: group.key, field })));
+    expect(cards, "the networking section declares no NTPHost card").toHaveLength(1);
+    for (const { groupKey, field } of cards) {
+        // eslint-disable-next-line no-await-in-loop -- the one card, applied as a visitor applies it
+        const applied = await commands.applyField({ sectionKey: "networking", groupKey, fieldKey: field.key, field, value: RESPONDER_HOST, expectRenderedValue: RESPONDER_HOST, readCaption: false });
+        expect(["valid", "unchanged"]).toContain(applied.applyStatus);
+    }
+}
+
+/**
+ * The value the twin holds for `testCase`'s field right now, read straight from its GET (undefined when absent).
+ * @param {PutFieldCase} testCase
+ * @returns {Promise<unknown>}
+ */
+async function readCurrentValue({ sectionKey, groupKey, field, putPath }) {
+    const real = await commands.getRealCurrentValues([putPath]);
+    const body = /** @type {Record<string, unknown>} */ (real[putPath]);
+    const scoped = sectionKey === "sensors" ? /** @type {Record<string, unknown> | undefined} */ (body[groupKey]) : body;
+    return scoped?.[field.key];
+}
+
+/**
+ * `_RESPONDER_HOST` of digital_twin/unixport/_offline_ntp_config.py's source: its Python string literal, read as JSON.
+ * @param {string} source
+ * @returns {string}
+ */
+function responderHost(source) {
+    const literal = /^_RESPONDER_HOST = (?<literal>\S+)/mu.exec(source)?.groups?.literal;
+    const host = literal === undefined ? undefined : /** @type {unknown} */ (JSON.parse(literal));
+    if (typeof host !== "string") {
+        throw new Error("digital_twin/unixport/_offline_ntp_config.py assigns no string _RESPONDER_HOST");
+    }
+    return host;
+}
+
+/**
+ * The NOT_DRIVEN rows no action of `defsList` declares any more: each a row that outlived its action.
+ * @param {SiteDefinitions[]} defsList
+ * @returns {string[]}
+ */
+function staleNotDriven(defsList) {
+    const declared = new Set(actionsOf(defsList).map(({ name }) => name));
+    return [...NOT_DRIVEN.keys()].filter((name) => !declared.has(name)).sort();
+}
+
+/**
+ * The status section's group holding `fieldKey`, or its errcount group when `fieldKey` is null.
+ * @param {SiteDefinitions} defs
+ * @param {string | null} fieldKey
+ * @returns {string}
+ */
+function statusGroupKey(defs, fieldKey) {
+    const status = defs.sections.find((section) => section.key === "status");
+    const group = status?.groups.find((candidate) => (fieldKey === null ? "kind" in candidate && candidate.kind === "errcount" : "fields" in candidate && candidate.fields.some((field) => field.key === fieldKey && field.kind === "readonly")));
+    if (group === undefined) {
+        throw new Error(`the status section has no group for ${fieldKey ?? "the error counts"}`);
+    }
+    return group.key;
+}
+
+/**
+ * Sets every backup interval to "Backups off" through the page. Two counters climb by themselves, which a reset's all-zero
+ * read would race: each SGP40 backup warns while the clock is unsynced (once a minute by default), and each failed NTP
+ * try over a station link logs an error (pointNtpAtResponder()).
+ * @param {SiteDefinitions} defs
+ */
+async function turnBackupsOff(defs) {
+    const sensors = defs.sections.find((section) => section.key === "sensors");
+    const cards = (sensors?.groups ?? []).flatMap((group) => ("fields" in group ? group.fields : []).filter((field) => field.key === "BackupPeriod").map((field) => ({ groupKey: group.key, field })));
+    for (const { groupKey, field } of cards) {
+        const off = field.specialValues?.find((special) => special.meaning === "Backups off");
+        expect(off, `${groupKey}'s BackupPeriod declares no "Backups off" value`).toBeDefined();
+        const value = off?.value;
+        // eslint-disable-next-line no-await-in-loop -- one card after another, as a visitor applies them
+        const applied = await commands.applyField({ sectionKey: "sensors", groupKey, fieldKey: field.key, field, value, expectRenderedValue: value, readCaption: false });
+        expect(["valid", "unchanged"]).toContain(applied.applyStatus);
+    }
+}
+
+/**
+ * The actions `defsList` holds that no probe drives and NOT_DRIVEN does not list.
+ * @param {SiteDefinitions[]} defsList
+ * @returns {string[]}
+ */
+function unjudgedActions(defsList) {
+    return [...new Set(actionsOf(defsList).filter(({ name, driven }) => !driven && !NOT_DRIVEN.has(name)).map(({ name }) => name))].sort();
+}
+
 const config = await commands.getLiveMatrixConfig();
 // Sharded in CI only, via $PUT_MATRIX_SHARD relayed by getLiveMatrixConfig(): this one file is
 // most of the web tier's wall clock, so parallel shards keep it clear of its own budget. Unset
 // locally, so `npm test` and `npm run test:put-matrix` still run every case.
-const CASES = config.skipped
-    ? []
-    : shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => collectPutFieldCases(device, /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)), NO_DATA))), config.shard);
+const CASES = shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => collectPutFieldCases(device, /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)), NO_DATA))), config.shard);
 // The never-"Unchanged" class of the sensors section (the action fields of the other sections have their own
 // probes above): two identical sends, both Valid.
-const NEVER_UNCHANGED_CASES = config.skipped
-    ? []
-    : shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
-        const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
-        return defs.sections
-            .filter((section) => section.key === "sensors")
-            .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])
-                .filter((field) => neverUnchanged(field) && field.kind !== "composite")
-                .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))));
-    })), config.shard);
-const ACTION_CASES = config.skipped ? [] : shardPutFieldCases(DEVICE_IDS.flatMap(actionCasesOf), config.shard);
+const NEVER_UNCHANGED_CASES = shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
+    const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+    return defs.sections
+        .filter((section) => section.key === "sensors")
+        .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])
+            .filter((field) => neverUnchanged(field) && field.kind !== "composite")
+            .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))));
+})), config.shard);
+const ACTION_CASES = shardPutFieldCases(DEVICE_IDS.flatMap(actionCasesOf), config.shard);
 const devicesWithCases = [...new Set([...CASES, ...NEVER_UNCHANGED_CASES, ...ACTION_CASES].map((testCase) => testCase.device))];
 
-if (config.skipped) {
-    it.skip(`live-backend PUT matrix (skipped: ${config.reason})`, () => { /* never runs: a skipped placeholder needs no body */ });
-}
+afterAll(() => {
+    const decisions = [...SKIP_DECISIONS.values()];
+    const unlisted = decisions.filter(({ id, reason }) => reason !== null && EXPECTED_SKIPS.get(id) !== reason).map(({ id, reason }) => `${id}: ${reason}`);
+    expect(unlisted, "skips EXPECTED_SKIPS does not list").toEqual([]);
+    expect(decisions.filter(({ id, reason }) => reason === null && EXPECTED_SKIPS.has(id)).map(({ id }) => id), "listed skips whose case ran").toEqual([]);
+});
+
+describe("the live tier's actions", () => {
+    it("drives every action of every device's definitions, or lists it as not driven with its reason", () => {
+        const defsList = [...GENERATED_DEFINITIONS.values()];
+        expect(unjudgedActions(defsList), "actions neither probed nor in NOT_DRIVEN").toEqual([]);
+        const reached = new Set(actionsOf(defsList).filter(({ driven }) => driven).map(({ name }) => name.split(" ")[0]));
+        expect(Object.keys(ACTION_PROBES).filter((key) => !reached.has(key)), "probes no definition's action reaches").toEqual([]);
+    });
+
+    it("names an action a device gains that no probe drives", () => {
+        const planted = /** @type {SiteDefinitions} */ (/** @type {unknown} */ ({
+            device: { id: "fixture-device" },
+            sections: [{ key: "status", groups: [{ key: "planted", submit: true, fields: [{ key: "PlantedCmd", kind: "toggle", dispatch: true }] }] }],
+        }));
+        expect(unjudgedActions([planted])).toEqual(["PlantedCmd"]);
+    });
+
+    it("lists as not driven only actions some device's definitions still declare", () => {
+        expect(staleNotDriven([...GENERATED_DEFINITIONS.values()]), "NOT_DRIVEN rows no definition declares").toEqual([]);
+    });
+
+    it("names a NOT_DRIVEN row whose action no device declares", () => {
+        const options = ["reboot", "bootloader", "resetconfig", "erasefram"].map((value) => ({ value }));
+        const planted = /** @type {SiteDefinitions} */ (/** @type {unknown} */ ({
+            device: { id: "fixture-device" },
+            sections: [{ key: "status", groups: [{ key: "planted", submit: true, fields: [{ key: "SystemCmd", kind: "enum", dispatch: true, options }] }] }],
+        }));
+        expect(staleNotDriven([planted])).toEqual(["UartHazards"]);
+    });
+});
 
 describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
     beforeAll(async () => {
@@ -244,7 +437,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
                     "resubmitting the field's own current value renders it, answered Unchanged",
                     async (ctx) => {
                         const current = await readCurrentValue(testCase);
-                        ctx.skip(hasNoResubmitGesture(current), "no current value to resubmit");
+                        decideSkip(ctx, testCase, "resubmit", hasNoResubmitGesture(current), "no current value to resubmit");
                         await applyAndExpectRendered(current, "unchanged");
                     },
                     CASE_TIMEOUT_MS,
@@ -254,7 +447,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
                     "resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip)",
                     async (ctx) => {
                         const current = await readCurrentValue(testCase);
-                        ctx.skip(hasNoResubmitGesture(current), "no current value to resubmit");
+                        decideSkip(ctx, testCase, "resubmit", hasNoResubmitGesture(current), "no current value to resubmit");
                         const result = await commands.applyUnchangedFieldExpectNothingToSubmit({
                             sectionKey,
                             groupKey,
@@ -385,7 +578,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
             // Selecting the option already shown is the resubmit case, whose own probe above knows
             // whether the card round-trips at all; here it would wait for an answer that never comes.
             it.for((field.options ?? []).map((o) => o.value))("selecting option %s renders Valid with that option actually shown selected", async (value, ctx) => {
-                ctx.skip(value === (await readCurrentValue(testCase)), "the current option: the resubmit probe covers it");
+                decideSkip(ctx, testCase, `option ${String(value)}`, value === (await readCurrentValue(testCase)), "the current option: the resubmit probe covers it");
                 await applyAndExpectRendered(value, "valid");
             });
         }

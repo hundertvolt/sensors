@@ -1,0 +1,6 @@
+rebuild	rc=0	5.8s		mem=0
+lint_html	rc=0	0.7s		mem=0
+lint_css	rc=0	1.0s		mem=0
+unit	rc=0	223.8s	 Test Files 26 passed (26)  Tests 1307 passed (1307) 	mem=0
+put_matrix	rc=0	742.6s	 Test Files 1 passed (1)  Tests 348 passed | 6 skipped (354) 	mem=0
+coverage	rc=0	242.4s	 Test Files 26 passed (26)  Tests 1307 passed (1307) 	mem=0

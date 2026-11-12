@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "tests/test_digital_twin_webserver_concurrency_klkizi.py", line 14, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_webserver_concurrency_scenarios.py", line 37, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_generated_module.py", line 25, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_generated_tree.py", line 80, in require_fresh
+RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py
+RC=1 WALL=.077421285 FILE=tests/test_digital_twin_webserver_concurrency_klkizi.py STAGE=-1

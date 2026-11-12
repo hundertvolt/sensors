@@ -1,0 +1,8 @@
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/scripts/_require_venv.sh'
+ERROR tests_scripts/test_require_venv_sh.py::test_a_tool_found_before_the_venv_on_path_is_refused_naming_it
+ERROR tests_scripts/test_require_venv_sh.py::test_a_venv_the_lock_no_longer_matches_is_refused_naming_uv_sync
+ERROR tests_scripts/test_require_venv_sh.py::test_no_venv_or_another_venv_is_refused_naming_the_activation[another-venv]
+ERROR tests_scripts/test_require_venv_sh.py::test_no_venv_or_another_venv_is_refused_naming_the_activation[no-venv]
+ERROR tests_scripts/test_require_venv_sh.py::test_run_as_a_command_it_refuses
+ERROR tests_scripts/test_require_venv_sh.py::test_the_project_venv_with_its_tools_passes_and_checks_the_lock_offline

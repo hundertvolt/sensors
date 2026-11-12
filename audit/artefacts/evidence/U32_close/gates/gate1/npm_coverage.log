@@ -1,0 +1,257 @@
+
+> sensors-website@0.1.0 pretest:coverage
+> npm run build:site && uv run scripts/_archive_evidence.py --runner npm_coverage htmlcov_js
+
+
+> sensors-website@0.1.0 build:site
+> npm run build:definitions && scripts/build_device_websites.sh
+
+
+> sensors-website@0.1.0 build:definitions
+> uv run scripts/_generate_sensortask_modules.py
+
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/build/generated_src
+== Website work dir: build/website/arzi
+== Gzip tree: build/website/arzi/gzipped
+Writing Python file build/generated_html/arzi/frozen_html.py.
+Appended folder build/website/arzi/gzipped as /.
+Appended file   build/website/arzi/gzipped/index.html.gz (13940 bytes) as /index.html.gz
+Appended folder build/website/arzi/gzipped/js as /js
+Appended file   build/website/arzi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42473 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/arzi/frozen_html.py written successfully.
+Wrote build/generated_html/arzi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/dev
+== Gzip tree: build/website/dev/gzipped
+Writing Python file build/generated_html/dev/frozen_html.py.
+Appended folder build/website/dev/gzipped as /.
+Appended file   build/website/dev/gzipped/index.html.gz (16438 bytes) as /index.html.gz
+Appended folder build/website/dev/gzipped/js as /js
+Appended file   build/website/dev/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 44971 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/dev/frozen_html.py written successfully.
+Wrote build/generated_html/dev/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/grkizi
+== Gzip tree: build/website/grkizi/gzipped
+Writing Python file build/generated_html/grkizi/frozen_html.py.
+Appended folder build/website/grkizi/gzipped as /.
+Appended file   build/website/grkizi/gzipped/index.html.gz (13942 bytes) as /index.html.gz
+Appended folder build/website/grkizi/gzipped/js as /js
+Appended file   build/website/grkizi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42475 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/grkizi/frozen_html.py written successfully.
+Wrote build/generated_html/grkizi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/klkizi
+== Gzip tree: build/website/klkizi/gzipped
+Writing Python file build/generated_html/klkizi/frozen_html.py.
+Appended folder build/website/klkizi/gzipped as /.
+Appended file   build/website/klkizi/gzipped/index.html.gz (13942 bytes) as /index.html.gz
+Appended folder build/website/klkizi/gzipped/js as /js
+Appended file   build/website/klkizi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42475 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/klkizi/frozen_html.py written successfully.
+Wrote build/generated_html/klkizi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/schlafzi
+== Gzip tree: build/website/schlafzi/gzipped
+Writing Python file build/generated_html/schlafzi/frozen_html.py.
+Appended folder build/website/schlafzi/gzipped as /.
+Appended file   build/website/schlafzi/gzipped/index.html.gz (13943 bytes) as /index.html.gz
+Appended folder build/website/schlafzi/gzipped/js as /js
+Appended file   build/website/schlafzi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42476 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/schlafzi/frozen_html.py written successfully.
+Wrote build/generated_html/schlafzi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/wozi
+== Gzip tree: build/website/wozi/gzipped
+Writing Python file build/generated_html/wozi/frozen_html.py.
+Appended folder build/website/wozi/gzipped as /.
+Appended file   build/website/wozi/gzipped/index.html.gz (14380 bytes) as /index.html.gz
+Appended folder build/website/wozi/gzipped/js as /js
+Appended file   build/website/wozi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42913 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/wozi/frozen_html.py written successfully.
+Wrote build/generated_html/wozi/frozen_html.py (mounts at /html on import)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/build/archive/npm_coverage/20261021T135122Z
+
+> sensors-website@0.1.0 test:coverage
+> vitest run --coverage --exclude "**/node_modules/**" --exclude "tests_js/live-backend-put-matrix.test.js"
+
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8
+      Coverage enabled with v8
+
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it
+Could not refresh Sensors: [TypeError: Failed to fetch (simulated network failure)]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty
+Could not refresh Measurements: [Error: GET /measurements returned an empty body]
+stderr | tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+Could not refresh Measurements: [Error: Response from /measurements was not valid JSON (likely a corrupted or truncated transmission)]
+stderr | tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error
+Could not refresh Notification: [Error: GET /status failed: Not found]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails
+Could not refresh Notification: [TypeError: Failed to fetch (simulated)]
+stderr | tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > the section controller > shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere
+Could not refresh Measurements: [Error: GET /measurements returned no JSON object]
+stderr | tests_js/render.test.js > renderSection > the section controller > words a failed GET whose body is not JSON by its status, not as an empty body
+Could not refresh Measurements: [Error: GET /measurements failed: HTTP 404]
+stderr | tests_js/render.test.js > renderSection > the Apply path > keeps a Valid result when the post-write GET fails: the banner shows, Apply re-enables, nothing rejects unhandled
+Could not refresh Sensors: [Error: GET /sensors failed: Internal server error]
+ ✓ |chromium| tests_js/render.test.js (86 tests) 4002ms
+   ✓ renderSection (85)
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 424ms
+     ✓ the section controller (19)
+       ✓ updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns 425ms
+       ✓ calls onRecovered once when a failure episode ends, never on a plain success 427ms
+ ✓ |chromium| tests_js/lint-ceilings.test.js (4 tests) 6236ms
+   ✓ ESLint complexity ceilings (4)
+     ✓ complexity sits at its measured maximum 2028ms
+     ✓ max-depth sits at its measured maximum 2277ms
+     ✓ max-nested-callbacks sits at its measured maximum 1220ms
+     ✓ max-classes-per-file sits at its measured maximum 709ms
+ ❯ |chromium| tests_js/shell.test.js (15 tests | 1 failed) 2937ms
+   ❯ startShell (13)
+     ✓ opens the landing section, and leaves no timer, listener or request behind once stopped 68ms
+     ✓ leaves one set of listeners after start, stop and start again 8ms
+     ✓ reloads once when the second watch sees a different build, stopping first 111ms
+     × never reloads while the build stays the same, or when /system carries no build object 1256ms
+     ✓ pauses the watch while the page is hidden and watches once on becoming visible 105ms
+     ✓ neither reloads nor rejects unhandled when the watch's /system request fails 154ms
+     ✓ shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes 687ms
+     ✓ defers a reload for a changed build until the pending Apply has settled 164ms
+     ✓ watches once more as soon as a section's failing episode ends, not only at its own cadence 62ms
+     ✓ pushes one history entry per menu selection of another section, none for the current one 3ms
+     ✓ selects the popped section without pushing: Back, then Forward, then back to the landing entry 1ms
+     ✓ on a switch lets the left section's GET on the wire end before the next section's first GET, and a page stop right after a switch aborts it 205ms
+     ✓ opens a deep-linked section, and the landing section for an unknown key, pushing nothing 3ms
+   ✓ historyOf and visibilityOf (2)
+     ✓ reads the section from the URL hash, pushes one entry per key and reports a Back as a pop 106ms
+     ✓ reads the document's visibility and reports each change until released 1ms
+ ✓ |chromium| tests_js/port-lock.test.js (15 tests) 3667ms
+   ✓ the JS port lock (15)
+     ✓ takes over a lock recording no pid at all, leaving nothing behind 2110ms
+ ✓ |chromium| tests_js/site-functions.test.js (54 tests) 1445ms
+ ✓ |chromium| tests_js/accessibility.test.js (45 tests) 1390ms
+ ✓ |chromium| tests_js/poll-manager.test.js (22 tests) 400ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js (48 tests) 1018ms
+ ✓ |chromium| tests_js/main.test.js (11 tests) 405ms
+ ✓ |chromium| tests_js/mock-server-put-matrix.test.js (433 tests) 565ms
+ ✓ |chromium| tests_js/templates.test.js (116 tests) 344ms
+ ✓ |chromium| tests_js/mock-server.test.js (138 tests) 188ms
+ ✓ |chromium| tests_js/app.test.js (11 tests) 99ms
+ ✓ |chromium| tests_js/definitions-shape-corpus.test.js (134 tests) 30ms
+ ✓ |chromium| tests_js/definitions.test.js (50 tests) 83ms
+ ✓ |chromium| tests_js/nav.test.js (8 tests) 40ms
+ ✓ |chromium| tests_js/mock-data-compose.test.js (30 tests) 26ms
+ ✓ |chromium| tests_js/micropypath.test.js (3 tests) 30ms
+ ✓ |chromium| tests_js/source-constants.test.js (7 tests) 11ms
+ ✓ |chromium| tests_js/summary-reporter.test.js (8 tests) 11ms
+ ✓ |chromium| tests_js/definitions-mockdata-coverage.test.js (11 tests) 33ms
+ ✓ |chromium| tests_js/memory-markers.test.js (12 tests) 13ms
+ ✓ |chromium| tests_js/api-reference-agreement.test.js (19 tests) 27ms
+ ✓ |chromium| tests_js/twin-start-failure.test.js (3 tests) 6ms
+ ✓ |chromium| tests_js/expected-display.test.js (6 tests) 8ms
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on arzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on dev: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on grkizi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on klkizi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on schlafzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on wozi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+ ✓ |chromium| tests_js/live-backend.test.js (18 tests) 221625ms
+   ✓ live digital-twin backend: arzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 7497ms
+   ✓ live digital-twin backend: dev (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 7827ms
+   ✓ live digital-twin backend: grkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 6060ms
+   ✓ live digital-twin backend: klkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 6079ms
+   ✓ live digital-twin backend: schlafzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5838ms
+   ✓ live digital-twin backend: wozi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 6295ms
+   ✓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 24334ms
+   ✓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 25315ms
+   ✓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 24365ms
+   ✓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 24669ms
+   ✓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 11860ms
+   ✓ live digital-twin backend, concurrent browser sessions: wozi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 12164ms
+   ✓ live digital-twin backend, device restart: arzi (1)
+     ✓ the page recovers from a device restart without reloading 10489ms
+   ✓ live digital-twin backend, device restart: dev (1)
+     ✓ the page recovers from a device restart without reloading 8760ms
+   ✓ live digital-twin backend, device restart: grkizi (1)
+     ✓ the page recovers from a device restart without reloading 10474ms
+   ✓ live digital-twin backend, device restart: klkizi (1)
+     ✓ the page recovers from a device restart without reloading 10758ms
+   ✓ live digital-twin backend, device restart: schlafzi (1)
+     ✓ the page recovers from a device restart without reloading 10753ms
+   ✓ live digital-twin backend, device restart: wozi (1)
+     ✓ the page recovers from a device restart without reloading 8084ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > never reloads while the build stays the same, or when /system carries no build object
+AssertionError: expected 1 to be 2 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---never-reloads-while-the-build-stays-the-same--or-when--system-carries-no-build-object.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 2[39m
+[31m+ 1[39m
+
+ ❯ tests_js/shell.test.js:316:66
+    314|         const { reload } = start();
+    315|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+    316|         await vi.waitFor(() => expect(requests.count("/system")).toBe(…
+       |                                                                  ^
+    317|         build = undefined;
+    318|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+ ❯ checkCallback node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=7dc6ece3:7045:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 25 passed (26)
+      Tests  1 failed | 1306 passed (1307)
+   Start at  13:51:24
+   Duration  226.33s (worker 62%, tests 38%)
+
+== Summary: npm test ==
+Commit: c6b8a07
+Levels: L0
+Counts (tests): passed 1306 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/shell.test.js > startShell > never reloads while the build stays the same, or when /system carries no build object: expected 1 to be 2 // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

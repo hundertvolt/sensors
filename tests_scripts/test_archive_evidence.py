@@ -28,12 +28,12 @@ def test_four_archivings_keep_the_newest_three(archive: ModuleType, tmp_path: Pa
     made = []
     for n in range(4):
         evidence = tmp_path / f"log{n}.txt"
-        evidence.write_text(f"run {n}\n")
+        evidence.write_text(f"run {n}\n", encoding="utf-8")
         made.append(archive.archive("x", [evidence], root=root))
     runs = sorted(p.name for p in (root / "x").iterdir())
     assert runs == sorted(p.name for p in made[1:])
     assert not made[0].exists()
-    assert (made[3] / "log3.txt").read_text() == "run 3\n"
+    assert (made[3] / "log3.txt").read_text(encoding="utf-8") == "run 3\n"
     assert not (tmp_path / "log3.txt").exists(), "evidence is moved, not copied"
 
 
@@ -41,7 +41,7 @@ def test_nothing_outside_the_runners_directory_is_touched(archive: ModuleType, t
     root = tmp_path / "archive"
     (root / "y").mkdir(parents=True)
     (root / "y" / "20200101T000000Z").mkdir()
-    (root / "stray.txt").write_text("keep\n")
+    (root / "stray.txt").write_text("keep\n", encoding="utf-8")
     (root / "x").mkdir()
     (root / "x" / "notes").mkdir()  # not a timestamp: never pruned
     outside = tmp_path / "unrelated"
@@ -49,10 +49,10 @@ def test_nothing_outside_the_runners_directory_is_touched(archive: ModuleType, t
     before_outside = _snapshot(outside)
     for n in range(5):
         evidence = tmp_path / f"e{n}"
-        evidence.write_text("e\n")
+        evidence.write_text("e\n", encoding="utf-8")
         archive.archive("x", [evidence], root=root)
     assert (root / "y" / "20200101T000000Z").is_dir(), "runner y's runs are not pruned by runner x's keep"
-    assert (root / "stray.txt").read_text() == "keep\n"
+    assert (root / "stray.txt").read_text(encoding="utf-8") == "keep\n"
     assert (root / "x" / "notes").is_dir()
     assert _snapshot(outside) == before_outside
     assert len([p for p in (root / "x").iterdir() if p.name != "notes"]) == 3
@@ -64,7 +64,7 @@ def test_a_missing_path_is_skipped_and_nothing_is_created_for_none(archive: Modu
     assert not (root / "x").exists() or not any((root / "x").iterdir())
     present = tmp_path / "present"
     present.mkdir()
-    (present / "f").write_text("f\n")
+    (present / "f").write_text("f\n", encoding="utf-8")
     run = archive.archive("x", [tmp_path / "absent", present], root=root)
     assert run is not None
     assert sorted(p.name for p in run.iterdir()) == ["present"]
@@ -105,7 +105,7 @@ def _cli(tmp_path: Path, *argv: str) -> subprocess.CompletedProcess[str]:
     copy = tmp_path / "scripts" / _SCRIPT.name
     if not copy.exists():
         copy.parent.mkdir(parents=True)
-        copy.write_text(_SCRIPT.read_text())
+        copy.write_text(_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
     return subprocess.run([sys.executable, str(copy), *argv], cwd=tmp_path, capture_output=True, text=True, check=False)
 
 
@@ -120,10 +120,10 @@ def test_the_new_dir_cli_prints_an_existing_empty_directory(tmp_path: Path) -> N
 
 def test_the_cli_archives_paths_and_prints_the_directory(tmp_path: Path) -> None:
     evidence = tmp_path / "log.txt"
-    evidence.write_text("x\n")
+    evidence.write_text("x\n", encoding="utf-8")
     done = _cli(tmp_path, "--runner", "x", str(evidence), str(tmp_path / "absent"))
     assert done.returncode == 0, done.stderr
-    assert (Path(done.stdout.strip()) / "log.txt").read_text() == "x\n"
+    assert (Path(done.stdout.strip()) / "log.txt").read_text(encoding="utf-8") == "x\n"
     nothing = _cli(tmp_path, "--runner", "x", str(tmp_path / "absent"))
     assert (nothing.returncode, nothing.stdout) == (0, "")
 

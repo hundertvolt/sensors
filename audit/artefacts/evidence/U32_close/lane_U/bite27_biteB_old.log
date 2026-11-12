@@ -1,0 +1,3 @@
+PASS test_initiator_task_starters_include_exercise_loop
+PASS test_responder_task_starters_are_the_listen_loop_only
+2/2 passed, 0 failed, 0 skipped

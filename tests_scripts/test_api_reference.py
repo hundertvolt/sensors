@@ -1,6 +1,6 @@
 """The generated per-device REST reference (buildgen.api_reference, SPECIFICATION.md A.8): byte-identical over two
-generations, every ROUTES entry and no other route, every `@web` field under its route, the source's result words
-and envelope codes; and a build that cannot read its route table or meets an unregistered route fails loudly."""
+generations and equal to the release's tests_scripts/fixtures/api_reference/<device>.json, every ROUTES entry and no
+other, every `@web` field under its route, the source's result words and codes; a build that cannot read them fails."""
 
 import ast
 import json
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _devices import DEVICE_NAMES, device_toml
+from _devices import DEVICE_NAMES, bench_device, device_toml
 
 from buildgen import api_reference
 from buildgen.api_reference import api_reference_json, generate_api_reference
@@ -24,7 +24,10 @@ from buildgen.web_tag import SELF_GROUP, parse_web_tags
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC = _REPO_ROOT / "src"
+_FIXTURES = _REPO_ROOT / "tests_scripts" / "fixtures" / "api_reference"
+_REGENERATE = "PYTHONPATH=. uv run python tests_scripts/test_api_reference.py --regenerate"
 _WEBSERVER = "asy_webserver_service.py"
+_UART_LINK = "asy_uart_link_driver.py"  # the bench link brings its own routes, listed after the webserver's
 # The tagged services every device has, never [[instance]] entries (buildgen/definitions.py scans the same three).
 _MANDATORY_TAGGED = ("asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py")
 # The legacy firmware's API routes (each device module under legacy/firmware/modules/): "none of them needs to
@@ -119,8 +122,8 @@ def _src_literal(filename: str, name: str) -> object:
     raise AssertionError(f"src/{filename} defines no {name}")
 
 
-def _src_routes() -> "list[tuple[str, str]]":
-    rows = _src_literal(_WEBSERVER, "ROUTES")
+def _src_routes(filename: str = _WEBSERVER) -> "list[tuple[str, str]]":
+    rows = _src_literal(filename, "ROUTES")
     assert isinstance(rows, tuple)
     return [(method, path) for method, path, _handler in rows]
 
@@ -158,9 +161,17 @@ def test_two_generations_are_byte_identical(generations: "tuple[dict[str, str], 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_reference_is_the_release_fixture(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # From the release on, a changed route or key ships with its migration (SPECIFICATION.md H.3).
+    fixture = _FIXTURES / f"{device}.json"
+    assert fixture.is_file(), f"no release reference {fixture.relative_to(_REPO_ROOT)} - write it with `{_REGENERATE}`"
+    assert references[device] == json.loads(fixture.read_text(encoding="utf-8")), f"{device}'s REST reference is not {fixture.relative_to(_REPO_ROOT)}: ship its migration in the same commit, then `{_REGENERATE}`"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_routes_are_exactly_the_route_table_and_no_legacy_path(references: "dict[str, dict[str, object]]", device: str) -> None:
     listed = [(route["method"], route["path"]) for route in _routes(references[device])]
-    assert listed == _src_routes()
+    assert listed == _src_routes() + (_src_routes(_UART_LINK) if device == bench_device() else [])
     assert not set(listed) & set(_LEGACY_ROUTES)
 
 
@@ -394,3 +405,11 @@ def test_a_hidden_field_is_on_no_route(references: "dict[str, dict[str, object]]
                 own = keys & hidden if group["key"] == spec.resolved_name else set()
                 shown += sorted(f"{route['method']} {route['path']} {group['key']}.{key}" for key in own | (keys & {f"{spec.resolved_name}_{name}" for name in hidden}))
     assert not shown, shown
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["--regenerate"]:
+        sys.exit(f"usage: {_REGENERATE}")
+    _FIXTURES.mkdir(parents=True, exist_ok=True)
+    for name in DEVICE_NAMES:
+        (_FIXTURES / f"{name}.json").write_text(api_reference_json(generate_api_reference(_model(name), _SRC)) + "\n", encoding="utf-8")

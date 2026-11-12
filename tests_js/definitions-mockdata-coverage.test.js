@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import samples from "../mockdata/samples.json";
 import { resolveFieldValue } from "../js/definitions.js";
-import { composeMockData } from "../js/mock-server.js";
+import { composeMockData, installMockFetch } from "../js/mock-server.js";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
@@ -42,6 +42,15 @@ function groupValuesFrom(section, group, data, statusBody) {
  */
 function isScalarList(value) {
     return Array.isArray(value) && value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
+}
+
+/**
+ * A field js/field-format.js renders from a JSON object through its own shape check (its RECORD_FORMATTERS).
+ * @param {FieldDef} field
+ * @returns {boolean}
+ */
+function isObjectFormat(field) {
+    return field.format === "gmtimestruct" || field.format === "lasttaskend";
 }
 
 // Which mockdata top-level object backs each definitions section, matching what js/mock-server.js
@@ -84,8 +93,8 @@ function unrenderableReadonlyFields(defs, data) {
                 }
                 // A `path` naming a GROUP rather than a leaf resolves to the sub-object, which
                 // renders as "[object Object]" - a value, so the check above cannot see it.
-                // gmtimestruct's struct and a list of scalars (ConfigFaults) are leaves.
-                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null && !isScalarList(resolved)) {
+                // The two object formats (gmtimestruct, lasttaskend) and a list of scalars (ConfigFaults) are leaves.
+                if (!isObjectFormat(field) && typeof resolved === "object" && resolved !== null && !isScalarList(resolved)) {
                     missing.push(`${section.key}/${group.key}/${field.key} (an object, not a leaf)`);
                 }
             }
@@ -100,6 +109,41 @@ describe("definitions and mockdata agree", () => {
         const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
         const data = composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples));
         expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
+    });
+
+    // G.3's mirror of _put_status(): every dispatch key the status section lists answers {key: true} "Valid" and any
+    // other value "Invalid", as the device answers ResetErrors outside its "Failed" windows.
+    it.each(DEVICE_IDS)("answers every status command %s's definitions list as the device does", async (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const status = defs.sections.find((section) => section.key === "status");
+        const put = status?.rest.put ?? "";
+        const keys = (status?.groups ?? []).flatMap((group) => ("fields" in group ? group.fields : [])).filter((field) => field.dispatch === true).map((field) => field.key);
+        expect(keys).toContain("ResetErrors");
+        const uninstall = installMockFetch(defs, composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples)));
+        /** @type {(body: Record<string, unknown>) => Promise<unknown>} */
+        const answer = async (body) => (await (await fetch(put, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json()).result;
+        try {
+            const answers = await Promise.all(keys.flatMap((key) => [true, false, 1].map((value) => answer({ [key]: value }))));
+            expect(answers).toEqual(keys.flatMap((key) => [{ [key]: "Valid" }, { [key]: "Invalid" }, { [key]: "Invalid" }]));
+            expect(await answer({ Unlisted: true })).toEqual({ Unlisted: "Invalid" });
+        } finally {
+            uninstall();
+        }
+    });
+
+    // The device's put_uart() (src/asy_uart_link_driver.py): {"UartHazards": true} "Valid" outside a pending run, any other value "Invalid".
+    it.each(DEVICE_IDS.filter((device) => GENERATED_DEFINITIONS.get(device)?.sections.some((section) => section.key === "uart")))("answers %s's UART run request as the device does", async (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const put = defs.sections.find((section) => section.key === "uart")?.rest.put ?? "";
+        const uninstall = installMockFetch(defs, composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples)));
+        /** @type {(body: Record<string, unknown>) => Promise<unknown>} */
+        const answer = async (body) => (await (await fetch(put, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json()).result;
+        try {
+            expect(await Promise.all([true, false, 1].map((value) => answer({ UartHazards: value })))).toEqual(["Valid", "Invalid", "Invalid"].map((word) => ({ UartHazards: word })));
+            expect(await answer({ Unlisted: true })).toEqual({ Unlisted: "Invalid" });
+        } finally {
+            uninstall();
+        }
     });
 
     // Guards the check itself: a resolver that silently returned a value for everything would make
@@ -139,5 +183,13 @@ describe("definitions and mockdata agree", () => {
         expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [] } } })).toEqual([]);
         expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: ["SCD30", "WIFI"] } } })).toEqual([]);
         expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [{ Module: "SCD30" }] } } })).toEqual(["status/system/ConfigFaults (an object, not a leaf)"]);
+    });
+
+    it("takes a task-end record as a leaf, as it takes a time struct", () => {
+        const defs = {
+            sections: [{ key: "status", groups: [{ key: "system", fields: [{ key: "LastTaskEnd", label: "Task Last Ended", kind: "readonly", format: "lasttaskend" }] }] }],
+        };
+        expect(unrenderableReadonlyFields(defs, { status: { system: { LastTaskEnd: null } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { system: { LastTaskEnd: { Task: "SCD30.start_asy_read", Uptime: 3600 } } } })).toEqual([]);
     });
 });

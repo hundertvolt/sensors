@@ -1,0 +1,24 @@
+test_voc_algorithm.py	-1	A	1	3.10	0	42/42 passed, 0 failed, 0 skipped
+test_voc_algorithm.py	-1	B	1	3.47	0	42/42 passed, 0 failed, 0 skipped
+test_voc_algorithm.py	32768	B	1	5.41	0	42/42 passed, 0 failed, 0 skipped
+test_voc_algorithm.py	32768	A	1	24.33	0	42/42 passed, 0 failed, 0 skipped
+test_asy_scd30_driver.py	-1	B	1	21.47	0	125/125 passed, 0 failed, 0 skipped
+test_asy_scd30_driver.py	-1	A	1	21.75	0	125/125 passed, 0 failed, 0 skipped
+test_asy_scd30_driver.py	32768	B	1	31.50	1	OSError: (39, 'rmdir tests/_tmp/scd30')
+test_asy_scd30_driver.py	32768	A	1	47.14	1	124/125 passed, 1 failed, 0 skipped
+test_asy_sgp40_driver.py	-1	B	1	0.20	1	OSError: (39, 'rmdir tests/_tmp/sgp40')
+test_asy_sgp40_driver.py	-1	A	1	10.02	0	155/155 passed, 0 failed, 0 skipped
+test_asy_sgp40_driver.py	32768	B	1	9.70	1	154/155 passed, 1 failed, 0 skipped
+test_asy_sgp40_driver.py	32768	A	1	12.71	0	155/155 passed, 0 failed, 0 skipped
+test_asy_system_service.py	-1	A	1	0.19	1	OSError: (39, 'rmdir tests/_tmp/sysservice')
+test_asy_system_service.py	-1	B	1	29.16	0	169/169 passed, 0 failed, 0 skipped
+test_asy_system_service.py	32768	A	1	0.25	1	OSError: (39, 'rmdir tests/_tmp/sysservice')
+test_asy_system_service.py	32768	B	1	29.03	0	169/169 passed, 0 failed, 0 skipped
+test_asy_webserver_service.py	-1	A	1	4.32	0	218/218 passed, 0 failed, 0 skipped
+test_asy_webserver_service.py	-1	B	1	4.92	1	217/218 passed, 1 failed, 0 skipped
+test_asy_webserver_service.py	32768	B	1	8.29	0	218/218 passed, 0 failed, 0 skipped
+test_asy_webserver_service.py	32768	A	1	12.21	0	218/218 passed, 0 failed, 0 skipped
+test_asy_ntp_client.py	-1	B	1	23.76	1	182/187 passed, 5 failed, 0 skipped
+test_asy_ntp_client.py	-1	A	1	23.76	1	184/187 passed, 3 failed, 0 skipped
+test_asy_ntp_client.py	32768	B	1	13.29	143	PASS test_ntp_force_sync_resets_the_backoff
+test_asy_ntp_client.py	32768	A	1	13.30	143	PASS test_ntp_force_sync_resets_the_backoff

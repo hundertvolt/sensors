@@ -1,0 +1,232 @@
+=== fram_manager_roundtrip.py gc=32768 0.7s
+FACT setup=true
+FACT rdid="047f4803"
+FACT allocated=true
+FACT cleared_first=true
+FACT written=true
+FACT read_ok=true
+FACT matches=true
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "rdid": "047f4803", "allocated": true, "cleared_first": true, "written": true, "read_ok": true, "matches": true, "cleared_last": true}
+MEMORY_LINES 0
+=== fram_error_log_roundtrip.py gc=32768 0.6s
+FACT setup=true
+FACT initialized=true
+FACT cleared_first=true
+FACT rebooted_setup=true
+FACT restored=true
+FACT err_count=1
+FACT err_num=[0, 0, 0, 0, 125]
+FACT err_type=["N", "N", "N", "N", "E"]
+FACT cleared_last=true
+FACT seed=125
+DONE
+
+FACTS {"setup": true, "initialized": true, "cleared_first": true, "rebooted_setup": true, "restored": true, "err_count": 1, "err_num": [0, 0, 0, 0, 125], "err_type": ["N", "N", "N", "N", "E"], "cleared_last": true, "seed": 125}
+MEMORY_LINES 0
+=== fram_error_log_reset_during_boot_window.py gc=32768 0.7s
+FACT setup=true
+FACT initialized=true
+FACT seeded_count=3
+FACT reset_persisted=true
+FACT after={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT persisted={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "initialized": true, "seeded_count": 3, "reset_persisted": true, "after": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "persisted": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "cleared_last": true}
+MEMORY_LINES 0
+=== fram_write_protect_roundtrip.py gc=32768 0.6s
+FACT setup=true
+FACT allocated=true
+FACT blocked_write=true
+FACT blocked_read=true
+FACT data_survived=false
+FACT left_protected=false
+FACT cleared_last=true
+FACT failure="data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d"
+DONE
+
+FACTS {"setup": true, "allocated": true, "blocked_write": true, "blocked_read": true, "data_survived": false, "left_protected": false, "cleared_last": true, "failure": "data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d"}
+MEMORY_LINES 0
+=== fram_pause_unpause_and_gating.py gc=32768 17.0s
+FACT setup=true
+FACT allocated=true
+FACT cleared_first=true
+FACT hog_deinit_failures={"first": [], "total": 0}
+FACT ts_cleared_last=true
+FACT cleared_last=true
+FACT failures={"first": [], "total": 0}
+FACT skipped={"first": [], "total": 0}
+DONE
+
+FACTS {"setup": true, "allocated": true, "cleared_first": true, "hog_deinit_failures": {"first": [], "total": 0}, "ts_cleared_last": true, "cleared_last": true, "failures": {"first": [], "total": 0}, "skipped": {"first": [], "total": 0}}
+MEMORY_LINES 0
+=== fram_command_hold_timing.py gc=32768 0.7s
+FACT setup=true
+FACT command_ok=true
+FACT block_ok=true
+FACT write_us=1026
+FACT read_us=204
+FACT hold_us=6465
+FACT uart_floor_us=6944
+FACT block_hold_budget_us=25000
+DONE
+
+FACTS {"setup": true, "command_ok": true, "block_ok": true, "write_us": 1026, "read_us": 204, "hold_us": 6465, "uart_floor_us": 6944, "block_hold_budget_us": 25000}
+MEMORY_LINES 0
+=== fram_busy_status_lockout.py gc=32768 0.9s
+FACT setup=true
+FACT allocated=true
+FACT cleared_first=true
+FACT baseline_ok=true
+FACT forced_busy=true
+FACT locked_read_none=true
+FACT error_logged=true
+FACT recovered=true
+FACT cleared_last=true
+FACT failures={"first": [], "total": 0}
+DONE
+
+FACTS {"setup": true, "allocated": true, "cleared_first": true, "baseline_ok": true, "forced_busy": true, "locked_read_none": true, "error_logged": true, "recovered": true, "cleared_last": true, "failures": {"first": [], "total": 0}}
+MEMORY_LINES 0
+=== sgp40_fram_backup_restore.py gc=32768 63.9s
+FACT setup=true
+FACT allocated=true
+FACT cleared_first=true
+FACT rebooted_setup=true
+FACT backup_written=true
+FACT restored_from=1792002841
+FACT restored_state_matches=true
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "allocated": true, "cleared_first": true, "rebooted_setup": true, "backup_written": true, "restored_from": 1792002841, "restored_state_matches": true, "cleared_last": true}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_seed_and_race.py gc=32768 0.8s
+FACT setup=true
+FACT initialized=true
+FACT baseline={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT seeded={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 127, 126, 125]}
+SEEDED
+LANDED seam=1
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+FACTS {"setup": true, "initialized": true, "baseline": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "seeded": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 127, 126, 125]}}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_verify.py gc=32768 0.3s
+FACT setup=true
+FACT initialized=true
+FACT recovered=[127, 126, 125]
+FACT warnings=0
+FACT err_count=3
+FACT outcome="seeded"
+FACT tail=[127, 126, 125, 127]
+FACT expected_tail=[127, 126, 125, 127]
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "initialized": true, "recovered": [127, 126, 125], "warnings": 0, "err_count": 3, "outcome": "seeded", "tail": [127, 126, 125, 127], "expected_tail": [127, 126, 125, 127], "cleared_last": true}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_seed_and_race.py gc=32768 0.8s
+FACT setup=true
+FACT initialized=true
+FACT baseline={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT seeded={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 126, 125, 126]}
+SEEDED
+LANDED seam=2
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+FACTS {"setup": true, "initialized": true, "baseline": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "seeded": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 126, 125, 126]}}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_verify.py gc=32768 0.3s
+FACT setup=true
+FACT initialized=true
+FACT recovered=[126, 125, 126]
+FACT warnings=0
+FACT err_count=3
+FACT outcome="seeded"
+FACT tail=[126, 125, 126, 127]
+FACT expected_tail=[126, 125, 126, 127]
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "initialized": true, "recovered": [126, 125, 126], "warnings": 0, "err_count": 3, "outcome": "seeded", "tail": [126, 125, 126, 127], "expected_tail": [126, 125, 126, 127], "cleared_last": true}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_seed_and_race.py gc=32768 0.8s
+FACT setup=true
+FACT initialized=true
+FACT baseline={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT seeded={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 127, 126]}
+SEEDED
+LANDED seam=3
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+FACTS {"setup": true, "initialized": true, "baseline": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "seeded": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 127, 126]}}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_verify.py gc=32768 0.4s
+FACT setup=true
+FACT initialized=true
+FACT recovered=[125, 127, 126]
+FACT warnings=0
+FACT err_count=3
+FACT outcome="seeded"
+FACT tail=[125, 127, 126, 127]
+FACT expected_tail=[125, 127, 126, 127]
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "initialized": true, "recovered": [125, 127, 126], "warnings": 0, "err_count": 3, "outcome": "seeded", "tail": [125, 127, 126, 127], "expected_tail": [125, 127, 126, 127], "cleared_last": true}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_seed_and_race.py gc=32768 0.8s
+FACT setup=true
+FACT initialized=true
+FACT baseline={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT seeded={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 127, 125, 127]}
+SEEDED
+LANDED seam=4
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+FACTS {"setup": true, "initialized": true, "baseline": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "seeded": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 127, 125, 127]}}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_verify.py gc=32768 0.4s
+FACT setup=true
+FACT initialized=true
+FACT recovered=[127, 125, 127]
+FACT warnings=0
+FACT err_count=3
+FACT outcome="seeded"
+FACT tail=[127, 125, 127]
+FACT expected_tail=[127, 125, 127]
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "initialized": true, "recovered": [127, 125, 127], "warnings": 0, "err_count": 3, "outcome": "seeded", "tail": [127, 125, 127], "expected_tail": [127, 125, 127], "cleared_last": true}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_seed_and_race.py gc=32768 0.7s
+FACT setup=true
+FACT initialized=true
+FACT baseline={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+FACT seeded={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 126, 127]}
+SEEDED
+LANDED seam=5
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+FACTS {"setup": true, "initialized": true, "baseline": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"], "ErrCount": 0, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "seeded": {"ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 126, 127]}}
+MEMORY_LINES 0
+=== fram_error_log_reset_race_verify.py gc=32768 0.4s
+FACT setup=true
+FACT initialized=true
+FACT recovered=[]
+FACT warnings=0
+FACT err_count=0
+FACT outcome="empty"
+FACT tail=[127]
+FACT expected_tail=[127]
+FACT cleared_last=true
+DONE
+
+FACTS {"setup": true, "initialized": true, "recovered": [], "warnings": 0, "err_count": 0, "outcome": "empty", "tail": [127], "expected_tail": [127], "cleared_last": true}
+MEMORY_LINES 0

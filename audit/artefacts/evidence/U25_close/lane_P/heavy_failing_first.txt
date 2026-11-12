@@ -1,0 +1,6 @@
+E       AssertionError: assert ['tests/test_...task_arzi.py'] == []
+E         
+E         Left contains 6 more items, first extra item: 'tests/test_sensortask_dev.py'
+E         Use -v to get more diff
+E       Failed: DID NOT RAISE CalledProcessError
+2 failed, 1 passed, 141 deselected in 0.47s

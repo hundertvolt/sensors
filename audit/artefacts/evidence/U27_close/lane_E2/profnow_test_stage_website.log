@@ -1,0 +1,40 @@
+....................................                                     [100%]
+============================== slowest durations ===============================
+0.48s call     tests_scripts/test_stage_website.py::test_the_real_tree_stages_main_js_import_closure_in_dependency_order
+0.15s call     tests_scripts/test_stage_website.py::test_a_firmware_build_s_date_is_stamped_into_the_page_and_a_plain_build_carries_none
+0.10s call     tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15T08:30:00]
+0.10s call     tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15T08:30:00Z"><script>]
+0.09s call     tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15]
+0.09s call     tests_scripts/test_stage_website.py::test_a_script_end_tag_in_a_label_is_escaped_and_the_inlined_block_parses_back
+0.08s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[jsdoc-key-not-passed]
+0.08s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[duplicate-export]
+0.08s call     tests_scripts/test_stage_website.py::test_the_stager_writes_only_inside_the_stage_and_creates_it
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[missing-stylesheet-tag]
+0.07s call     tests_scripts/test_stage_website.py::test_the_icon_link_carries_html_favicon_ico_as_a_data_uri
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[bare-specifier]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[nested-file]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[re-export]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[bare-import]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[multi-line-import]
+0.07s call     tests_scripts/test_stage_website.py::test_a_valid_site_stages_the_page_and_the_bundle_and_nothing_else
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[style-end-tag-in-css]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[bootstrap-import-path]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[unreferenced-module]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[duplicate-private-name]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[star-re-export]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[missing-icon-tag]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[bootstrap-key-not-in-jsdoc]
+0.07s call     tests_scripts/test_stage_website.py::test_import_text_in_comments_strings_templates_and_regexes_is_not_an_import
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[top-level-destructuring]
+0.07s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[stray-html-file]
+0.07s call     tests_scripts/test_stage_website.py::test_definitions_that_are_not_json_are_refused_naming_the_file
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[dynamic-import]
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[missing-module]
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[default-import]
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[renamed-id]
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[cycle]
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[default-export]
+0.06s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[namespace-import]
+
+(73 durations < 0.005s hidden.  Use -vv to show these durations.)
+36 passed in 3.13s

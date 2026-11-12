@@ -1,0 +1,84 @@
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+        # One staging per device, shared by the read-only checks below. The build date is passed in, as
+_________ test_a_failed_image_move_leaves_no_record_and_the_old_image __________
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9874/test_a_failed_image_move_leave0')
+    def test_a_failed_image_move_leaves_no_record_and_the_old_image(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+_______ test_a_failed_build_keeps_its_work_dir_and_names_it_in_one_line ________
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9874/test_a_failed_build_keeps_its_0')
+    def test_a_failed_build_keeps_its_work_dir_and_names_it_in_one_line(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+>       built = _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(tmp_path / "out.uf2"), build_error="firmware build failed: planted")
+FAILED tests_scripts/test_build_firmware.py::test_build_stage_dir_rejects_a_device_with_no_matching_toml
+FAILED tests_scripts/test_build_firmware.py::test_build_stage_dir_rejects_a_frozen_module_resolving_to_neither_src_nor_ext
+FAILED tests_scripts/test_build_firmware.py::test_build_stage_dir_rejects_a_frozen_module_colliding_with_a_reserved_staging_name
+FAILED tests_scripts/test_build_firmware.py::test_the_manifest_includes_the_board_manifest_and_freezes_the_staged_files_sorted
+FAILED tests_scripts/test_build_firmware.py::test_cli_missing_device_toml_fails_fast_in_one_line
+FAILED tests_scripts/test_build_firmware.py::test_a_relative_toolchain_dir_reaches_the_build_resolved_and_the_lock_spans_it[v1.29.0-MicroPython v1.29.0 (0123abcd)]
+FAILED tests_scripts/test_build_firmware.py::test_a_relative_toolchain_dir_reaches_the_build_resolved_and_the_lock_spans_it[None-MicroPython v1.29.0 as pinned (built by `test`, ref not recorded) (0123abcd)]
+FAILED tests_scripts/test_build_firmware.py::test_main_writes_the_image_record_beside_the_image[override-compiled]
+FAILED tests_scripts/test_build_firmware.py::test_main_writes_the_image_record_beside_the_image[control-image]
+FAILED tests_scripts/test_build_firmware.py::test_the_image_and_its_record_are_never_paired_wrongly
+FAILED tests_scripts/test_build_firmware.py::test_a_failed_image_move_leaves_no_record_and_the_old_image
+FAILED tests_scripts/test_build_firmware.py::test_source_state_names_the_commit_and_a_dirty_tree
+FAILED tests_scripts/test_build_firmware.py::test_build_stage_dir_builds_from_the_given_device_toml
+FAILED tests_scripts/test_build_firmware.py::test_a_missing_device_toml_path_fails_before_staging
+FAILED tests_scripts/test_build_firmware.py::test_a_device_toml_of_another_device_is_refused
+FAILED tests_scripts/test_build_firmware.py::test_a_device_toml_changing_the_website_is_refused
+FAILED tests_scripts/test_build_firmware.py::test_a_crc16_copy_of_the_link_device_builds_and_its_record_says_so
+FAILED tests_scripts/test_build_firmware.py::test_no_autostart_freezes_the_repl_entry_and_changes_nothing_else
+FAILED tests_scripts/test_build_firmware.py::test_the_tick_offset_image_is_built_named_and_recorded_as_such
+FAILED tests_scripts/test_build_firmware.py::test_the_work_dir_is_wiped_at_the_start_and_kept_after_the_build
+FAILED tests_scripts/test_build_firmware.py::test_a_failed_build_keeps_its_work_dir_and_names_it_in_one_line
+FAILED tests_scripts/test_build_firmware.py::test_the_image_report_reads_the_link_symbols
+FAILED tests_scripts/test_build_firmware.py::test_an_impossible_image_report_is_a_toolchain_bug[overlap]
+FAILED tests_scripts/test_build_firmware.py::test_an_impossible_image_report_is_a_toolchain_bug[missing]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[arzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[dev]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[grkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[klkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[schlafzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_stages_exactly_the_computed_frozen_modules[wozi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry[arzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry[dev]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry[grkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry[klkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry[schlafzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry[wozi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files[arzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files[dev]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files[grkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files[klkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files[schlafzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files[wozi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[arzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[dev]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[grkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[klkizi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[schlafzi]
+ERROR tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[wozi]
+24 failed, 3 passed, 6 skipped, 24 errors in 3.17s
+
+real	0m3.411s
+user	0m3.183s
+sys	0m0.178s

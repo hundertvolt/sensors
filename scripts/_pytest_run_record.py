@@ -6,7 +6,6 @@ the effective -m and session notes; scripts/_summary_block.py reads it (SPECIFIC
 # collection, deselected, options, markexpr, collect_only, session_notes, exitstatus (pytest's exit).
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -14,6 +13,7 @@ import pytest
 JSONValue = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 
 _NOTES = pytest.StashKey[list[JSONValue]]()
+_SKIP_LONGREPR_LEN = 3  # a skip's (path, lineno, message)
 
 
 def _json_safe(value: object) -> JSONValue:
@@ -26,13 +26,20 @@ def _json_safe(value: object) -> JSONValue:
     return str(value)
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--run-record", default=None, metavar="PATH", help="write this session's JSON run record to PATH")
+def _markers(item: pytest.Item) -> list[JSONValue]:
+    return [str(name) for name in sorted({mark.name for mark in item.iter_markers()})]
 
 
-def pytest_configure(config: pytest.Config) -> None:
-    config.stash.setdefault(_NOTES, [])
-    config.pluginmanager.register(_Recorder(config), "_pytest_run_record_recorder")
+def _reason(report: pytest.TestReport | pytest.CollectReport) -> str:
+    wasxfail = getattr(report, "wasxfail", None)
+    if wasxfail is not None:
+        return f"xfail: {wasxfail}"
+    longrepr = report.longrepr
+    if isinstance(longrepr, tuple) and len(longrepr) == _SKIP_LONGREPR_LEN:
+        return str(longrepr[2]).removeprefix("Skipped: ")
+    crash = getattr(longrepr, "reprcrash", None)
+    text = str(getattr(crash, "message", "") or report.longreprtext).strip()
+    return text.splitlines()[0] if text else ""
 
 
 def add_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str = "") -> None:
@@ -41,20 +48,13 @@ def add_session_note(config: pytest.Config, text: str, *, recovery: bool = False
     config.stash.setdefault(_NOTES, []).append(note)
 
 
-def _reason(report: pytest.TestReport | pytest.CollectReport) -> str:
-    wasxfail = getattr(report, "wasxfail", None)
-    if wasxfail is not None:
-        return f"xfail: {wasxfail}"
-    longrepr = report.longrepr
-    if isinstance(longrepr, tuple) and len(longrepr) == 3:  # noqa: PLR2004 - a skip's (path, lineno, message)
-        return str(longrepr[2]).removeprefix("Skipped: ")
-    crash = getattr(longrepr, "reprcrash", None)
-    text = str(getattr(crash, "message", "") or report.longreprtext).strip()
-    return text.splitlines()[0] if text else ""
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption("--run-record", default=None, metavar="PATH", help="write this session's JSON run record to PATH")
 
 
-def _markers(item: pytest.Item) -> list[JSONValue]:
-    return [str(name) for name in sorted({mark.name for mark in item.iter_markers()})]
+def pytest_configure(config: pytest.Config) -> None:
+    config.stash.setdefault(_NOTES, [])
+    config.pluginmanager.register(_Recorder(config), "_pytest_run_record_recorder")
 
 
 class _Recorder:
@@ -69,9 +69,22 @@ class _Recorder:
     def _entry(self, nodeid: str) -> dict[str, JSONValue]:
         return self.tests.setdefault(nodeid, {"nodeid": nodeid, "outcome": None, "when": None, "reason": "", "markers": [], "user_properties": []})
 
+    def _notes(self) -> list[JSONValue]:
+        notes: list[JSONValue] = self.config.stash.setdefault(_NOTES, [])
+        return notes.copy()
+
     def pytest_collection_finish(self, session: pytest.Session) -> None:
         for item in session.items:
             self._entry(item.nodeid)["markers"] = _markers(item)
+
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if report.skipped or report.failed:
+            self.collection.append({"nodeid": report.nodeid, "outcome": "skipped" if report.skipped else "error", "reason": _reason(report)})
+
+    def pytest_deselected(self, items: list[pytest.Item]) -> None:
+        for item in items:
+            by = next((str(value) for key, value in item.user_properties if key == "deselected_by"), "runner selection")
+            self.deselected.append({"nodeid": item.nodeid, "by": by, "markers": _markers(item)})
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         entry = self._entry(report.nodeid)
@@ -90,19 +103,6 @@ class _Recorder:
             return
         entry.update(outcome=outcome, when=report.when, reason="" if outcome == "passed" else _reason(report))
 
-    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
-        if report.skipped or report.failed:
-            self.collection.append({"nodeid": report.nodeid, "outcome": "skipped" if report.skipped else "error", "reason": _reason(report)})
-
-    def pytest_deselected(self, items: list[pytest.Item]) -> None:
-        for item in items:
-            by = next((str(value) for key, value in item.user_properties if key == "deselected_by"), "runner selection")
-            self.deselected.append({"nodeid": item.nodeid, "by": by, "markers": _markers(item)})
-
-    def _notes(self) -> list[JSONValue]:
-        notes: list[JSONValue] = self.config.stash.setdefault(_NOTES, [])
-        return notes.copy()
-
     def pytest_sessionfinish(self, exitstatus: int) -> None:
         target = self.config.getoption("run_record")
         if not target:
@@ -120,5 +120,5 @@ class _Recorder:
         path = Path(target)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(record, indent=1) + "\n")
-        os.replace(tmp, path)
+        tmp.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        tmp.replace(path)

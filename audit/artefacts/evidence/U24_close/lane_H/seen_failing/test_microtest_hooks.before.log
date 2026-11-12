@@ -1,0 +1,23 @@
+FAIL test_a_test_leaving_tasks_parked_fails_and_the_next_test_finds_the_scheduler_empty:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 35, in run
+  File "tests/test_microtest_hooks.py", line 69, in test_a_test_leaving_tasks_parked_fails_and_the_next_test_finds_the_scheduler_empty
+AssertionError: ['PASS test_a_parks_four', 'FAIL test_b_finds_it_empty:', 'Traceback (most recent call last):', '  File "tests/microtest.py", line 35, in run', '  File "tests/_tmp/microtest_hooks/1/case.py", line 20, in test_b_finds_it_empty', 'AssertionError: ', '1/2 passed, 1 failed, 0 skipped', '']
+FAIL test_a_hook_runs_after_every_test_and_one_that_raises_fails_the_test_it_follows:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 35, in run
+  File "tests/test_microtest_hooks.py", line 37, in test_a_hook_runs_after_every_test_and_one_that_raises_fails_the_test_it_follows
+AssertionError: ['Traceback (most recent call last):', '  File "tests/_tmp/microtest_hooks/2/case.py", line 12, in <module>', "AttributeError: module 'microtest' has no attribute 'after_each'", '']
+FAIL test_sys_path_and_the_gc_threshold_are_back_after_each_test_in_either_order:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 35, in run
+  File "tests/test_microtest_hooks.py", line 51, in test_sys_path_and_the_gc_threshold_are_back_after_each_test_in_either_order
+AssertionError: ['PASS test_c', 'PASS test_b', 'FAIL test_a:', 'Traceback (most recent call last):', '  File "tests/microtest.py", line 35, in run', '  File "tests/_tmp/microtest_hooks/4/case.py", line 8, in test_a', "AssertionError: ['/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_tmp/microtest_hooks/4', 'build/generated_src', 'src', 'tests', 'frozen_modules', '.frozen', 'zz_hook_probe']", '2/3 passed, 1 failed, 0 skipped', '']
+PASS test_the_pre_sync_timestamp_flag_is_back_to_its_boot_value_after_each_test
+FAIL test_a_failed_test_that_also_parks_a_task_is_counted_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 35, in run
+  File "tests/test_microtest_hooks.py", line 83, in test_a_failed_test_that_also_parks_a_task_is_counted_once
+AssertionError: ['FAIL test_a:', 'Traceback (most recent call last):', '  File "tests/microtest.py", line 35, in run', '  File "tests/_tmp/microtest_hooks/6/case.py", line 9, in test_a', '  File "asyncio/core.py", line 1, in run', '  File "asyncio/core.py", line 1, in run_until_complete', '  File "asyncio/core.py", line 1, in run_until_complete', '  File "tests/_tmp/microtest_hooks/6/case.py", line 6, in main', '  File "asyncio/core.py", line 1, in create_task', 'TypeError: coroutine expected', '0/1 passed, 1 failed, 0 skipped', '']
+1/5 passed, 4 failed, 0 skipped
+RESULT tests/test_microtest_hooks.py stage=-1 rc=1 wall=0.1s

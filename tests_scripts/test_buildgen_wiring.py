@@ -24,8 +24,8 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[WiringField, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
-    return parse_wiring(path, "dev", "x")
+    path.write_text(source, encoding="utf-8")
+    return parse_wiring(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
@@ -38,14 +38,14 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None
 
 
 @pytest.mark.parametrize("mode", _MODES)
-@pytest.mark.parametrize("word,required", _REQUIREDNESS)
+@pytest.mark.parametrize(("word", "required"), _REQUIREDNESS)
 def test_parse_wiring_requiredness_mode_cross_product(tmp_path: Path, word: str, *, required: bool, mode: str) -> None:
     (field,) = _parse(tmp_path, f"# @wiring fram_target FRAMManager fram {word} {mode}\n")
     assert field == WiringField("fram_target", "FRAMManager", "fram", required, mode)
 
 
 @pytest.mark.parametrize(
-    "toml_field,producer,target",
+    ("toml_field", "producer", "target"),
     [
         ("fram_target", "FRAMManager", "fram"),
         ("fram_target", "FRAMManager", "fram_storage"),
@@ -130,7 +130,7 @@ def test_parse_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ("# @wirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # deletion
         ("# @wiiring fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # insertion
@@ -226,11 +226,11 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 
 
 @pytest.mark.parametrize(
-    "driver,expected",
+    ("driver", "expected"),
     [
         ("asy_bmp3xx_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         ("asy_isl29125_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
-        ("asy_neopixel_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_neopixel_driver.py", ()),  # nothing to log, so no FRAM store to wire
         ("asy_scd30_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         ("asy_sgp40_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         (
@@ -255,17 +255,16 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
     ],
 )
 def test_parse_wiring_real_drivers(src_dir: Path, driver: str, expected: "tuple[WiringField, ...]") -> None:
-    assert parse_wiring(src_dir / driver, "dev", "x") == expected
+    assert parse_wiring(src_dir / driver, "fixture", "x") == expected
 
 
 def test_no_other_src_module_declares_an_unnoticed_wiring_tag(src_dir: Path) -> None:
     # A new tag appearing in a module nobody expected it in should fail this test, not go unnoticed.
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_wiring(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_wiring(p, "fixture", "x")}
     assert tagged == {
         "asy_bmp3xx_driver.py",
         "asy_isl29125_driver.py",
         "asy_mqtt_client.py",
-        "asy_neopixel_driver.py",
         "asy_notification_service.py",
         "asy_ntp_client.py",
         "asy_scd30_driver.py",

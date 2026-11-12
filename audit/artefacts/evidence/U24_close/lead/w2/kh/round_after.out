@@ -1,0 +1,13 @@
+test_async_harness.py -1 rc=0 wall=0 17/17 passed, 0 failed, 0 skipped mem=0
+test_async_harness.py 32768 rc=0 wall=0 17/17 passed, 0 failed, 0 skipped mem=0
+test_asy_scd30_driver.py -1 rc=0 wall=22 125/125 passed, 0 failed, 0 skipped mem=0
+test_asy_scd30_driver.py 32768 rc=0 wall=44 125/125 passed, 0 failed, 0 skipped mem=0
+test_sensortask_dev.py -1 rc=0 wall=56 90/90 passed, 0 failed, 0 skipped mem=0
+test_sensortask_dev.py 32768 rc=0 wall=82 90/90 passed, 0 failed, 0 skipped mem=0
+test_asy_system_service.py -1 rc=0 wall=25 166/166 passed, 0 failed, 0 skipped mem=0
+test_asy_system_service.py 32768 rc=0 wall=28 166/166 passed, 0 failed, 0 skipped mem=0
+test_asy_fram_driver.py -1 rc=0 wall=1 104/104 passed, 0 failed, 0 skipped mem=0
+test_asy_fram_driver.py 32768 rc=0 wall=0 104/104 passed, 0 failed, 0 skipped mem=0
+test_asy_config_manager.py -1 rc=0 wall=0 232/232 passed, 0 failed, 0 skipped mem=0
+test_asy_config_manager.py 32768 rc=0 wall=0 232/232 passed, 0 failed, 0 skipped mem=0
+ALL_DONE

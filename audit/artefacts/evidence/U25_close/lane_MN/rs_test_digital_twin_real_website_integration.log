@@ -1,0 +1,200 @@
+FAIL test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 329, in test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 300, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 271, in test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 251, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_hotspot_mode_redirects_unmatched_path_to_root:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 214, in test_real_website_hotspot_mode_redirects_unmatched_path_to_root
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 203, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 241, in test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 224, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_inlined_definitions_matches_the_booted_devices_own_id:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 145, in test_real_website_inlined_definitions_matches_the_booted_devices_own_id
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 126, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_production_js_entry_is_served_not_the_prototype:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 163, in test_real_website_production_js_entry_is_served_not_the_prototype
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 152, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 290, in test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 280, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_root_serves_the_actual_production_index_html:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 101, in test_real_website_root_serves_the_actual_production_index_html
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 90, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+FAIL test_real_website_static_mount_never_shadows_a_real_api_route:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_real_website_integration.py", line 182, in test_real_website_static_mount_never_shadows_a_real_api_route
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_real_website_integration.py", line 173, in scenario
+  File "tests/test_digital_twin_real_website_integration.py", line 51, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 128, in build_system
+  File "src/asy_i2c_driver.py", line 139, in __init__
+  File "src/asy_i2c_driver.py", line 352, in init
+  File "digital_twin/machine.py", line 369, in __init__
+  File "digital_twin/machine.py", line 357, in _wire_i2c_devices
+  File "digital_twin/machine.py", line 329, in _current_wiring_plan
+RuntimeError: no wiring plan configured - call machine.configure_wiring(plan) before constructing a bus
+0/9 passed, 9 failed, 0 skipped
+RC=1 WALL=.200488503 FILE=tests/test_digital_twin_real_website_integration.py STAGE=-1

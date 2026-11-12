@@ -1,14 +1,23 @@
+"""The MQTT client against a scripted broker on loopback (tests/_mqtt_fake_broker.py): connect, session and will,
+gating and backoff, QoS 0/1 both ways, the unconfirmed-bytes cap, the publisher, the settings' shapes and its faults."""
+
 import asyncio
 import io
 import json
 import time
 
+from _async_harness import run
 from _error_codes import code
 from _mqtt_fake_broker import FakeBroker, encode_length, publish_packet, read_str
+from _port_bands import PortAllocator
+from _recording_print import record_prints
+from _src_const import src_int
+from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 
 import asy_mqtt_client
 from asy_mqtt_client import MQTTClient, MqttConfig, MqttConsumer
+from asy_print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -16,36 +25,29 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import TypeVar
+    from collections.abc import Callable
 
     from asy_mqtt_client import _Source
     from asy_print_log import ErrorLog
 
-    T = TypeVar("T")
-
 # This file's own port band (SPECIFICATION.md E.1: below 32768, outside every neighbour's band); one port per broker.
-_PORT_BASE = 28000
-_ports = [_PORT_BASE]
+_PORTS = PortAllocator("test_asy_mqtt_client")
 _scratch = TmpScratch("mqtt")
 
 # Short timings, so a scenario takes well under a second per phase: client id, response, connect, backoff min/max,
-# stable-after, QoS 1 retry, drain, tick, link poll, idle recheck, DNS timeout and tries. The ping interval is the
+# stable-after, QoS 1 retry, drain, tick, link poll, idle recheck and DNS timeout. The ping interval is the
 # MQTTPingInterval setting, 180 s by default: no idle ping within a test, only the one confirming each publish.
-_CFG = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+_CFG = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100)
 # A response deadline no test outlives: no ping a test causes waits on the broker's wire behind a packet the test
 # feeds a byte at a time.
-_QUIET_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+_QUIET_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100)
 _WAIT_MS = 8000  # every wait polls; the bound only matters on a failure
 # No in-session QoS 1 retry within a test: every PUBLISH sent again is one the session sent again.
-_SESSION_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100, 1)
-_R_STALLED = 7  # asy_mqtt_client.py's const()-folded teardown reason - mirrored, not importable
-_SLOT_INFLIGHT = 2  # asy_mqtt_client.py's const()-folded slot state - mirrored, not importable
-_ST_CONNECTED = 3  # asy_mqtt_client.py's const()-folded state - mirrored, not importable
-
-
-def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+_SESSION_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100)
+_R_STALLED: int = src_int("src/asy_mqtt_client.py", "_R_STALLED")  # the client's const()-folded teardown reason
+_R_UNEXPECTED: int = src_int("src/asy_mqtt_client.py", "_R_UNEXPECTED")
+_SLOT_INFLIGHT: int = src_int("src/asy_mqtt_client.py", "_SLOT_INFLIGHT")
+_ST_CONNECTED: int = src_int("src/asy_mqtt_client.py", "_ST_CONNECTED")
 
 
 def count(client: MQTTClient, key: str) -> int:
@@ -55,11 +57,10 @@ def count(client: MQTTClient, key: str) -> int:
 
 
 def _port() -> int:
-    _ports[0] += 1
-    return _ports[0]
+    return _PORTS.next()
 
 
-def make_client(*, link: "Callable[[], bool] | None" = None, consumers: "tuple[MqttConsumer, ...]" = (), sources: "tuple[_Source, ...]" = (), config: MqttConfig = _CFG) -> MQTTClient:
+def _make_client(*, link: "Callable[[], bool] | None" = None, consumers: "tuple[MqttConsumer, ...]" = (), sources: "tuple[_Source, ...]" = (), config: MqttConfig = _CFG) -> MQTTClient:
     return MQTTClient(asyncio.Lock(), link or (lambda: True), lambda: None, config, sources=sources, consumers=consumers, cfg_path=_scratch.dir())
 
 
@@ -80,7 +81,7 @@ async def configure(client: MQTTClient, port: int, **fields: "int | str | bool")
 
 
 async def start(client: MQTTClient) -> "list[asyncio.Task[None]]":
-    assert await client.setup()
+    await client.setup()
     return [client.start_asy_connection(), client.start_asy_publish()]
 
 
@@ -110,7 +111,7 @@ async def broker_and_client(
 ) -> "tuple[FakeBroker, MQTTClient, list[asyncio.Task[None]]]":
     broker = FakeBroker(_port())
     await broker.start()
-    client = make_client(link=link, consumers=consumers, sources=sources, config=config)
+    client = _make_client(link=link, consumers=consumers, sources=sources, config=config)
     tasks = await start(client)
     await configure(client, broker.port, **(fields or {}))
     client.reconnect()  # the settings group's post_fct, as a PUT runs it
@@ -153,7 +154,7 @@ def test_credentials_are_sent_only_when_set() -> None:
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTUser="u", MQTTPW="secret")
@@ -171,7 +172,7 @@ def test_a_disabled_client_opens_no_connection_and_logs_nothing() -> None:
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTEnable=False)
@@ -188,7 +189,7 @@ def test_a_disabled_client_opens_no_connection_and_logs_nothing() -> None:
 
 def test_an_enabled_client_without_a_host_stays_off() -> None:
     async def scenario() -> None:
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, 1883, MQTTHost="")
@@ -203,12 +204,12 @@ def test_an_enabled_client_without_a_host_stays_off() -> None:
 
 
 def test_a_reconnect_wakes_a_disabled_client_at_once() -> None:
-    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 60000, 100, 1)  # an idle recheck of a minute
+    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 60000, 100)  # an idle recheck of a minute
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client(config=config)
+        client = _make_client(config=config)
         tasks = await start(client)
         try:
             await asyncio.sleep_ms(100)  # the keeper is idling on the disabled default
@@ -281,7 +282,7 @@ def test_a_refused_connack_is_logged_and_retried_on_a_growing_backoff() -> None:
         broker = FakeBroker(_port())
         broker.connack_rc = 5  # not authorized
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -300,7 +301,7 @@ def test_a_refused_connack_is_logged_and_retried_on_a_growing_backoff() -> None:
 
 def test_no_listener_is_a_connect_failure_and_the_backoff_caps() -> None:
     async def scenario() -> None:
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, _port())  # nothing listens there
@@ -324,7 +325,7 @@ def test_an_unresolvable_broker_name_is_logged_as_dns() -> None:
         return None
 
     async def scenario() -> None:
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, 1883, MQTTHost="broker.invalid")
@@ -342,13 +343,13 @@ def test_an_unresolvable_broker_name_is_logged_as_dns() -> None:
 
 
 def test_a_missing_pingresp_ends_the_connection_and_the_client_reconnects() -> None:
-    config = MqttConfig("t1", 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+    config = MqttConfig("t1", 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100)
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         broker.answer_pings = False
         await broker.start()
-        client = make_client(config=config)
+        client = _make_client(config=config)
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -367,7 +368,7 @@ def test_short_sessions_warn_once_per_episode() -> None:
         broker = FakeBroker(_port())
         broker.close_after_connack = True  # what a takeover by a second client with this id looks like
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -391,7 +392,7 @@ def test_only_a_stable_session_resets_the_backoff() -> None:
         broker = FakeBroker(_port())
         broker.close_after_connack = True
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -413,7 +414,7 @@ def test_an_unacknowledged_qos1_message_is_resent_with_dup_then_given_up() -> No
         broker = FakeBroker(_port())
         broker.ack_publishes = False
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -438,7 +439,7 @@ def test_qos1_queued_while_down_is_sent_after_the_connect() -> None:
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTEnable=False)
@@ -486,7 +487,7 @@ def test_publish_refuses_and_counts_what_it_cannot_send() -> None:
 
 
 def test_a_full_ring_lets_qos0_give_way_first() -> None:
-    client = make_client()
+    client = _make_client()
     client._state = 3  # connected, with no socket: no keeper runs in this test, so nothing is flushed
     for i in range(7):
         assert client.publish("q1", bytes([i]), qos=1)
@@ -504,14 +505,14 @@ def test_a_full_ring_lets_qos0_give_way_first() -> None:
 def test_inbound_qos1_is_acknowledged_by_the_keeper_and_dispatched() -> None:
     got: list[tuple[bytes, bytes, bool]] = []
 
-    def consumer(topic: memoryview, payload: memoryview, retained: bool) -> None:  # noqa: FBT001 - the callback's shape
+    def consumer(topic: memoryview, payload: memoryview, retained: bool) -> None:
         got.append((bytes(topic), bytes(payload), retained))
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         broker.after_subscribe = [publish_packet(b"ext/temp", b"21.5", qos=1, pid=0x0102, retain=True)]
         await broker.start()
-        client = make_client(consumers=(MqttConsumer("ext/#", consumer),))
+        client = _make_client(consumers=(MqttConsumer("ext/#", consumer),))
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -537,14 +538,14 @@ def test_inbound_qos1_is_acknowledged_by_the_keeper_and_dispatched() -> None:
 
 
 def test_a_raising_consumer_is_logged_and_its_message_still_acknowledged() -> None:
-    def consumer(_topic: memoryview, _payload: memoryview, _retained: bool) -> None:  # noqa: FBT001 - the callback's shape
+    def consumer(_topic: memoryview, _payload: memoryview, _retained: bool) -> None:
         raise ValueError("consumer fault")
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         broker.after_subscribe = [publish_packet(b"ext/x", b"1", qos=1, pid=7)]
         await broker.start()
-        client = make_client(consumers=(MqttConsumer("ext/#", consumer),))
+        client = _make_client(consumers=(MqttConsumer("ext/#", consumer),))
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -577,14 +578,14 @@ def test_the_own_cmd_topic_is_counted_and_shown() -> None:
 def test_an_oversize_packet_is_discarded_and_the_next_one_parsed() -> None:
     got: list[bytes] = []
 
-    def consumer(_topic: memoryview, payload: memoryview, _retained: bool) -> None:  # noqa: FBT001 - the callback's shape
+    def consumer(_topic: memoryview, payload: memoryview, _retained: bool) -> None:
         got.append(bytes(payload))
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         broker.after_subscribe = [publish_packet(b"ext/big", b"B" * 5000), publish_packet(b"ext/small", b"ok")]
         await broker.start()
-        client = make_client(consumers=(MqttConsumer("ext/#", consumer),))
+        client = _make_client(consumers=(MqttConsumer("ext/#", consumer),))
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -632,7 +633,7 @@ def test_a_refused_subscription_is_logged_and_the_connection_stays() -> None:
         broker = FakeBroker(_port())
         broker.suback_code = 0x80
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -670,8 +671,8 @@ def test_a_reconnect_says_disconnect_and_uses_the_new_settings() -> None:
 
 def test_put_refuses_strings_outside_their_mqtt_shape() -> None:
     async def scenario() -> None:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         schema = client.get_cfg_schema()
         bad = {"MQTTHost": "bad host", "MQTTClientId": "a b", "MQTTPrefix": "a/#", "MQTTUser": "a\x00b"}
         results = await client._set_dict_cfg(bad, schema)
@@ -689,8 +690,8 @@ def test_put_refuses_strings_outside_their_mqtt_shape() -> None:
 
 def test_get_masks_the_password() -> None:
     async def scenario() -> None:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         await client._set_dict_cfg({"MQTTPW": "secret"}, client.get_cfg_schema())
         cfg = (await client.get_dict_cfg())["MQTT"]
         assert cfg["MQTTPW"] == "********"
@@ -704,7 +705,7 @@ def test_get_masks_the_password() -> None:
 
 
 def test_an_invalid_build_default_client_id_falls_back() -> None:
-    client = make_client(config=MqttConfig("bad id!", 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1))
+    client = _make_client(config=MqttConfig("bad id!", 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100))
     assert client._val_client_id[0][2] == "SensorNode"
 
 
@@ -712,8 +713,8 @@ def test_a_stored_value_out_of_shape_keeps_the_client_off_with_one_warning() -> 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         await configure(client, broker.port)
         await client.cfgmgr.flush_pending()
         client.cfgmgr._cache["MQTTPrefix"] = "a/#"  # as a hand-edited file would hold it
@@ -735,8 +736,8 @@ def test_a_host_out_of_shape_is_refused_at_put_and_a_stored_one_keeps_the_client
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         results = await client._set_dict_cfg({"MQTTHost": "bad host"}, client.get_cfg_schema())
         assert results == {"MQTTHost": "Invalid"}
         await configure(client, broker.port)
@@ -760,8 +761,8 @@ def test_the_shape_corpus_judges_the_broker_host_and_empty_is_off() -> None:
     assert cases["accept"] and cases["reject"]
 
     async def put(value: str) -> str:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         assert (await client._set_dict_cfg({"MQTTHost": "broker"}, client.get_cfg_schema())) == {"MQTTHost": "Valid"}
         return (await client._set_dict_cfg({"MQTTHost": value}, client.get_cfg_schema()))["MQTTHost"]
 
@@ -775,9 +776,7 @@ def test_the_shape_corpus_judges_the_broker_host_and_empty_is_off() -> None:
     run(scenario())
 
 
-# Mirrors asy_mqtt_client's const-folded _UNCONFIRMED_MAX, which no test can import.
-# @tunable mqtt.unconfirmed_max_bytes = 2000
-_UNCONFIRMED_MAX = 2000
+_UNCONFIRMED_MAX: int = src_int("src/asy_mqtt_client.py", "_UNCONFIRMED_MAX")  # the client's cap, read from source
 _CAP_MESSAGES = 7  # the ring's eight slots, less the online status still in flight
 _CAP_PAYLOAD = b"m" * 380  # about 388 B on the wire, so five fit under the cap and the sixth must wait
 
@@ -799,8 +798,8 @@ def test_the_ping_and_publish_intervals_take_off_and_default_to_three_minutes_an
     # Owner, 2026-10-13: the ping interval a setting that can be turned off ('3 min' its default), the measurement
     # publisher off-able and off by default.
     async def scenario() -> None:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         cfg = (await client.get_dict_cfg())["MQTT"]
         assert (cfg["MQTTPingInterval"], cfg["MQTTPubInterval"]) == (180, 0)
         schema = client.get_cfg_schema()
@@ -839,7 +838,7 @@ def test_idle_pings_follow_the_interval_setting() -> None:
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         client._ping_unit_ms = 20  # one setting second lasts 20 ms here: an interval of 10 pings every 200 ms
         tasks = await start(client)
         try:
@@ -859,7 +858,7 @@ def test_with_pings_off_an_idle_connection_sends_none_and_a_publish_still_gets_o
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         client._ping_unit_ms = 20
         tasks = await start(client)
         try:
@@ -883,7 +882,7 @@ def test_a_publish_written_while_a_ping_is_out_gets_a_ping_of_its_own() -> None:
         broker = FakeBroker(_port())
         broker.ping_delay_ms = 300
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -901,7 +900,7 @@ def test_a_publish_written_while_a_ping_is_out_gets_a_ping_of_its_own() -> None:
 
 def test_with_pings_off_a_publish_into_a_silent_broker_ends_the_link_and_a_qos1_event_goes_again() -> None:
     # The use the owner named (2026-10-13): an event sent at detection time, over a link no idle ping has checked.
-    config = MqttConfig("t1", 800, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100, 1)  # no QoS 1 retry within the test
+    config = MqttConfig("t1", 800, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100)  # no QoS 1 retry within the test
 
     async def scenario() -> None:
         broker, client, tasks = await broker_and_client(config=config, fields={"MQTTPingInterval": 0})
@@ -981,9 +980,6 @@ class _StallingStream:
         self.out_buf = b"pending"
         self.written: list[bytes] = []
 
-    def write(self, buf: "bytes | bytearray | memoryview") -> None:
-        self.written.append(bytes(buf))
-
     async def drain(self) -> None:
         await asyncio.sleep_ms(60000)
 
@@ -994,12 +990,15 @@ class _StallingStream:
     async def wait_closed(self) -> None:
         pass
 
+    def write(self, buf: "bytes | bytearray | memoryview") -> None:
+        self.written.append(bytes(buf))
+
 
 def test_a_drain_timeout_ends_the_connection() -> None:
     # The cancellation rule: a timed-out drain cancelled a socket waiter, so the connection must end in that tick.
     async def scenario() -> int:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         client._base = b"sensors/t1"
         stream = _StallingStream()
         client._new_connection()
@@ -1013,8 +1012,8 @@ def test_a_drain_timeout_ends_the_connection() -> None:
 
 def test_a_backlog_past_its_cap_ends_the_connection() -> None:
     async def scenario() -> int:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         client._base = b"sensors/t1"
         stream = _StallingStream()
         stream.out_buf = b"x" * 2049
@@ -1024,12 +1023,33 @@ def test_a_backlog_past_its_cap_ends_the_connection() -> None:
     assert run(scenario()) == _R_STALLED
 
 
+class _FaultyStream(_StallingStream):
+    # A read that raises what no socket raises: the reader's task top is all that stands between it and the loop.
+    async def readinto(self, _buf: memoryview) -> int:
+        raise ValueError("reader fault")
+
+
+def test_an_unexpected_reader_fault_is_logged_once_by_its_task_top() -> None:
+    # The reader is a create_task() target outside the starters, so its top logs (SPECIFICATION.md C.9); the keeper's
+    # own end entry then adds nothing, one occurrence being one entry (C.7.1).
+    async def scenario() -> "tuple[int, list[int], object]":
+        client = _make_client()
+        await client.setup()
+        client._new_connection()
+        await client._reader_loop(_FaultyStream())
+        await client._log_end(client._reader_end, 0)
+        log: ErrorLog = await client.get_error_counter()
+        return client._reader_end, await errnums(client), log["MQTT"]["ErrCount"]
+
+    assert run(scenario()) == (_R_UNEXPECTED, [code("E", "UNEXPECTED")], 1)
+
+
 def test_measurements_are_published_as_json_with_null_for_non_finite() -> None:
     class Source:
         async def get_dict_data(self) -> "dict[str, dict[str, object]]":
             return {"SCD30": {"CO2": 612, "Temp": float("nan"), "Hum": float("inf"), "TS": None, "RGB": {"R": float("-inf"), "G": 0.5}}}
 
-    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100)
 
     async def scenario() -> None:
         broker, client, tasks = await broker_and_client(sources=(Source(),), config=config, fields={"MQTTPubInterval": 60})
@@ -1038,7 +1058,7 @@ def test_measurements_are_published_as_json_with_null_for_non_finite() -> None:
             assert await until(lambda: len(broker.published(b"sensors/t1/measurements/SCD30")) == 1)
             first, payload = broker.published(b"sensors/t1/measurements/SCD30")[0]
             assert first == 0x30  # QoS 0, not retained
-            assert json.loads(payload) == {"CO2": 612, "Temp": None, "Hum": None, "TS": None, "RGB": {"R": None, "G": 0.5}}
+            assert strict_loads(payload) == {"CO2": 612, "Temp": None, "Hum": None, "TS": None, "RGB": {"R": None, "G": 0.5}}
             assert b"nan" not in payload and b"inf" not in payload
         finally:
             await stop(client, tasks, broker)
@@ -1062,7 +1082,7 @@ class _DumpsRecorder:
 
 def _round_on_a_connected_client(*sources: "_Source") -> MQTTClient:
     # One publisher round with no socket: the measurements stay queued in their slots for the test to read.
-    client = make_client(sources=sources)
+    client = _make_client(sources=sources)
     client._state = _ST_CONNECTED
     client._base = b"sensors/t1"
     run(client._publish_measurements())
@@ -1110,7 +1130,7 @@ def test_a_measurement_outgrowing_its_slot_is_dropped_and_counted() -> None:
 
 def test_no_client_buffer_needs_more_contiguous_heap_than_the_receive_buffer() -> None:
     # Contiguous chunk splitting: the outbound ring is one preallocated stream per slot, never one 3 KB block.
-    client = make_client()
+    client = _make_client()
     sizes = [len(v) for v in client.__dict__.values() if isinstance(v, (bytearray, memoryview))]
     assert max(sizes) == 1024, sizes
     assert len(client._slots) == 8, client._slots
@@ -1129,11 +1149,11 @@ def test_settings_and_topics_are_born_at_setup_and_kept_while_unchanged() -> Non
         await broker.start()
         cfg_dir = _scratch.dir()
         writer = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, cfg_path=cfg_dir)
-        assert await writer.setup()
+        await writer.setup()
         await configure(writer, broker.port, MQTTPubInterval=60)
         await writer.cfgmgr.flush_pending()  # on disk before the next client's setup() reads it
         client = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, sources=(Source(),), cfg_path=cfg_dir)
-        assert await client.setup()  # a boot with the client enabled
+        await client.setup()  # a boot with the client enabled
         born = (client._base, client._status_topic, client._client_id, client._host, client._meas_topics["BMP3XX"])
         assert born[:2] == (b"sensors/t1", b"sensors/t1/status"), born
         tasks = [client.start_asy_connection(), client.start_asy_publish()]
@@ -1209,7 +1229,7 @@ class _StallingLoop:
 
 def _rounds_on(loop: _StallingLoop, interval_ms: int, rounds: int) -> "list[int]":
     # The virtual times at which the publisher starts its first `rounds` rounds, connected from the start.
-    client = make_client()
+    client = _make_client()
     client._pub_interval_ms = interval_ms
     client._state = _ST_CONNECTED
     client._pub_due = True  # as the CONNACK sets it
@@ -1261,7 +1281,7 @@ def test_a_stall_longer_than_the_interval_never_bunches_rounds() -> None:
 def test_online_goes_out_with_the_subscribe_not_a_tick_later() -> None:
     # The bench board's online reached the broker 0.9 s after a reconnect's CONNACK: a GET /status held the loop past
     # the keeper's next tick. Written in the same step as the SUBSCRIBE, it waits on no wake; this tick is 2 s.
-    slow_tick = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 2000, 50, 200, 100, 1)
+    slow_tick = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 2000, 50, 200, 100)
 
     async def scenario() -> None:
         broker, client, tasks = await broker_and_client(config=slow_tick)
@@ -1339,7 +1359,7 @@ def test_a_failed_buffer_allocation_keeps_the_client_off_and_is_logged() -> None
     starved = _Starved()
     asy_mqtt_client.bytearray = starved  # type: ignore[attr-defined]
     try:
-        client = make_client()
+        client = _make_client()
     finally:
         asy_mqtt_client.bytearray = bytearray  # type: ignore[attr-defined]
     assert starved.fired == 1
@@ -1361,8 +1381,23 @@ def test_a_failed_buffer_allocation_keeps_the_client_off_and_is_logged() -> None
     run(scenario())
 
 
+def test_a_failed_buffer_allocation_prints_its_text_at_level_1() -> None:
+    # The caught MemoryError's own line goes out through the client's logger from level 1 up, nothing at level 0 (the
+    # memory gates read it, SPECIFICATION.md I.4(e)); setup() then persists the ALLOC entry, the test above.
+    for level in (0, 1):
+        asy_mqtt_client.bytearray = _Starved()  # type: ignore[attr-defined]
+        try:
+            with record_prints() as recorder:
+                MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, cfg_path=_scratch.dir(), log=LogConfig(None, 10, level))
+        finally:
+            asy_mqtt_client.bytearray = bytearray  # type: ignore[attr-defined]
+        assert len(recorder.lines) == level, recorder.lines
+    assert recorder.lines[0][0] == "MQTT", recorder.lines
+    assert "starved" in recorder.text(), recorder.lines
+
+
 def test_the_link_status_has_every_published_field() -> None:
-    status = make_client().get_link_status()
+    status = _make_client().get_link_status()
     assert set(status) == {
         "MQTTState", "MQTTConnected", "MQTTBroker", "MQTTUptime", "MQTTConnects", "MQTTTeardowns", "MQTTLastReason",
         "MQTTTxMsgs", "MQTTTxDropped", "MQTTRxMsgs", "MQTTRxDropped", "MQTTPingTimeouts", "MQTTShortSessions", "MQTTLastRxTopic",
@@ -1373,7 +1408,7 @@ def test_the_link_status_has_every_published_field() -> None:
 
 
 def test_the_starters_and_fan_in_follow_the_service_shape() -> None:
-    client = make_client()
+    client = _make_client()
     assert client.get_task_starters() == [client.start_asy_connection, client.start_asy_publish]
     assert client.get_timer_starters() == []
     assert client.get_error_sources() == [client, client.cfgmgr]
@@ -1384,7 +1419,7 @@ def test_the_starters_and_fan_in_follow_the_service_shape() -> None:
 def test_a_long_length_prefix_is_split_across_reads() -> None:
     got: list[bytes] = []
 
-    def consumer(_topic: memoryview, payload: memoryview, _retained: bool) -> None:  # noqa: FBT001 - the callback's shape
+    def consumer(_topic: memoryview, payload: memoryview, _retained: bool) -> None:
         got.append(bytes(payload))
 
     async def scenario() -> None:
@@ -1449,8 +1484,8 @@ def test_the_status_settings_shape_the_will_and_the_online_and_offline_messages(
 
 def test_put_refuses_status_settings_outside_their_shape_and_takes_the_rest() -> None:
     async def scenario() -> None:
-        client = make_client()
-        assert await client.setup()
+        client = _make_client()
+        await client.setup()
         schema = client.get_cfg_schema()
         bad: tuple[tuple[str, int | str], ...] = (
             ("MQTTWillTopic", "$SYS/x"), ("MQTTWillTopic", "a/#"), ("MQTTWillTopic", "a/+/b"), ("MQTTWillTopic", "x" * 129),
@@ -1471,7 +1506,7 @@ def test_a_persistent_session_connects_without_clean_session_and_keeps_its_will(
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1493,7 +1528,7 @@ def test_a_resumed_session_gets_its_unacknowledged_qos1_again_first_with_their_i
         broker = FakeBroker(_port())
         broker.ack_publishes = False
         await broker.start()
-        client = make_client(config=_SESSION_CFG)
+        client = _make_client(config=_SESSION_CFG)
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1529,7 +1564,7 @@ def test_a_resumed_sessions_resend_past_the_byte_cap_goes_after_the_next_ping_no
         broker = FakeBroker(_port())
         broker.ack_publishes = False
         await broker.start()
-        client = make_client(config=_SESSION_CFG)
+        client = _make_client(config=_SESSION_CFG)
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1559,7 +1594,7 @@ def test_a_session_the_broker_lost_gets_its_unacknowledged_qos1_as_new_messages(
         broker = FakeBroker(_port())
         broker.ack_publishes = False
         await broker.start()
-        client = make_client(config=_SESSION_CFG)
+        client = _make_client(config=_SESSION_CFG)
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1590,7 +1625,7 @@ def test_session_present_on_a_clean_session_is_a_malformed_connack() -> None:
         broker = FakeBroker(_port())
         broker.force_session_present = True
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -1609,7 +1644,7 @@ def test_session_present_on_a_clean_session_is_a_malformed_connack() -> None:
 
 
 def test_a_new_packet_id_skips_the_ids_still_in_flight() -> None:
-    client = make_client()
+    client = _make_client()
     client._pid = 65534
     client._slot_state[0] = _SLOT_INFLIGHT
     client._slot_pid[0] = 65535
@@ -1623,7 +1658,7 @@ def test_a_changed_client_id_retires_the_old_persistent_session_first() -> None:
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True, MQTTUser="u", MQTTPW="p")
@@ -1653,7 +1688,7 @@ def test_a_prefix_change_retires_the_session_even_under_the_same_client_id() -> 
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1676,7 +1711,7 @@ def test_switching_persistence_off_needs_no_retire_the_clean_connect_discards_it
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1699,7 +1734,7 @@ def test_switching_the_client_off_retires_its_persistent_session() -> None:
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1726,7 +1761,7 @@ def test_a_retire_that_fails_logs_one_warning_and_the_client_moves_on() -> None:
         new = FakeBroker(_port())
         await old.start()
         await new.start()
-        client = make_client()
+        client = _make_client()
         tasks = await start(client)
         try:
             await configure(client, old.port, MQTTPersistent=True)
@@ -1752,8 +1787,8 @@ def test_a_session_left_by_the_previous_boot_is_retired_too() -> None:
         broker = FakeBroker(_port())
         await broker.start()
         link = [False]
-        client = make_client(link=lambda: link[0])
-        assert await client.setup()
+        client = _make_client(link=lambda: link[0])
+        await client.setup()
         await configure(client, broker.port, MQTTPersistent=True)  # as the previous boot stored it
         tasks = [client.start_asy_connection(), client.start_asy_publish()]
         try:

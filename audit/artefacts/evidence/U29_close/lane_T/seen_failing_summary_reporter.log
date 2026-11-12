@@ -1,0 +1,66 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u29t
+
+ ❯ |chromium| tests_js/summary-reporter.test.js (8 tests | 1 failed) 397ms
+   ✓ renderSummary (7)
+     ✓ prints the whole block, every list empty, for a clean run 2ms
+     ✓ lists failed, skipped and retried items apart from the passes 1ms
+     ✓ lists notes after the recovery passes, never counting them or changing the result 0ms
+     ✓ files a missing verdict as failed 0ms
+     ✓ raises a passing code to 1 under a failed or vacuous item, and keeps a failure code 1ms
+     ✓ states the result each exit code stands for 1ms
+     ✓ refuses a kind the block does not know 2ms
+   ❯ the JS tier's timeout retry (1)
+     × retries a timed-out test or hook twice and nothing else 389ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/summary-reporter.test.js > the JS tier's timeout retry > retries a timed-out test or hook twice and nothing else
+AssertionError: expected undefined to be 2 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/summary-reporter.test.js/the-JS-tier-s-timeout-retry---retries-a-timed-out-test-or-hook-twice-and-nothing-else.png
+
+[32m- Expected:[39m
+2
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/summary-reporter.test.js:90:29
+     88|     test("retries a timed-out test or hook twice and nothing else", ({…
+     89|         const retry = /** @type {{ count?: number, condition?: unknown…
+     90|         expect(retry.count).toBe(2);
+       |                             ^
+     91|         expect(retry.condition).toBeInstanceOf(RegExp);
+     92|         const condition = /** @type {RegExp} */ (retry.condition);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4430fb24:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  05:42:10
+   Duration  4.55s (worker 43%, import 25%, tests 24%, setup 8%)
+
+== Summary: npm test ==
+Commit: b3d25ae (uncommitted changes)
+Levels: L0
+Counts (tests): passed 7 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/summary-reporter.test.js > the JS tier's timeout retry > retries a timed-out test or hook twice and nothing else: expected undefined to be 2 // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

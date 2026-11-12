@@ -3,10 +3,10 @@
 # Inspired by github.com/vshymanskyy/aiodns, not a port - THIRD_PARTY_LICENSES.md compares the two.
 
 """Async, non-blocking IPv4 DNS resolver (A records only) built on asy_udp_socket.py's UDPSocket; a
-`.local` name is asked once over multicast DNS instead (RFC 6762 SS5.1, SPECIFICATION.md Part A.11)."""
-# resolve_ipv4() never raises: it tries the caller's servers in order (no built-in server) and returns
-# the dotted-quad str or None; a name RFC 1035 cannot encode resolves to None. Only bare compression-pointer
-# answer names (RFC 1035 SS4.1.4) are followed, matching asy_captive_dns.py's precedent.
+`.local` name is asked once over multicast DNS instead (RFC 6762 SS5.1, SPECIFICATION.md Part A.12)."""
+# resolve_ipv4() never raises: it tries the caller's servers in order (no built-in server) and returns the dotted-quad
+# str or None. Only bare compression-pointer answer names (RFC 1035 SS4.1.4) are followed, matching
+# asy_captive_dns.py's precedent.
 
 import os
 
@@ -20,17 +20,11 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from asy_print_log import PrintLogHistory
-
-_WRN_SOCKET_TEARDOWN = const(12)
-_WRN_DNS_REPLY_TRUNCATED = const(16)
+    from asy_print_log import PrintLog
 
 _DNS_PORT = const(53)
-# @tunable dns.timeout_ms = 500
-_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - a standalone default only; real
-# callers are expected to override it explicitly with a value suited to their own timing budget.
-# @tunable dns.tries = 1
-_DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
+# @tunable dns.timeout_ms = 1000
+_DNS_TIMEOUT_MS = const(1000)  # per server: lwIP resends after DNS_TMR_INTERVAL (lib/lwip/src/include/lwip/dns.h:54, v1.29.0)
 DNS_UDP_MAX = const(512)  # RFC 1035 SS4.2.1: a DNS message over UDP is at most 512 octets.
 _MDNS_SUFFIX = ".local"  # RFC 6762 SS3: names under it are resolved by multicast, never by a unicast server
 _MDNS_GROUP = "224.0.0.251"  # RFC 6762 SS3's IPv4 group; not const()-wrapped, so tests can point it at a fake
@@ -42,7 +36,6 @@ _QCLASS_IN = const(b"\x00\x01")
 _IPV4_OCTETS = const(4)  # dotted-quad parts, and an A-record's RDLENGTH (RFC 1035 SS3.4.1)
 _IPV4_OCTET_MAX = const(255)
 DNS_LABEL_MAX = const(63)  # RFC 1035 SS3.1's single-length-byte ceiling
-DNS_NAME_MAX = const(255)  # RFC 1035 SS3.1: a name is at most 255 octets on the wire
 _HEADER_LEN = const(12)  # RFC 1035 SS4.1.1 fixed message header
 _PTR_MASK = const(0xC0)  # RFC 1035 SS4.1.4 compression-pointer top-two-bits marker
 _CLASS_MASK = const(0x7FFF)  # a record's class without RFC 6762 SS10.2's cache-flush bit
@@ -52,10 +45,8 @@ def _build_query(host: bytes, txn_id: bytes, *, recursion: bool = True) -> bytea
     # RFC 1035 SS4.1.1/4.1.2 message: 12-byte header + QNAME + QTYPE + QCLASS. QNAME is exactly
     # len(host) + 2 bytes on the wire regardless of label count; an mDNS query clears RD (RFC 6762 SS18.6).
     labels = host.split(b".")
-    # resolve_ipv4() is public: a name RFC 1035 SS3.1 cannot encode (a label over 63 octets, an empty label, over 255
-    # octets on the wire) is refused here whatever its caller checked; resolve_ipv4() maps it to None.
-    if len(host) + 2 > DNS_NAME_MAX or b"" in labels:
-        raise ValueError("not an encodable DNS name")
+    # RFC 1035 SS3.1/4.1.2: a label is length-prefixed by one byte, so over 63 octets is not a real label and over 255
+    # cannot be encoded at all. resolve_ipv4() is public: refused here whatever its caller checked, and mapped to None.
     if any(len(label) > DNS_LABEL_MAX for label in labels):
         raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > {DNS_LABEL_MAX} octets)")
     qname_len = len(host) + 2
@@ -106,34 +97,22 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     return None
 
 
-async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int, pr: "PrintLogHistory") -> str | None:
+async def _resolve_mdns(query: bytearray, timeout_ms: int, logger: "PrintLog | None") -> str | None:
     # A one-shot query from an ephemeral port (RFC 6762 SS5.1): a responder answers by unicast with the ID and
     # question repeated, as a conventional DNS reply (SS6.7), from its own address, so the socket is bound, not connected.
+    sock = UDPSocket(("0.0.0.0", 0), mode="server", logger=logger)
     try:
-        attempts = range(tries)
-    except TypeError:
-        return None
-    sock = UDPSocket(("0.0.0.0", 0), mode="server")
-    try:
-        for _ in attempts:
-            if await sock.sendto(query, (_MDNS_GROUP, _MDNS_PORT), timeout_ms=timeout_ms) is None:
-                continue
-            rsp, _addr = await sock.recvfrom(DNS_UDP_MAX + 1, timeout_ms=timeout_ms)
-            if rsp is None:
-                continue
-            if len(rsp) > DNS_UDP_MAX:  # the unicast path's cut-reply case (SS6.7's reply is a conventional one)
-                await pr.wrn_s("DNS reply truncated, trying the next server:", _MDNS_GROUP, wrnno=_WRN_DNS_REPLY_TRUNCATED)
-                continue
-            try:
-                ip = _parse_response(rsp, query)
-            except (IndexError, ValueError):  # the same residual bounds case as the unicast path
-                ip = None
-            if ip is not None:
-                return ip
+        if await sock.sendto(query, (_MDNS_GROUP, _MDNS_PORT), timeout_ms=timeout_ms) is None:
+            return None
+        rsp, _addr = await sock.recvfrom(DNS_UDP_MAX, timeout_ms=timeout_ms)
     finally:
-        if not await sock.disconnect():
-            await pr.wrn_s("DNS socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
-    return None
+        await sock.disconnect()  # never raises - see asy_udp_socket.py's own contract
+    if rsp is None:
+        return None
+    try:
+        return _parse_response(rsp, query)
+    except (IndexError, ValueError):  # the same residual bounds case as the unicast path
+        return None
 
 
 def host_label_ok(label: str) -> bool:
@@ -168,33 +147,32 @@ async def resolve_ipv4(
     host: str,
     dns_servers: tuple[str, ...] = (),
     timeout_ms: int = _DNS_TIMEOUT_MS,
-    tries: int = _DNS_TRIES,
     *,
-    pr: "PrintLogHistory",
+    logger: "PrintLog | None" = None,
 ) -> str | None:
     if ipv4_to_int(host) is not None:
         return host
-    name = host.lower()  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
-    mdns = name.endswith(_MDNS_SUFFIX)
     try:
+        name = host.lower()  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
+        mdns = name.endswith(_MDNS_SUFFIX)
         query = _build_query(name.encode(), os.urandom(2), recursion=not mdns)
-    except (MemoryError, ValueError):  # ValueError: a name RFC 1035 cannot encode - nothing to resolve
+    except MemoryError as e:
+        if logger is not None:  # a caught MemoryError's line goes through the caller's logger; with none, silent
+            logger.err("DNS query not built:", e)
+        return None
+    except ValueError:  # a label over 63 octets - not a real DNS name, nothing to resolve
         return None
     if mdns:
-        return await _resolve_mdns(query, timeout_ms, tries, pr)
+        return await _resolve_mdns(query, timeout_ms, logger)
     for server in dns_servers:
         if server == "0.0.0.0" or ipv4_to_int(server) is None:
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
-        cli = UDPSocket((server, _DNS_PORT), mode="client")
-        try:
-            rsp, _addr = await cli.write_and_recvfrom(query, DNS_UDP_MAX + 1, timeout_ms=timeout_ms, tries=tries)
+        cli = UDPSocket((server, _DNS_PORT), mode="client", logger=logger)
+        try:  # one query per server: the list is the retry, as lwIP's backup-server step (lwip/src/core/dns.c:1091-1100)
+            await cli.write(query, timeout_ms=timeout_ms)
+            rsp, _addr = await cli.recvfrom(DNS_UDP_MAX, timeout_ms=timeout_ms)
         finally:
-            if not await cli.disconnect():
-                await pr.wrn_s("DNS socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
-        # A whole reply is at most DNS_UDP_MAX (RFC 1035 SS4.2.1, no EDNS sent); a fuller buffer means lwIP cut it (extmod/modlwip.c:719-721, v1.29.0).
-        if rsp is not None and len(rsp) > DNS_UDP_MAX:
-            await pr.wrn_s("DNS reply truncated, trying the next server:", server, wrnno=_WRN_DNS_REPLY_TRUNCATED)
-            continue
+            await cli.disconnect()  # never raises - see asy_udp_socket.py's own contract
         if rsp is None:
             continue
         try:

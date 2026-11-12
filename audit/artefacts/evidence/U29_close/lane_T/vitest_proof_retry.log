@@ -1,0 +1,93 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u29/laneT/vitest_proof/root
+
+stdout | tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+always attempt 1
+stdout | tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+always attempt 2
+stdout | tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+always attempt 3
+ ❯ |chromium| tests_js/zz_retry_proof.test.js (4 tests | 2 failed) 2193ms
+   ✓ times out on its first run and passes on its second 499ms (retry x1)
+   × fails an assertion, never retried 66ms
+   ✓ a beforeEach hook (1)
+     ✓ times out once, then passes 365ms (retry x1)
+   × times out on every run: three attempts, then failed 1260ms (retry x2)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > fails an assertion, never retried
+AssertionError: expected 1 to be 100 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_retry_proof.test.js/fails-an-assertion--never-retried.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 100[39m
+[31m+ 1[39m
+
+ ❯ tests_js/zz_retry_proof.test.js:15:19
+     13| test("fails an assertion, never retried", () => {
+     14|     wrong += 1;
+     15|     expect(wrong).toBe(100);
+       |                   ^
+     16| });
+     17| describe("a beforeEach hook", () => {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+Error: Test timed out in 300ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_retry_proof.test.js/times-out-on-every-run--three-attempts--then-failed.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=277eb948:4317:14
+ ❯ tests_js/zz_retry_proof.test.js:30:1
+     28| });
+     29| let always = 0;
+     30| test("times out on every run: three attempts, then failed", async () =…
+       | ^
+     31|     always += 1;
+     32|     console.log(`always attempt ${always}`);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  05:41:01
+   Duration  13.34s (tests 83%, worker 16%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 0 · failed 2 · skipped 0 · deselected 0 · retried 2 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/zz_retry_proof.test.js > fails an assertion, never retried: expected 1 to be 100 // Object.is equality
+  - tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed: Test timed out in 300ms.
+Skipped: none
+Deselected: none
+Passed only on retry:
+  - tests_js/zz_retry_proof.test.js > times out on its first run and passes on its second (attempt 2/3)
+  - tests_js/zz_retry_proof.test.js > a beforeEach hook > times out once, then passes (attempt 2/3)
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

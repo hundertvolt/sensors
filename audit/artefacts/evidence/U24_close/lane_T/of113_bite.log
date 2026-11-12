@@ -1,0 +1,49 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________ test_a_real_device_rewritten_only_in_order_or_name_builds ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7993/test_a_real_device_rewritten_o0')
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24t')
+
+    def test_a_real_device_rewritten_only_in_order_or_name_builds(tmp_path: Path, repo_root: Path) -> None:
+        # The mutation corpus above reaches generation by chance; here every case is valid by construction and must generate.
+        src_dir = repo_root / "src"
+        rng = random.Random(_SEED)  # noqa: S311 - a seeded case generator, no secret
+        built = 0
+        for case in range(_VALID_CASES):
+            device = DEVICE_NAMES[case % len(DEVICE_NAMES)]
+            doc: TomlDoc = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))
+            did = rng.sample(_REWRITES, rng.randint(1, 3))
+            for kind in did:
+                _rewrite(rng, doc, kind)
+            path = write_doc(tmp_path, "fixture", doc)
+            try:
+>               model = build_model(path, src_dir)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_buildgen_fuzz.py:188: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+buildgen/validate.py:1502: in build_model
+    _check_device_table(model, src_dir)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+model = DeviceModel(device='fixture', path=PosixPath('/tmp/pytest-of-root/pytest-7993/test_a_real_device_rewritten_o0/fixture....uires_tags=(), limits_schema=(), value_wiring_schema=(), resolved_name=None)}, construction_order=[], device_wiring={})
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24t/src')
+
+    def _check_device_table(model: DeviceModel, src_dir: Path) -> None:
+        # hostname and hotspot_password reach generated code as WifiService's defaults of its two persisted fields,
+        # so each is held to the bounds its schema (_VAL_HOSTNAME, _VAL_HOTSPOT_PW) refuses at boot.
+        table = model.doc.get("device")
+        if not isinstance(table, dict):
+            what = "missing [device] table" if table is None else f"[device] must be a table, got {table!r}"
+            raise BuildError(model.device, what, rule="device.table-missing", fix="add a [device] table naming the device and its hotspot settings")
+        for f in _REQUIRED_DEVICE_FIELDS:
+            if f not in table:
+>               raise BuildError(model.device, f"[device] is missing required field {f!r}", rule="device.field-missing", fix=f"add {f} to [device]", field=f)
+E               buildgen.errors.BuildError: [fixture.hostname] [device] is missing required field 'hostname' - fix: add hostname to [device]
+E               seed 20261008 case 0: arzi after ['reverse-instances', 'reverse-keys'] must build
+
+buildgen/validate.py:219: BuildError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_fuzz.py::test_a_real_device_rewritten_only_in_order_or_name_builds
+1 failed, 1 deselected in 0.14s

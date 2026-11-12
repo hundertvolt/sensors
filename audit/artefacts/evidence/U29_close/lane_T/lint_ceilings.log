@@ -1,0 +1,28 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u29t
+
+ ✓ |chromium| tests_js/lint-ceilings.test.js (4 tests) 5194ms
+   ✓ ESLint complexity ceilings (4)
+     ✓ complexity sits at its measured maximum 2327ms
+     ✓ max-depth sits at its measured maximum 1155ms
+     ✓ max-nested-callbacks sits at its measured maximum 1267ms
+     ✓ max-classes-per-file sits at its measured maximum 443ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  05:43:39
+   Duration  7.18s (tests 89%, worker 7%, import 4%)
+
+== Summary: npm test ==
+Commit: b3d25ae (uncommitted changes)
+Levels: L0
+Counts (tests): passed 4 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

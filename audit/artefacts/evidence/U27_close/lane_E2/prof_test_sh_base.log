@@ -1,0 +1,120 @@
+........................................................................ [ 48%]
+........................................................................ [ 97%]
+...                                                                      [100%]
+============================== slowest durations ===============================
+5.10s call     tests_scripts/test_test_sh.py::test_without_the_trap_the_background_child_outlives_an_aborted_run
+2.70s call     tests_scripts/test_test_sh.py::test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends
+2.05s call     tests_scripts/test_test_sh.py::test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout
+2.02s call     tests_scripts/test_test_sh.py::test_the_timeout_interrupts_the_files_process_once
+2.02s call     tests_scripts/test_test_sh.py::test_a_file_that_ignores_the_interrupt_is_killed_and_the_run_says_why
+1.73s call     tests_scripts/test_test_sh.py::test_a_job_that_ignores_the_stop_is_killed_after_twice_the_hard_stop_and_named
+1.71s call     tests_scripts/test_test_sh.py::test_a_skipped_test_is_named_in_the_block_with_its_reason_once
+1.66s call     tests_scripts/test_test_sh.py::test_an_allocation_failure_in_a_timed_out_attempt_fails_the_file_its_retry_passes
+1.24s call     tests_scripts/test_test_sh.py::test_the_exit_trap_kills_the_background_child_on_an_aborted_run
+1.21s call     tests_scripts/test_test_sh.py::test_a_genuinely_slow_host_drops_to_one_times_on_the_real_clock
+1.04s call     tests_scripts/test_test_sh.py::test_a_pass_after_a_timeout_is_retried_pass_not_pass
+0.78s call     tests_scripts/test_test_sh.py::test_a_renderer_failure_alone_exits_three_rather_than_one
+0.78s call     tests_scripts/test_test_sh.py::test_a_crash_with_no_count_line_keeps_its_reason_though_a_test_had_failed
+0.77s call     tests_scripts/test_test_sh.py::test_a_failed_new_render_alone_exits_three[coverage html]
+0.75s call     tests_scripts/test_test_sh.py::test_a_failed_new_render_alone_exits_three[coverage report]
+0.75s call     tests_scripts/test_test_sh.py::test_a_retried_a_crashed_and_an_allocation_flagged_file_render_the_block
+0.74s call     tests_scripts/test_test_sh.py::test_the_pytest_tier_fails_on_its_exit_or_a_missing_record[FAIL-{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": false, "session_notes": [], "exitstatus": 0}-pytest exited nonzero or timed out]
+0.74s call     tests_scripts/test_test_sh.py::test_the_pytest_tiers_notes_reach_the_block_and_its_recoveries_are_named_and_counted
+0.73s call     tests_scripts/test_test_sh.py::test_a_coverage_run_renders_the_four_reports
+0.72s call     tests_scripts/test_test_sh.py::test_an_aborted_run_ends_every_file_job_before_it_releases_the_port_lock
+0.72s call     tests_scripts/test_test_sh.py::test_a_coverage_run_names_each_lwip_host_file_as_skipped
+0.71s call     tests_scripts/test_test_sh.py::test_a_missing_verdict_or_count_is_a_failure[FAIL\n-[test_x] 1/3 passed, 2 failed, 0 skipped\n-2 of 3 tests failed]
+0.71s call     tests_scripts/test_test_sh.py::test_a_failed_new_render_alone_exits_three[htmlcov_generated]
+0.69s call     tests_scripts/test_test_sh.py::test_a_failed_files_reason_names_each_failing_test_with_its_first_failure_line[two]
+0.69s call     tests_scripts/test_test_sh.py::test_an_aborted_test_is_named_in_its_files_reason_as_a_failing_one_is
+0.68s call     tests_scripts/test_test_sh.py::test_a_device_job_is_reported_under_its_file_and_device
+0.68s call     tests_scripts/test_test_sh.py::test_a_failing_lwip_host_file_fails_l1_and_a_plain_run_lists_no_skip
+0.67s call     tests_scripts/test_test_sh.py::test_a_missing_verdict_or_count_is_a_failure[None-[test_x] 1/1 passed, 0 failed, 0 skipped\n-no verdict]
+0.66s call     tests_scripts/test_test_sh.py::test_the_pytest_tier_fails_on_its_exit_or_a_missing_record[PASS-None-1 failed (listed above)]
+0.66s call     tests_scripts/test_test_sh.py::test_a_green_run_passes_and_archives_the_block_only
+0.66s call     tests_scripts/test_test_sh.py::test_the_pytest_tiers_skips_and_deselections_are_named_with_their_reasons
+0.66s call     tests_scripts/test_test_sh.py::test_a_test_failure_outranks_a_renderer_failure
+0.65s call     tests_scripts/test_test_sh.py::test_the_pytest_tier_fails_on_its_exit_or_a_missing_record[PASS-{garbled-1 failed (listed above)]
+0.64s call     tests_scripts/test_test_sh.py::test_at_most_five_failing_tests_are_named_and_the_rest_counted[1-2-+1 more]
+0.62s call     tests_scripts/test_test_sh.py::test_at_most_five_failing_tests_are_named_and_the_rest_counted[7-7-+2 more]
+0.62s call     tests_scripts/test_test_sh.py::test_nothing_follows_the_block_on_stdout
+0.61s call     tests_scripts/test_test_sh.py::test_a_missing_verdict_or_count_is_a_failure[PASS\n-None-no test count (crashed or killed)]
+0.61s call     tests_scripts/test_test_sh.py::test_a_no_verdict_marker_from_the_memory_gate_fails_the_file
+0.61s call     tests_scripts/test_test_sh.py::test_a_missing_verdict_or_count_is_a_failure[-[test_x] 1/1 passed, 0 failed, 0 skipped\n-no verdict]
+0.60s call     tests_scripts/test_test_sh.py::test_a_failed_files_reason_names_each_failing_test_with_its_first_failure_line[one]
+0.08s call     tests_scripts/test_test_sh.py::test_a_per_device_file_runs_once_per_generated_device_and_any_other_file_once
+0.07s call     tests_scripts/test_test_sh.py::test_an_aborted_run_archives_its_logs_before_the_trap_removes_scratch
+0.07s call     tests_scripts/test_test_sh.py::test_a_missing_record_or_lwip_build_runs_setup[present3-False-the lwIP host build]
+0.07s call     tests_scripts/test_test_sh.py::test_a_missing_record_or_lwip_build_runs_setup[present2-False-the lwIP host build]
+0.06s call     tests_scripts/test_test_sh.py::test_a_missing_record_or_lwip_build_runs_setup[present0-False-no toolchain record]
+0.06s call     tests_scripts/test_test_sh.py::test_the_heavy_files_and_every_job_of_theirs_go_first
+0.06s call     tests_scripts/test_test_sh.py::test_a_missing_record_or_lwip_build_runs_setup[present1-True-no toolchain record]
+0.05s call     tests_scripts/test_test_sh.py::test_the_annotations_never_pass_github_s_ten_per_step_cap_and_the_pytest_tier_s_comes_first
+0.04s call     tests_scripts/test_test_sh.py::test_a_complete_toolchain_runs_no_setup[False]
+0.04s call     tests_scripts/test_test_sh.py::test_the_lwip_host_files_are_dispatched_last_on_the_lwip_binary
+0.04s call     tests_scripts/test_test_sh.py::test_a_device_job_runs_with_its_device_and_its_own_tag
+0.04s call     tests_scripts/test_test_sh.py::test_a_complete_toolchain_runs_no_setup[True]
+0.04s call     tests_scripts/test_test_sh.py::test_a_setup_that_leaves_the_record_or_the_lwip_build_missing_ends_the_run[record-error: setup left no toolchain record at]
+0.03s call     tests_scripts/test_test_sh.py::test_a_plain_job_runs_without_a_device_even_when_the_caller_has_one
+0.03s call     tests_scripts/test_test_sh.py::test_a_per_device_file_refuses_to_run_without_a_device[test_digital_twin_construction.py]
+0.03s call     tests_scripts/test_test_sh.py::test_a_job_runs_on_the_binary_it_is_given
+0.03s call     tests_scripts/test_test_sh.py::test_the_exit_trap_releases_the_port_lock_on_an_aborted_run
+0.03s call     tests_scripts/test_test_sh.py::test_a_setup_that_leaves_the_record_or_the_lwip_build_missing_ends_the_run[build-lwip-the lwIP host build]
+0.03s call     tests_scripts/test_test_sh.py::test_a_coverage_run_dispatches_no_lwip_host_file
+0.03s call     tests_scripts/test_test_sh.py::test_a_coverage_run_does_not_need_the_lwip_host_build
+0.02s call     tests_scripts/test_test_sh.py::test_a_run_under_the_cap_gets_every_annotation_and_no_overflow_line
+0.02s call     tests_scripts/test_test_sh.py::test_an_unlimited_or_malformed_quota_leaves_the_core_count_alone
+0.02s call     tests_scripts/test_test_sh.py::test_the_grant_reaches_every_binary_a_run_boots[True-expected1]
+0.02s call     tests_scripts/test_test_sh.py::test_a_file_whose_marker_cannot_be_read_stops_the_dispatch
+0.01s call     tests_scripts/test_test_sh.py::test_the_per_device_files_are_the_scenario_entries
+0.01s call     tests_scripts/test_test_sh.py::test_the_grant_reaches_every_binary_a_run_boots[False-expected0]
+0.01s call     tests_scripts/test_test_sh.py::test_a_coverage_run_traces_the_host_build_chain_through_the_pytest_tier
+0.01s call     tests_scripts/test_test_sh.py::test_the_coverage_cap_is_applied_to_the_detected_parallelism
+0.01s call     tests_scripts/test_test_sh.py::test_a_plain_run_launches_the_pytest_tier_untraced
+0.01s call     tests_scripts/test_test_sh.py::test_an_unusable_binary_is_reported_as_such_rather_than_as_the_plain_variant
+0.01s call     tests_scripts/test_test_sh.py::test_a_zero_or_negative_override_falls_back_to_sequential_instead_of_hanging
+0.01s call     tests_scripts/test_test_sh.py::test_a_binary_whose_frozen_asyncio_is_missing_is_unusable_not_plain
+0.01s call     tests_scripts/test_test_sh.py::test_the_heap_is_locked_wording_is_flagged_too
+0.01s call     tests_scripts/test_test_sh.py::test_a_zero_reading_is_a_failed_probe
+0.01s call     tests_scripts/test_test_sh.py::test_an_unset_or_empty_override_uses_the_detected_value
+0.01s call     tests_scripts/test_test_sh.py::test_each_speed_band_picks_its_own_multiplier[250-4]
+0.01s call     tests_scripts/test_test_sh.py::test_each_speed_band_picks_its_own_multiplier[10-4]
+0.01s call     tests_scripts/test_test_sh.py::test_the_real_caught_and_degraded_form_is_flagged_though_it_never_says_memoryerror
+0.01s call     tests_scripts/test_test_sh.py::test_the_flag_records_the_offending_lines_not_just_the_fact
+0.01s call     tests_scripts/test_test_sh.py::test_an_unreadable_uptime_file_runs_at_one_times_and_says_so
+0.01s call     tests_scripts/test_test_sh.py::test_each_speed_band_picks_its_own_multiplier[260-2]
+0.01s call     tests_scripts/test_test_sh.py::test_a_broken_probe_runs_at_one_times_and_says_so
+0.01s call     tests_scripts/test_test_sh.py::test_each_speed_band_picks_its_own_multiplier[910-1]
+0.01s call     tests_scripts/test_test_sh.py::test_a_cpu_quota_below_the_core_count_clamps_the_job_count
+0.01s call     tests_scripts/test_test_sh.py::test_an_allocation_failure_marker_survives_into_one_escaped_annotation
+0.01s call     tests_scripts/test_test_sh.py::test_each_speed_band_picks_its_own_multiplier[900-2]
+0.01s call     tests_scripts/test_test_sh.py::test_a_fractional_quota_rounds_up_rather_than_down_to_zero
+0.01s call     tests_scripts/test_test_sh.py::test_a_missing_log_cannot_abort_the_summary_the_annotation_is_part_of
+0.01s call     tests_scripts/test_test_sh.py::test_a_caught_and_logged_memory_error_is_flagged
+0.01s call     tests_scripts/test_test_sh.py::test_a_grep_error_is_no_verdict_rather_than_clean
+0.01s call     tests_scripts/test_test_sh.py::test_a_failing_file_s_own_output_survives_into_one_annotation
+0.01s call     tests_scripts/test_test_sh.py::test_a_stepped_realtime_clock_leaves_the_band_unchanged
+0.01s call     tests_scripts/test_test_sh.py::test_a_missing_memerr_marker_cannot_abort_the_summary_either
+0.01s call     tests_scripts/test_test_sh.py::test_help_prints_every_option_and_variable_and_touches_nothing
+0.01s call     tests_scripts/test_test_sh.py::test_a_clean_run_is_not_flagged
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args2-env2-error: PER_FILE_TIMEOUT_S must be a positive integer number of seconds, not '0']
+0.01s call     tests_scripts/test_test_sh.py::test_the_suites_own_injected_allocation_failures_do_not_trip_the_gate
+0.01s call     tests_scripts/test_test_sh.py::test_the_coverage_binary_reports_itself_as_the_settrace_variant
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args8-env8-error: TEST_PARALLELISM must be a positive integer, not 'abc']
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args0-env0-GC_THRESHOLD must be an integer]
+0.01s call     tests_scripts/test_test_sh.py::test_the_test_rig_binary_reports_itself_as_the_settrace_free_variant
+0.01s call     tests_scripts/test_test_sh.py::test_every_grant_comes_before_the_pytest_tier_is_backgrounded
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args5-env5-error: TESTS_SCRIPTS_TIMEOUT_S must be a positive integer number of seconds, not '0']
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args9-env9-error: TEST_PARALLELISM must be a positive integer, not '1.5']
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args3-env3-PER_FILE_TIMEOUT_S must be a positive integer number of seconds]
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args6-env6-error: TEST_PARALLELISM must be a positive integer, not '0']
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args4-env4-PER_FILE_TIMEOUT_S must be a positive integer number of seconds]
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args1-env1-error: unknown argument --bogus (scripts/test.sh --help)]
+0.01s call     tests_scripts/test_test_sh.py::test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched[args7-env7-error: TEST_PARALLELISM must be a positive integer, not '-1']
+0.01s call     tests_scripts/test_test_sh.py::test_a_heavy_list_naming_a_missing_file_stops_the_run
+0.01s call     tests_scripts/test_test_sh.py::test_an_out_of_range_gc_threshold_is_rejected_too[999999999999999999999]
+0.01s call     tests_scripts/test_test_sh.py::test_a_tree_with_no_generated_device_stops_before_dispatching
+0.01s call     tests_scripts/test_test_sh.py::test_an_out_of_range_gc_threshold_is_rejected_too[-999999999999999999999]
+
+(328 durations < 0.005s hidden.  Use -vv to show these durations.)
+147 passed in 44.58s

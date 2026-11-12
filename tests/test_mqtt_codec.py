@@ -1,3 +1,6 @@
+"""mqtt_codec.py: the remaining-length table, every encoder's exact bytes and its no-room answer, topic-filter matching
+and the configuration shape checks (MQTT 3.1.1)."""
+
 import mqtt_codec as mc
 
 

@@ -1,0 +1,79 @@
+F..............                                                          [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('SPECIFICATION.md', 'archive §7'): 27, ('tests_hardware/README.md', 'archive §7'): 7, ('HEAP_FRAGMENTATION_M...test_digital_twin_generated_boot.py', 'Session 3'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           BACKLOG.md: archive §7
+E           BACKLOG.md: archive §7
+E           CLAUDE.md: archive §11
+E           CLAUDE.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §0
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §1
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §1
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §6
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §7
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md: archive §8
+E           SPECIFICATION.md: archive §1
+E           SPECIFICATION.md: archive §1
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           SPECIFICATION.md: archive §7
+E           scripts/_digital_twin_ci_suite.py: archive §9
+E           tests/test_asy_webserver_service.py: archive §7
+E           tests/test_asy_webserver_service.py: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/README.md: archive §7
+E           tests_hardware/bench/test_heap_under_connection_ceiling.py: archive §7
+E           tests_hardware/bench/test_serving_heap_at_default_gc.py: archive §7
+E           tests_hardware/heap_map.py: archive §7
+E       assert not [('BACKLOG.md', 'archive §7'), ('BACKLOG.md', 'archive §7'), ('CLAUDE.md', 'archive §11'), ('CLAUDE.md', 'archive §7'), ('HEAP_FRAGMENTATION_MEASUREMENTS.md', 'archive §0'), ('HEAP_FRAGMENTATION_MEASUREMENTS.md', 'archive §1'), ...]
+
+tests_scripts/test_citations.py:251: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneN/k9_scratch/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+1 failed, 14 passed, 1 warning in 11.74s

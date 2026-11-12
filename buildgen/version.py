@@ -1,11 +1,13 @@
-"""Single source of truth for this project's own product version (SPECIFICATION.md Part L.7) -
-bump FIRMWARE_VERSION/WEBSITE_VERSION by hand; no automation exists (agent, 2026-09-12, `ffc17ae`; a deferral, not a decision). Consumed by
-buildgen.codegen/definitions (see that session's own account for the full consumer list/reasoning)."""
+"""Single source of truth for this project's own product version (SPECIFICATION.md Part L.7) - bump
+FIRMWARE_VERSION/WEBSITE_VERSION by hand; no automation exists (agent, 2026-09-12, `ffc17ae`; a deferral, not a
+decision).
+
+Consumed by buildgen.codegen/definitions (see that session's own account for the full consumer list/reasoning)."""
 
 from datetime import UTC, datetime
 
-FIRMWARE_VERSION = "2.0b0"
-WEBSITE_VERSION = "2.0b0"
+FIRMWARE_VERSION = "2.0"
+WEBSITE_VERSION = "2.0"
 
 
 def current_build_date() -> str:

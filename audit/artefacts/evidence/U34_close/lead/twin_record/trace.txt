@@ -1,0 +1,28 @@
+twin record trace, 147ea3f -> b1bf1f3 (+ working tree)
+entries 122 -> 122; added []; removed []
+result and reason unchanged: 122 of 122
+runner files changed since 147ea3f: none
+tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/bmp3xx_plausibility_read.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py
+tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py: exception -> exception; moved api_sha256: src/asy_fram_driver.py
+tests_hardware/device_scripts/fram_raw_dump.py: pass -> pass; moved api_sha256: src/asy_fram_driver.py
+tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py: exception -> exception; moved api_sha256: src/asy_fram_driver.py
+tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py: exception -> exception; moved api_sha256: src/asy_fram_driver.py
+tests_hardware/device_scripts/fram_same_device_rw_concurrency.py: exception -> exception; moved api_sha256: src/asy_fram_driver.py
+tests_hardware/device_scripts/i2c_held_sda_recovery.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/isl29125_cross_device_concurrency.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/isl29125_lighting_scenarios.py: exception -> exception; moved api_sha256: src/asy_isl29125_driver.py
+tests_hardware/device_scripts/isl29125_mechanism_envelope.py: exception -> exception; moved api_sha256: src/asy_isl29125_driver.py
+tests_hardware/device_scripts/isl29125_plausibility_read.py: exception -> exception; moved api_sha256: src/asy_isl29125_driver.py
+tests_hardware/device_scripts/isl29125_real_irq_edge.py: exception -> exception; moved api_sha256: src/asy_isl29125_driver.py
+tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/reset_code_command_incomplete.py: exception -> exception; moved api_sha256: src/asy_fram_driver.py
+tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py: exception -> exception; moved api_sha256: src/asy_bmp3xx_driver.py, src/asy_isl29125_driver.py
+untraced moved hashes: 0

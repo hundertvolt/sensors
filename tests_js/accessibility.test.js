@@ -13,7 +13,6 @@ import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 /** @typedef {import("../js/definitions.js").Section} Section */
 
 const SAMPLES = /** @type {import("../js/definitions.js").MockSamples} */ (samples);
-// @tunable l0.section_render_wait_ms = 5000
 const SECTION_RENDER_WAIT_MS = 5000;
 
 /**
@@ -142,7 +141,6 @@ describe.each(DEVICE_IDS)("%s's page", (device) => {
         page?.remove();
         page = undefined;
         window.history.replaceState(null, "", originalUrl);
-        vi.restoreAllMocks();
     });
 
     /**

@@ -1,0 +1,2 @@
+FAIL test_a_shutdown_hang_arms_once_every_supervised_task_has_started_and_its_cancel_ends_the_hold:
+31/32 passed, 1 failed, 0 skipped

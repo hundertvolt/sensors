@@ -1,0 +1,20 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________ test_the_runs_limit_is_the_twin_launchs_own __________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v4-bite')
+
+    def test_the_runs_limit_is_the_twin_launchs_own(repo_root: Path) -> None:
+        # The runner's copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
+        copies = re.findall(r"^qstr_max_bytes=(\d+)$", _test_sh_text(repo_root), re.MULTILINE)
+>       assert copies == [str(_LIMIT)], f"scripts/test.sh holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"
+E       AssertionError: scripts/test.sh holds the qstr limit ['256'], scripts/_twin_process.py 255
+E       assert ['256'] == ['255']
+E         
+E         At index 0 diff: '256' != '255'
+E         Use -v to get more diff
+
+tests_scripts/test_test_sh.py:1446: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_the_runs_limit_is_the_twin_launchs_own
+1 failed, 189 deselected in 0.16s

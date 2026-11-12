@@ -1,0 +1,18 @@
+asyncio.run            thr=    -1 median_us=3.57 min_us=3.48
+harness.run            thr=    -1 median_us=5.58 min_us=5.42
+harness.run(limit)     thr=    -1 median_us=17.00 min_us=16.52
+asyncio.run(wait_for)  thr=    -1 median_us=14.13 min_us=13.50
+== W1 harness
+asyncio.run            thr=    -1 median_us=3.47 min_us=3.43
+harness.run            thr=    -1 median_us=10.41 min_us=9.72
+harness.run(limit)     thr=    -1 median_us=21.94 min_us=20.29
+asyncio.run(wait_for)  thr=    -1 median_us=13.60 min_us=13.41
+asyncio.run            thr= 32768 median_us=31.39 min_us=30.99
+harness.run            thr= 32768 median_us=34.45 min_us=32.49
+harness.run(limit)     thr= 32768 median_us=107.12 min_us=103.73
+asyncio.run(wait_for)  thr= 32768 median_us=103.64 min_us=102.77
+== W1 harness
+asyncio.run            thr= 32768 median_us=31.86 min_us=31.45
+harness.run            thr= 32768 median_us=115.70 min_us=113.84
+harness.run(limit)     thr= 32768 median_us=186.57 min_us=185.51
+asyncio.run(wait_for)  thr= 32768 median_us=104.06 min_us=102.59

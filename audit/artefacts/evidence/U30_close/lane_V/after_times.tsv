@@ -1,0 +1,29 @@
+ci:arzi@-1@12	20.34	0	0	0
+ci:dev@-1@12	23.43	0	0	0
+ci:grkizi@-1@12	20.54	0	0	0
+ci:klkizi@-1@12	20.43	0	0	0
+ci:schlafzi@-1@12	20.25	0	0	0
+ci:wozi@-1@12	21.25	0	0	0
+ci:arzi@32768@12	20.79	0	0	0
+ci:dev@32768@12	23.63	0	0	0
+ci:grkizi@32768@12	20.61	0	0	0
+ci:klkizi@32768@12	20.28	0	0	0
+ci:schlafzi@32768@12	20.19	0	0	0
+ci:wozi@32768@12	21.98	0	0	0
+py:tests_scripts/test_digital_twin_scenarios.py	0.97	0
+py:tests_scripts/test_digital_twin_ci_suite_matrix.py	1.84	0
+scen:arzi@-1	331.73	0	0	0
+scen:dev@-1	449.57	0	0	0
+scen:grkizi@-1	333.01	0	0	0
+scen:klkizi@-1	333.14	0	0	0
+scen:schlafzi@-1	334.42	0	0	0
+scen:wozi@-1	353.12	0	0	0
+scen:arzi@32768	340.84	0	0	0
+scen:dev@32768	455.76	0	0	0
+scen:grkizi@32768	339.81	0	0	0
+scen:klkizi@32768	340.96	0	0	0
+scen:schlafzi@32768	339.65	0	0	0
+scen:wozi@32768	357.50	0	0	0
+py:tests_scripts/test_digital_twin_generated_boot.py	56.48	0	0	0
+py:tests_scripts/test_stripped_image_boots.py	6.34	0	0	0
+mp:tests/test_digital_twin_clock_jump.py@-1	24.55	0	0	0

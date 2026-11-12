@@ -1,0 +1,12 @@
+citations	head	r1	rc=1	11903ms	1 failed, 14 passed, 1 warning in 11.63s
+citations	base	r1	rc=0	12021ms	15 passed, 1 warning in 11.77s
+decision_vocabulary	head	r1	rc=0	8778ms	6 passed in 8.50s
+decision_vocabulary	base	r1	rc=0	8587ms	6 passed in 8.36s
+citations	base	r2	rc=0	10760ms	15 passed, 1 warning in 10.53s
+citations	head	r2	rc=1	11198ms	1 failed, 14 passed, 1 warning in 10.95s
+decision_vocabulary	base	r2	rc=0	8901ms	6 passed in 8.68s
+decision_vocabulary	head	r2	rc=0	8486ms	6 passed in 8.25s
+citations	head	r3	rc=1	11267ms	1 failed, 14 passed, 1 warning in 11.04s
+citations	base	r3	rc=0	11294ms	15 passed, 1 warning in 11.06s
+decision_vocabulary	head	r3	rc=0	8464ms	6 passed in 8.19s
+decision_vocabulary	base	r3	rc=0	8190ms	6 passed in 7.96s

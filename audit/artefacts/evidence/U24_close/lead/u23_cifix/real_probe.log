@@ -1,0 +1,34 @@
+[test_probe] FAIL test_d_keyerror:
+[test_probe] Traceback (most recent call last):
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23sum/tests/microtest.py", line 35, in run
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 17, in test_d_keyerror
+[test_probe] KeyError: Temp
+[test_probe] FAIL test_f_nested:
+[test_probe] Traceback (most recent call last):
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23sum/tests/microtest.py", line 35, in run
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 29, in test_f_nested
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 25, in _inner
+[test_probe] RuntimeError: deep
+[test_probe] FAIL test_c_assert_bare:
+[test_probe] Traceback (most recent call last):
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23sum/tests/microtest.py", line 35, in run
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 13, in test_c_assert_bare
+[test_probe] AssertionError: 
+[test_probe] FAIL test_g_empty_exc:
+[test_probe] Traceback (most recent call last):
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23sum/tests/microtest.py", line 35, in run
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 33, in test_g_empty_exc
+[test_probe] OSError: 
+[test_probe] FAIL test_b_assert_msg:
+[test_probe] Traceback (most recent call last):
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23sum/tests/microtest.py", line 35, in run
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 9, in test_b_assert_msg
+[test_probe] AssertionError: expected 1, got 2
+[test_probe] FAIL test_e_multiline:
+[test_probe] Traceback (most recent call last):
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23sum/tests/microtest.py", line 35, in run
+[test_probe]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/test_probe.py", line 21, in test_e_multiline
+[test_probe] ValueError: first line
+[test_probe] second line
+[test_probe] PASS test_a_pass
+[test_probe] 1/7 passed, 6 failed, 0 skipped

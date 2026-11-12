@@ -1,0 +1,10 @@
+cov	a	test_digital_twin_bus_hazard_concurrency	24.11	159.809	22.490	1.623	0	mem=0	22/22 passed, 0 failed, 0 skipped
+cov	b	test_digital_twin_bus_hazard_concurrency	23.56	158.838	21.997	1.565	0	mem=0	22/22 passed, 0 failed, 0 skipped
+cov	b	test_digital_twin_hot_replug	5.34	72.107	4.529	0.813	0	mem=0	2/2 passed, 0 failed, 0 skipped
+cov	a	test_digital_twin_hot_replug	5.24	72.363	4.431	0.806	0	mem=0	2/2 passed, 0 failed, 0 skipped
+cov	a	test_digital_twin_uart_link	46.75	83.636	46.093	0.660	0	mem=0	20/20 passed, 0 failed, 0 skipped
+cov	b	test_digital_twin_uart_link	47.78	82.595	47.155	0.623	0	mem=0	20/20 passed, 0 failed, 0 skipped
+cov	a	test_digital_twin_sensortask_integration[wozi]	2.97	23.488	2.610	0.359	0	mem=0	4/12 passed, 0 failed, 8 skipped
+cov	b	test_digital_twin_sensortask_integration[wozi]	3.05	23.533	2.747	0.304	0	mem=0	4/12 passed, 0 failed, 8 skipped
+cov	b	test_digital_twin_timer_pool[wozi]	2.31	35.522	2.028	0.277	0	mem=0	4/4 passed, 0 failed, 0 skipped
+cov	a	test_digital_twin_timer_pool[wozi]	2.41	36.295	2.157	0.254	0	mem=0	4/4 passed, 0 failed, 0 skipped

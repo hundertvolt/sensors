@@ -1,6 +1,6 @@
-"""The machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15) over src/ and every device's
-generated modules: the asy_ module marker, _NAME equal to the measurement type, starter and task names, the errno=/wrnno=
-keyword, no print() or assert, config file names from one helper, D.15 member order and quoting only TYPE_CHECKING names."""
+"""Machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, E.2) over src/, each device's generated
+modules and pytest suites: asy_ marker, _NAME = the measurement type, starter and task names, errno=/wrnno= keyword, no
+print() or assert, one config-name helper, D.15 order (all Python scopes), quoted TYPE_CHECKING names, no Test class."""
 
 import ast
 import re
@@ -11,7 +11,7 @@ from typing import TypeGuard
 
 import pytest
 from _devices import DEVICE_NAMES
-from _repo_scan import REPO_ROOT
+from _repo_scan import REPO_ROOT, python_files
 
 from buildgen.generate import generate_device
 
@@ -26,8 +26,12 @@ _COLLECTOR_NAMES = {
 _TASK_COROUTINE = re.compile(r"_\w+_loop")
 _NUMBER_NAME = re.compile(r"_?(?:ERR|WRN)_\w+")
 _CONFIG_NAME_HOME = "src/asy_config_manager.py"  # config_filename() there builds every config file name
-# The no-autostart boot entry's one module-level print(): its REPL start line (agent, 2026-09-28).
+# The no-autostart boot entry's one module-level print(): its REPL start line (owner, 2026-11-03).
 _START_LINE_ENTRY = "_main_noautostart.py"
+# D.15 holds in every Python scope (owner, 2026-10-27), but not in the tests themselves (owner, 2026-09-29): a test
+# file's module functions, the tests and the helpers beside them, stay, as do the registered manual and scenario tests'.
+_ORDERED_SCOPES = ("tests", "digital_twin", "fakes", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
+_TESTS_THEMSELVES = re.compile(r"(?:tests|tests_scripts|tests_hardware)/(?:\w+/)*test_\w+\.py|tests_hardware/manual/manual_\w+\.py|tests/_\w+_scenarios\.py")
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,7 @@ class Module:
 
     @property
     def generated(self) -> bool:
-        return not self.path.startswith("src/")
+        return self.path.startswith("build/")
 
 
 Rule = Callable[[Module], list[str]]
@@ -143,7 +147,7 @@ def log_keywords(module: Module) -> list[str]:
     found = []
     for node in ast.walk(module.tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"err_s", "wrn_s"}:
-            keyword = "errno" if node.func.attr == "err_s" else "wrnno"
+            keyword = "errno" if node.func.attr.startswith("err") else "wrnno"
             numbers = [a for a in node.args if (isinstance(a, ast.Constant) and type(a.value) is int) or _NUMBER_NAME.fullmatch(ast.unparse(a).rsplit(".", 1)[-1])]
             if keyword not in {k.arg for k in node.keywords} or numbers:
                 found.append(f"{module.path}:{node.lineno}: {node.func.attr}() needs its number as {keyword}=")
@@ -189,26 +193,9 @@ def config_file_names(module: Module) -> list[str]:
     return found
 
 
-# A src assert whose removal a later unit's change owns, keyed by file and enclosing function; an
-# entry whose assert has gone fails (test_every_pending_assert_is_still_there).
-_PENDING_ASSERTS: "dict[tuple[str, str], str]" = {}
-
-
-def _asserts_by_function(module: Module) -> list[tuple[str, ast.Assert]]:
-    return [
-        (f.name, n) for f in ast.walk(module.tree) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
-        for n in ast.walk(f) if isinstance(n, ast.Assert)
-    ]
-
-
 def no_assert(module: Module) -> list[str]:
     # (6) no assert in shipped code.
-    pending = {func for (path, func) in _PENDING_ASSERTS if path == module.path}
-    in_pending = {id(n) for func, n in _asserts_by_function(module) if func in pending}
-    return [
-        f"{module.path}:{n.lineno}: assert" for n in ast.walk(module.tree)
-        if isinstance(n, ast.Assert) and id(n) not in in_pending
-    ]
+    return [f"{module.path}:{n.lineno}: assert" for n in ast.walk(module.tree) if isinstance(n, ast.Assert)]
 
 
 def _starter_role(cls: ast.ClassDef) -> set[str]:
@@ -252,15 +239,16 @@ def _out_of_order(where: str, names: list[str], starters: set[str]) -> list[str]
 
 
 def member_order(module: Module) -> list[str]:
-    # (7) D.15 order in every src/ class and the module-level function list.
+    # (7) D.15 order in every class and the module-level function list, a test file's list aside.
     if module.generated or module.path == _LITERAL_PORT:
         return []
     found = []
     for cls in (node for node in ast.walk(module.tree) if isinstance(node, ast.ClassDef)):
         found.extend(_out_of_order(f"{module.path} class {cls.name}", [d.name for d in _defs(cls.body)], _starter_role(cls)))
-    needed = _import_time_names(module)
-    functions = [d.name for d in _defs(module.tree.body) if d.name not in needed]
-    found.extend(_out_of_order(f"{module.path} module functions", functions, set()))
+    if not _TESTS_THEMSELVES.fullmatch(module.path):
+        needed = _import_time_names(module)
+        functions = [d.name for d in _defs(module.tree.body) if d.name not in needed]
+        found.extend(_out_of_order(f"{module.path} module functions", functions, set()))
     return found
 
 
@@ -351,12 +339,6 @@ def test_quoted_annotations_name_a_type_checking_symbol(modules: list[Module]) -
     assert not found, "\n".join(found)
 
 
-def test_every_pending_assert_is_still_there(modules: list[Module]) -> None:
-    by_path = {m.path: m for m in modules}
-    gone = [key for key in _PENDING_ASSERTS if key[1] not in {func for func, _n in _asserts_by_function(by_path[key[0]])}]
-    assert not gone, f"pending asserts no longer present - delete them from _PENDING_ASSERTS: {gone}"
-
-
 def test_the_scan_sees_every_device_module(modules: list[Module]) -> None:
     assert {m.path for m in modules if m.generated} == {f"build/generated_src/{n}.py" for d in DEVICE_NAMES for n in (f"sensortask_{d}", f"sensortask_{d}_main", f"sensortask_{d}_main_noautostart")}
 
@@ -373,7 +355,7 @@ _NEGATIVE = {
         "class Svc:\n    def get_task_starters(self):\n        return [self.start_asy_poll]\n    def start_asy_poll(self):\n        return loop.create_task(self.poll())\n    async def poll(self):\n        pass\n",
         "src/asy_x.py:5: Svc.start_asy_poll() starts poll",
     ),
-    "log_keywords": ("src/asy_x.py", "async def f(pr):\n    await pr.err_s('bad', _ERR_BAD)\n", "src/asy_x.py:2: err_s() needs its number as errno="),
+    "log_keywords": ("src/asy_x.py", "async def f(pr):\n    pr.err_s('bad', _ERR_BAD)\n", "src/asy_x.py:2: err_s() needs its number as errno="),
     "no_print": ("src/asy_x.py", "async def f():\n    print('x')\n", "src/asy_x.py:2: print()"),
     "no_assert": ("build/generated_src/sensortask_x.py", "def f(a):\n    assert a is not None\n    assert a > 0\n", "build/generated_src/sensortask_x.py:2: assert"),
     "member_order": ("src/asy_x.py", "class C:\n    async def setup(self):\n        pass\n    def reset(self):\n        pass\n", "src/asy_x.py class C: setup sits where D.15 puts reset"),
@@ -419,8 +401,39 @@ def test_d15_orders_dunders_private_public_then_role_then_name() -> None:
     ]
 
 
+def suite_class_findings(path: str, tree: ast.Module) -> list[str]:
+    # pytest collects a class named Test*; the suites hold module-level tests with fixtures and parametrize instead.
+    return [f"{path}:{node.lineno}: class {node.name} - write its tests as module-level functions" for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name.startswith("Test")]
+
+
+def test_no_pytest_suite_groups_its_tests_in_a_class() -> None:
+    paths = sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "tests_scripts").rglob("*.py") if "__pycache__" not in p.parts)
+    assert "tests_scripts/test_code_conventions.py" in paths, "the scan no longer reads the pytest suites"
+    found = [line for path in paths for line in suite_class_findings(path, ast.parse((REPO_ROOT / path).read_text(encoding="utf-8")))]
+    assert not found, "\n".join(found)
+
+
+def test_a_planted_test_class_fails_and_a_helper_class_passes() -> None:
+    source = "class TestThing:\n    def test_a(self):\n        pass\n\n\nclass _Fake:\n    pass\n"
+    assert suite_class_findings("tests_scripts/test_x.py", ast.parse(source)) == ["tests_scripts/test_x.py:1: class TestThing - write its tests as module-level functions"]
+
+
 def test_an_import_time_definition_is_left_out_of_the_order() -> None:
     module = _parse("src/asy_x.py", "def _make():\n    return 1\nX = _make()\ndef b():\n    pass\ndef _a():\n    pass\n")
     assert member_order(module) == ["src/asy_x.py module functions: b sits where D.15 puts _a"]
     module = _parse("src/asy_x.py", "def b():\n    pass\nX = b()\ndef _a():\n    pass\n")
     assert member_order(module) == []
+
+
+def test_every_python_scope_follows_d15() -> None:
+    paths = [p for scope in _ORDERED_SCOPES for p in python_files(REPO_ROOT, scope)]
+    found = [line for p in paths for line in member_order(_parse(p.relative_to(REPO_ROOT).as_posix(), p.read_text(encoding="utf-8")))]
+    assert not found, "member_order:\n" + "\n".join(f"  {line}" for line in found)
+
+
+def test_a_test_files_function_list_is_left_out_of_the_order_but_not_its_classes() -> None:
+    source = "def test_b():\n    pass\ndef test_a():\n    pass\nclass _Fake:\n    def b(self):\n        pass\n    def a(self):\n        pass\n"
+    fake = "class _Fake: b sits where D.15 puts a"
+    for path in ("tests/test_x.py", "tests_hardware/flash/test_x.py", "tests_hardware/manual/manual_x.py", "tests/_x_scenarios.py"):
+        assert member_order(_parse(path, source)) == [f"{path} {fake}"], path
+    assert member_order(_parse("tests/_x_harness.py", source)) == [f"tests/_x_harness.py {fake}", "tests/_x_harness.py module functions: test_b sits where D.15 puts test_a"]

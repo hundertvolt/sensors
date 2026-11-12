@@ -18,7 +18,7 @@
     --color-accent-contrast: #fff;
     --color-success: #197f45;
     --color-success-bg: #e5f7ec;
-    --color-neutral: #6b7280;
+    --color-neutral: #666c7a;
     --color-neutral-bg: #eceef1;
     --color-danger: #cb2d2d;
     --color-danger-bg: #fbe9e9;
@@ -375,7 +375,7 @@ button.field-value.code-value {
     color: var(--color-text-muted);
 }
 
-/* Apply result: a left stripe on the card and on each field, double for invalid/failed (SPECIFICATION.md Part H.4). */
+/* Apply result: a left stripe on the card and on each field (SPECIFICATION.md Part H.4). */
 .card[data-apply-status="valid"] {
     border-left: 3px solid var(--color-success);
 }
@@ -385,11 +385,11 @@ button.field-value.code-value {
 }
 
 .card[data-apply-status="invalid"] {
-    border-left: 3px double var(--color-danger);
+    border-left: 3px solid var(--color-danger);
 }
 
 .card[data-apply-status="failed"] {
-    border-left: 3px double var(--color-warn);
+    border-left: 3px solid var(--color-warn);
 }
 
 .field[data-apply-status="valid"] {
@@ -402,12 +402,10 @@ button.field-value.code-value {
 
 .field[data-apply-status="invalid"] {
     border-left-color: var(--color-danger);
-    border-left-style: double;
 }
 
 .field[data-apply-status="failed"] {
     border-left-color: var(--color-warn);
-    border-left-style: double;
 }
 
 /* ---- Error / status counts ---- */
@@ -482,9 +480,9 @@ button.field-value.code-value {
     font-style: italic;
 }
 
-/* One horizontal wrapping row of pills per module, not a vertical list: a module can carry 10+
-   entries, each just a small number, so stacking them wastes height and reads worse than a strip
-   of "one module's recent history at a glance". */
+/* One horizontal wrapping row of pills per module, not a vertical list: a module carries up to 10
+   entries (asy_print_log.py's DEFAULT_LOG), each a small number, so a strip reads as "one module's
+   recent history at a glance" where a stack wastes height. */
 .history-list {
     display: flex;
     flex-wrap: wrap;

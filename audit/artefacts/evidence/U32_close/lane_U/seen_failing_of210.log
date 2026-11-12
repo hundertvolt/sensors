@@ -1,0 +1,23 @@
+PASS test_a_command_frame_the_crc_drops_ends_the_listen_under_its_own_message
+FAIL test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_comm.py", line 341, in on_the_clock
+  File "tests/test_asy_uart_comm.py", line 1337, in test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train
+AssertionError: UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+FAIL test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_comm.py", line 341, in on_the_clock
+  File "tests/test_asy_uart_comm.py", line 1347, in test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack
+AssertionError: UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+FAIL test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_comm.py", line 341, in on_the_clock
+  File "tests/test_asy_uart_comm.py", line 1327, in test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered
+AssertionError: UART_A UART error: no answer to GET 1
+UART_B UART error: no ACK for frame 1
+1/4 passed, 3 failed, 0 skipped

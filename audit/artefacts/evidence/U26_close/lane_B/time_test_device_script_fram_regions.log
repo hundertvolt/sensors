@@ -1,0 +1,16 @@
+F.......                                                                 [100%]
+=================================== FAILURES ===================================
+_________ test_every_raw_fram_call_is_addressed_from_a_declared_region _________
+
+    def test_every_raw_fram_call_is_addressed_from_a_declared_region() -> None:
+        raw = [p for p in _SCRIPTS.glob("*.py") if any(_call_name(n) in _RAW_CALLS for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))))]
+        assert raw, "no script issues a raw FRAM call - the scan reads nothing"
+        found = {path.name: lines for path in sorted(_SCRIPTS.glob("*.py")) if (lines := undeclared_raw_calls(path.read_text(encoding="utf-8")))}
+>       assert not found, f"raw FRAM calls whose address no _SCRATCH_REGIONS/_EVIDENCE_REGIONS declares (script: lines): {found}"
+E       AssertionError: raw FRAM calls whose address no _SCRATCH_REGIONS/_EVIDENCE_REGIONS declares (script: lines): {'fram_cs_hijack_fault_injection_and_recovery.py': [74, 77, 100, 112, 127, 140, 152], 'fram_raw_dump.py': [43], 'fram_reset_race_during_write_seed_and_race.py': [38, 43, 48, 56], 'fram_reset_race_during_write_verify_recovery.py': [38, 45, 53, 66, 69], 'fram_same_device_rw_concurrency.py': [37, 51, 62, 71]}
+E       assert not {'fram_cs_hijack_fault_injection_and_recovery.py': [74, 77, 100, 112, 127, 140, ...], 'fram_raw_dump.py': [43], 'fram_...rite_seed_and_race.py': [38, 43, 48, 56], 'fram_reset_race_during_write_verify_recovery.py': [38, 45, 53, 66, 69], ...}
+
+tests_scripts/test_device_script_fram_regions.py:139: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_fram_regions.py::test_every_raw_fram_call_is_addressed_from_a_declared_region
+1 failed, 7 passed in 1.50s

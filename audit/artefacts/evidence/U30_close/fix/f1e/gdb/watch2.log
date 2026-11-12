@@ -1,0 +1,225 @@
+W 1 pc+2aaaa2a8f28a rsp 7fffffffc548 value 7ffff7fc5000 firstword 3010102464c457f
+W 2 pc+2aaaa2a8a29a rsp 7fffffffc4b8 value 7fff00000000 firstword unreadable
+W 3 pc+2aaaa2a8a29a rsp 7fffffffc4b8 value 0 firstword -
+W 4 pc+2aaaa275758e rsp 7fffffffc4c0 value abda25a63e51be00 firstword -
+W 5 pc+2aaaa26f148f rsp 7fffffffc2e0 value 7ffff7fdc3c0 firstword 21e0405c7485d
+W 6 pc+2aaaa275757d rsp 7fffffffc508 value 7ffff7e03ac0 firstword 0
+W 7 pc+8ce34 rsp 7fffffffc508 value 555555577d67 firstword -
+W 8 pc+8cfe7 rsp 7fffffffc508 value 555555577d86 firstword -
+W 9 pc+8d268 rsp 7fffffffc508 value 555555577f74 firstword -
+W 10 pc+22900 rsp 7fffffffc508 value 555555577f85 firstword -
+W 11 pc+8ce34 rsp 7fffffffc508 value 555555577d67 firstword -
+W 12 pc+8cfe7 rsp 7fffffffc508 value 555555577d86 firstword -
+W 13 pc+8d268 rsp 7fffffffc508 value 555555577f74 firstword -
+W 14 pc+22900 rsp 7fffffffc508 value 555555577f85 firstword -
+W 15 pc+39154 rsp 7fffffffc508 value 55555562a298 firstword -
+W 16 pc+23d50 rsp 7fffffffc508 value 7fffffffc7a8 firstword 7fffffffce46
+W 17 pc+23d40 rsp 7fffffffc508 value 55555557731d firstword -
+W 18 pc+2aaaa274c00e rsp 7fffffffc508 value 7fffffffd600 firstword 7365743a6372733a
+W 19 pc+24897 rsp 7fffffffc508 value 55555562a510 firstword -
+W 20 pc+23d48 rsp 7fffffffc508 value 14 firstword -
+W 21 pc+23d48 rsp 7fffffffc508 value b0e firstword -
+W 22 pc+2aaaa274c00e rsp 7fffffffc508 value 7fffffffd604 firstword 663a73747365743a
+W 23 pc+24897 rsp 7fffffffc508 value 55555562a510 firstword -
+W 24 pc+2aaaa274c00e rsp 7fffffffc508 value 7fffffffd60a firstword 5f6e657a6f72663a
+W 25 pc+24897 rsp 7fffffffc508 value 55555562a510 firstword -
+W 26 pc+2aaaa274c00e rsp 7fffffffc508 value 7fffffffd619 firstword 6e657a6f72662e3a
+W 27 pc+24897 rsp 7fffffffc508 value 55555562a510 firstword -
+W 28 pc+241e1 rsp 7fffffffc508 value 40 firstword -
+W 29 pc+2aaaa274c00e rsp 7fffffffc508 value 7fffffffd621 firstword 5f454455414c4300
+W 30 pc+24897 rsp 7fffffffc508 value 55555562a510 firstword -
+W 31 pc+8ce34 rsp 7fffffffc508 value 555555577d67 firstword -
+W 32 pc+8cfe7 rsp 7fffffffc508 value 555555577d86 firstword -
+W 33 pc+8d268 rsp 7fffffffc508 value 555555577f74 firstword -
+W 34 pc+22900 rsp 7fffffffc508 value 555555577f85 firstword -
+W 35 pc+2aaaa274c00e rsp 7fffffffc508 value 55555562d320 firstword -
+W 36 pc+24897 rsp 7fffffffc508 value 55555562a510 firstword -
+W 37 pc+241d0 rsp 7fffffffc508 value 555555577451 firstword -
+W 38 pc+23d48 rsp 7fffffffc508 value 61 firstword -
+W 39 pc+8ce69 rsp 7fffffffc508 value 555555578990 firstword -
+W 40 pc+24877 rsp 7fffffffc508 value 55555557899b firstword -
+W 41 pc+23438 rsp 7fffffffc508 value 555555578a06 firstword -
+W 42 pc+24820 rsp 7fffffffc508 value 555555578ab4 firstword -
+W 43 pc+8ce9a rsp 7fffffffc508 value 555555578bd8 firstword -
+W 44 pc+23281 rsp 7fffffffc4d8 value 5555555e3481 firstword -
+OUT PASS test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short
+OUT 
+OUT WEBSERVER
+OUT  
+OUT Microdot caught:
+OUT  
+OUT injected for the body parse
+OUT 
+OUT PASS test_a_body_parse_that_runs_out_of_heap_answers_500_and_is_persisted
+OUT 
+OUT PASS test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout
+OUT 
+OUT PASS test_a_close_that_raises_and_whose_wait_fails_keeps_both_warnings
+OUT 
+OUT PASS test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot
+OUT 
+OUT PASS test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushed
+OUT 
+OUT PASS test_a_dispatch_key_is_answered_once
+OUT 
+OUT PASS test_a_failed_or_timed_out_static_body_write_closes_the_stream
+OUT 
+OUT PASS test_a_failing_source_reset_answers_failed_and_the_others_still_reset
+OUT 
+OUT PASS test_a_flat_get_sends_the_unavailable_marker_for_each_field_of_an_unreadable_group
+OUT 
+OUT PASS test_a_head_request_closes_the_opened_static_stream
+OUT 
+OUT PASS test_a_led_callback_returning_false_answers_failed_and_asks_for_a_retry
+OUT 
+OUT PASS test_a_malformed_led_command_is_invalid_and_never_dispatched
+OUT 
+OUT PASS test_a_networking_get_with_a_multibyte_ssid_stays_bounded
+OUT 
+OUT PASS test_a_non_object_sensor_entry_answers_invalid
+OUT 
+OUT PASS test_a_pause_time_of_the_wrong_shape_is_invalid
+OUT 
+OUT PASS test_a_raising_reset_of_this_services_own_log_answers_failed_and_is_persisted
+OUT 
+OUT PASS test_a_raising_source_reset_answers_failed_once_every_other_reset_has_run
+OUT 
+OUT PASS test_a_read_phase_per_call_timeout_logs_the_call_timeout_code
+OUT 
+OUT PASS test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code
+OUT 
+OUT PASS test_a_static_get_answers_cache_control_no_cache
+OUT 
+OUT PASS test_a_streamed_bodys_content_length_counts_bytes_not_characters
+OUT 
+OUT PASS test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag
+OUT 
+OUT PASS test_a_write_phase_timeout_is_logged_once_not_twice
+OUT 
+OUT PASS test_an_eoferror_from_handle_request_is_an_unexpected_error
+OUT 
+OUT PASS test_an_explicit_backlog_is_honoured_when_it_covers_the_ceiling
+OUT 
+OUT PASS test_an_integral_float_channel_is_coerced
+OUT 
+OUT PASS test_an_outer_cap_timeout_logs_the_request_cap_code
+OUT 
+OUT PASS test_b_body_at_and_over_max_content_length_boundary
+OUT 
+OUT PASS test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_fault
+OUT 
+OUT PASS test_b_duplicate_keys_in_raw_json_text_last_wins
+OUT 
+OUT PASS test_b_malformed_json_body_answers_code_1
+OUT 
+OUT PASS test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint
+OUT 
+OUT PASS test_b_unknown_top_level_key_answers_invalid_on_every_settings_endpoint
+OUT 
+OUT PASS test_b_wrong_top_level_json_type_is_a_clean_rejection_on_every_settings_endpoint
+OUT 
+OUT PASS test_b_wrong_type_for_a_known_field_is_a_per_field_rejection_others_still_apply
+OUT 
+OUT PASS test_backlog_defaults_to_one_above_max_connections
+OUT 
+OUT PASS test_c_duplicate_registration_last_registration_wins
+OUT 
+OUT PASS test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list
+OUT 
+OUT PASS test_c_zero_entries_in_any_registration_group_produces_well_formed_empty_response
+OUT 
+OUT PASS test_close_writer_logs_a_persisted_warning_when_close_raises
+OUT 
+OUT PASS test_close_writer_logs_a_persisted_warning_when_wait_closed_raises
+OUT 
+OUT PASS test_close_writer_swallows_a_raising_close_and_still_awaits_wait_closed
+OUT 
+OUT PASS test_d_a_module_whose_log_holds_no_entry_of_its_own_still_gets_the_empty_shape
+OUT 
+OUT PASS test_d_counter_always_present_history_present_for_both_populated_and_zero_cases
+OUT 
+OUT PASS test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller
+OUT 
+OUT PASS test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_rest
+OUT 
+OUT PASS test_d_reset_errors_calls_reset_error_counter_on_every_registered_module
+OUT 
+OUT PASS test_d_reset_on_one_module_never_affects_another
+OUT 
+OUT PASS test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager
+OUT 
+OUT PASS test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash
+OUT 
+OUT PASS test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim
+OUT 
+OUT PASS test_e_a_config_get_never_mixes_values_from_before_and_after_a_concurrent_put
+OUT 
+OUT PASS test_e_concurrent_put_during_get_never_produces_a_torn_response
+OUT 
+OUT PASS test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state
+OUT 
+OUT PASS test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_lock_held
+OUT 
+OUT PASS test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately
+OUT 
+OUT PASS test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_written
+OUT 
+OUT PASS test_f1_client_opens_then_immediately_closes_before_any_bytes
+OUT 
+OUT PASS test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout
+OUT 
+OUT PASS test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged
+OUT 
+OUT PASS test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate
+OUT 
+OUT PASS test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blanket_catch
+OUT 
+OUT PASS test_f2_content_length_exceeding_max_content_length_returns_413
+OUT 
+OUT PASS test_f2_content_length_larger_than_body_sent_then_silence_times_out
+OUT 
+OUT PASS test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_catch
+OUT 
+OUT PASS test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout
+OUT 
+OUT PASS test_f2b_a_body_arriving_with_its_head_is_served_from_both_reads_and_applied
+OUT 
+OUT PASS test_f2b_a_mixed_stream_handles_each_request_on_its_own_merits
+OUT 
+OUT PASS test_f2b_all_above_the_cap_are_rejected_without_the_body_ever_being_read
+OUT 
+OUT PASS test_f2b_hammer_all_oversized_allocates_no_body_at_all
+OUT 
+OUT PASS test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes
+OUT 
+OUT PASS test_f2b_none_above_the_cap_every_body_is_buffered_and_applied
+OUT 
+OUT PASS test_f2b_the_two_microdot_caps_are_bound_together_so_the_band_cannot_reopen
+OUT 
+OUT PASS test_f5_connection_close_header_present_on_every_response_including_errors
+OUT 
+OUT PASS test_f5_double_close_paths_dont_raise_or_double_decrement
+OUT 
+OUT PASS test_f5_normal_close_decrements_counter_exactly_once
+OUT 
+OUT PASS test_f6_a_hanging_cleanup_close_path_still_lets_the_connection_task_end
+OUT 
+OUT PASS test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed
+OUT 
+OUT PASS test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept
+OUT 
+OUT PASS test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates
+OUT 
+OUT PASS test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_slots_reused
+OUT 
+OUT PASS test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash
+OUT 
+OUT PASS test_f7_unknown_path_returns_404_shaped_response
+OUT 
+OUT PASS test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response
+OUT 
+OUT PASS test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task
+OUT 
+OUT PASS test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor
+OUT 
+MEMFREE

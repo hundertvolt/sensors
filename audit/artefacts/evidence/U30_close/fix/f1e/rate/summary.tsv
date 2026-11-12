@@ -1,0 +1,4 @@
+C	committedf_rate	-1	rc=0	4.30s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped
+C	committedf_rate	32768	rc=0	7.11s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped
+C	committed_rate	-1	rc=0	4.25s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped
+C	committed_rate	32768	rc=0	7.02s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped

@@ -1,0 +1,6 @@
+# CI step 'Install Playwright Chromium' (cold, --with-deps) wall times, successful CI runs, gh api jobs listing (2026-10-19)
+37799699030 web-unit-tests 21s
+37764306450 web-unit-tests 21s
+37439055590 web-unit-tests 23s
+37421540220 web-unit-tests 30s
+# cache-hit 'Install Playwright OS dependencies' on run 38777834467 (b1fecfb): web-unit-tests 14s, put-matrix 24/13/12s, web-coverage 13s, smoke 14s

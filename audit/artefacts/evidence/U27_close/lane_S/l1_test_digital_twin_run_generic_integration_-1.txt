@@ -1,0 +1,101 @@
+PASS test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name
+PASS test_a_feed_span_the_watchdog_dropped_is_no_gap
+HANG S3
+PASS test_a_shutdown_hang_arms_once_every_supervised_task_has_started_and_its_cancel_ends_the_hold
+PASS test_a_simulated_reset_maps_to_its_exit_code_and_its_line
+digital_twin/run_generic_integration.py starting - device='sensortask_idle' module='sensortask_idle' host='127.0.0.1' port=19090 state=StatePaths(fram=None, scd30=None, mem_backup=None) config_dir='tests/_tmp/rgi/1_interrupted/' online_ntp=True injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=0.0, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+mem: total=2428706, current=809301, peak=809461
+stack: 4992 out of 80000
+GC: total: 16582784, used: 338048, free: 16244736
+ No. of 1-blocks: 2917, 2-blocks: 627, max blk sz: 442, max free sz: 488363
+digital_twin/run_generic_integration.py [sensortask_idle] shutdown: would_have_triggered_count=0 feed_count=0 largest_feed_gap_ms=0 wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 gc_block_bytes=32
+PASS test_an_interrupt_in_the_shutdown_drain_is_let_through
+PASS test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper
+Warning: exception chaining not supported
+PASS test_ensure_dir_creates_or_keeps_a_dir_and_names_one_it_cannot_create
+Warning: exception chaining not supported
+PASS test_every_test_only_flag_is_off_by_default_and_parses_when_named
+PASS test_link_directions_finds_each_instances_bus_by_its_generated_construction_line
+digital_twin/run_generic_integration.py starting - device='sensortask_arzi' module='sensortask_arzi' host='127.0.0.1' port=19091 state=StatePaths(fram=None, scd30=None, mem_backup=None) config_dir='tests/_tmp/rgi/2_boot/' online_ntp=False injections=Injections(seed=None, faults=[('sgp40', 'writeto', 2, None, 'oserror')], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=0.0, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+mem: total=4839944, current=1598840, peak=1599000
+stack: 4992 out of 80000
+GC: total: 16582784, used: 720736, free: 15862048
+ No. of 1-blocks: 5923, 2-blocks: 1269, max blk sz: 885, max free sz: 481857
+digital_twin/run_generic_integration.py [sensortask_arzi] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=0 wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 gc_block_bytes=32
+PASS test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly
+PASS test_parse_args_device_host_port_and_the_run_limits
+PASS test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers
+Usage: micropython digital_twin/run_generic_integration.py --module NAME --wiring-plan PATH [options]
+  --module NAME            the generated sensortask_<device> module to boot (required)
+  --wiring-plan PATH       its wiring-plan JSON (required)
+  --host HOST, --port N    where the webserver listens (default: localhost, 8080)
+  --device LABEL           the device name the log lines carry (default: the module name)
+  --config-dir PATH        the product's config directory (default: digital_twin/config/)
+  --fram-state-path PATH   persist the FRAM image (default: digital_twin/fram_state.json; "" in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM (default: digital_twin/scd30_state.json; "" in memory)
+  --mem-backup-state-path PATH  the watchdog scratch registers' file (default: digital_twin/mem_backup_state.json; "" in memory)
+  --online-ntp             write no NTP config and start no local responder (default: sync against the responder)
+  --seed N, --fault SPEC, --hang SPEC, --wifi-outcome OUTCOME   as digital_twin/launch.py --help
+  --duration SECONDS       serve this long (default: forever); --stop-file PATH ends it early once the file exists
+  --gc-threshold N         gc.threshold() for the run (default: 32768)
+  --mem-sample-interval-ms N  print a MEM_SAMPLE line every N ms (default: off)
+  test-only instrumentation, each off by default:
+  --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
+  --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
+  --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap)
+  -h, --help               print this and exit 0
+Usage: micropython digital_twin/run_generic_integration.py --module NAME --wiring-plan PATH [options]
+  --module NAME            the generated sensortask_<device> module to boot (required)
+  --wiring-plan PATH       its wiring-plan JSON (required)
+  --host HOST, --port N    where the webserver listens (default: localhost, 8080)
+  --device LABEL           the device name the log lines carry (default: the module name)
+  --config-dir PATH        the product's config directory (default: digital_twin/config/)
+  --fram-state-path PATH   persist the FRAM image (default: digital_twin/fram_state.json; "" in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM (default: digital_twin/scd30_state.json; "" in memory)
+  --mem-backup-state-path PATH  the watchdog scratch registers' file (default: digital_twin/mem_backup_state.json; "" in memory)
+  --online-ntp             write no NTP config and start no local responder (default: sync against the responder)
+  --seed N, --fault SPEC, --hang SPEC, --wifi-outcome OUTCOME   as digital_twin/launch.py --help
+  --duration SECONDS       serve this long (default: forever); --stop-file PATH ends it early once the file exists
+  --gc-threshold N         gc.threshold() for the run (default: 32768)
+  --mem-sample-interval-ms N  print a MEM_SAMPLE line every N ms (default: off)
+  test-only instrumentation, each off by default:
+  --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
+  --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
+  --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap)
+  -h, --help               print this and exit 0
+PASS test_parse_args_help_exits_zero_before_parsing_anything_else
+PASS test_parse_args_minimal_valid_config_takes_every_persistent_default
+PASS test_parse_args_rejects_an_unrecognized_flag_or_a_missing_value
+PASS test_parse_args_requires_module_and_wiring_plan
+PASS test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_state
+PASS test_run_config_compares_and_prints_its_grouped_fields
+HANG S1
+HUNG S1
+PASS test_s1_ends_one_supervised_task_and_its_dead_task_report_never_returns
+HANG S2
+HANG S5reset
+PASS test_s2_a_stores_flush_never_returns_and_s5reset_holds_its_lock
+HANG S3
+PASS test_s3_holds_one_fram_chunks_lock
+HANG S5erase
+PASS test_s5erase_arms_at_pass_two_and_the_refused_units_report_never_returns
+HANG S6
+PASS test_s6_the_reset_timer_never_fires
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+PASS test_serving_ends_at_once_when_the_stop_file_already_exists
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+PASS test_serving_ends_once_the_stop_file_appears
+PASS test_serving_without_the_stop_file_lasts_the_whole_duration
+PASS test_the_construction_lines_read_name_each_generated_devices_link_buses
+PASS test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum
+SLOT_HELD
+SLOT_RELEASED
+PASS test_the_held_closing_slot_releases_on_its_trigger
+PASS test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap
+PASS test_the_rebound_report_announces_itself_once_when_first_entered_then_never_returns
+PASS test_the_runner_shares_launchs_one_chip_lookup_and_fault_plumbing
+PASS test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers
+PASS test_the_status_lines_name_the_gauge_the_backlog_and_each_queued_fault
+PASS test_the_wire_log_clearer_clears_each_bounded_log_in_place
+35/35 passed, 0 failed, 0 skipped
+== rc=0 time=1.344114846

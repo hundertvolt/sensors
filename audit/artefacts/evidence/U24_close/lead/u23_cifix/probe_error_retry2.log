@@ -1,0 +1,20 @@
+browser 153.0.8010.12
+  connection 1 at 173 ms
+goto: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ url about:blank at 180 ms
+  connection 2 at 184 ms
+second goto: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ url chrome-error://chromewebdata/, connections for it 1
+3 s later: connections 2
+close after two resets: settled (9 ms), connections 2
+page targets: 
+context.close: settled
+rc=0
+browser 141.0.7390.37
+  connection 1 at 178 ms
+goto: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ url about:blank at 189 ms
+  connection 2 at 194 ms
+second goto: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ url chrome-error://chromewebdata/, connections for it 1
+3 s later: connections 2
+close after two resets: settled (6 ms), connections 2
+page targets: 
+context.close: settled
+rc=0

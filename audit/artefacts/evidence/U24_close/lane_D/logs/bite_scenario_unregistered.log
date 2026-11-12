@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "tests/test_zz_bite.py", line 2, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/scenario_unregistered/tests/_sensortask_scenarios.py", line 2923, in register_for_device
+AssertionError: 90 _scenario_* functions, 89 registered: one lacks its @_register

@@ -1,0 +1,18 @@
+..........F                                                              [100%]
+=================================== FAILURES ===================================
+_______ test_the_build_rule_reads_the_one_smallest_hard_consumer_export ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11698/test_the_build_rule_reads_the_0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/bite1/src')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7285d23fd0>
+
+    def test_the_build_rule_reads_the_one_smallest_hard_consumer_export(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The rule takes its bound from smallest_hard_consumer(), the export the twin scenario and the bench lag test read too.
+        monkeypatch.setattr(validate_mod, "smallest_hard_consumer", lambda _model, _src: HardConsumer(1, "a planted consumer", ", or a planted relief"))
+>       with pytest.raises(BuildError, match=r"timeout 200000 us: .*above the 1000 us a planted consumer - fix: ") as info:
+E       Failed: DID NOT RAISE BuildError
+
+../../../../wt-u31t3/tests_scripts/test_buildgen_validate.py:768: Failed
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_validate.py::test_the_build_rule_reads_the_one_smallest_hard_consumer_export
+1 failed, 10 passed, 403 deselected in 1.03s

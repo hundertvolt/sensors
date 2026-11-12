@@ -1,0 +1,5 @@
+E       AssertionError: ci.yml: remove fetch-depth/submodules - CI checks out shallow and datasheet-free
+E       AssertionError: tag each job's timeout-minutes with `# @tunable ci.<job>_timeout_min = <n>` directly above it: ['zizmor']
+FAILED tests_scripts/test_ci_workflow.py::test_the_checkout_stays_shallow_and_without_submodules
+FAILED tests_scripts/test_ci_workflow.py::test_every_job_budget_is_tagged - A...
+2 failed, 13 passed in 0.07s

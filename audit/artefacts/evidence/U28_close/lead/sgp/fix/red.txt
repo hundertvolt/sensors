@@ -1,0 +1,96 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+___ test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot ____
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/fix/redtree/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10849/test_a_group_reaching_the_sgp40')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc4e3ca02d0>
+
+    def test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Three 40 s scenarios on a twin whose own background moves SGP40 at 94 s, as dev's measured: the twin is retired
+        # before its deadline, so no scenario's window holds that move and every idle check passes.
+        clock, spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
+        shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
+        results = []
+        for name, last in (("a", False), ("b", False), ("c", True)):
+            with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+                clock[0] += 40.0
+            results.append(shared.release(_item(harness, name), failed=False, last=last))
+>       assert results == [[], [], []], results
+E       AssertionError: [[], [], ["idle check after c: moved error counts it does not state (before, after, newest entries): {'SGP40': (0, 1, [['W', 35]])}"]]
+E       assert [[], [], ["id...'W', 35]])}"]] == [[], [], []]
+E         
+E         At index 2 diff: ["idle check after c: moved error counts it does not state (before, after, newest entries): {'SGP40': (0, 1, [['W', 35]])}"] != []
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:397: AssertionError
+_ test_a_scenario_outliving_the_sgp40_backup_deadline_fails_by_name[before the twin's first move] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/fix/redtree/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10849/test_a_scenario_outliving_the_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc4e3727610>
+age_s = 90.0
+
+    @pytest.mark.parametrize("age_s", [90.0, 100.0], ids=["before the twin's first move", "after it"])
+    def test_a_scenario_outliving_the_sgp40_backup_deadline_fails_by_name(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, age_s: float) -> None:
+        # One scenario longer than the deadline: its idle check fails naming the overrun, never blaming the scenario for the
+        # background's move, and never passing when the move has not landed yet.
+        clock, _spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
+        shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
+        with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+            clock[0] += age_s
+        problems = shared.release(_item(harness, "slow"), failed=False, last=True)
+>       assert len(problems) == 1 and problems[0].startswith(f"idle check after slow: the shared boot outlived its SGP40 backup deadline ({age_s:.1f} s > 89 s)"), problems
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_digital_twin_scenarios.py:410: AssertionError
+_ test_a_scenario_outliving_the_sgp40_backup_deadline_fails_by_name[after it] __
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/fix/redtree/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10849/test_a_scenario_outliving_the_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc4e3cd9310>
+age_s = 100.0
+
+    @pytest.mark.parametrize("age_s", [90.0, 100.0], ids=["before the twin's first move", "after it"])
+    def test_a_scenario_outliving_the_sgp40_backup_deadline_fails_by_name(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, age_s: float) -> None:
+        # One scenario longer than the deadline: its idle check fails naming the overrun, never blaming the scenario for the
+        # background's move, and never passing when the move has not landed yet.
+        clock, _spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
+        shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
+        with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+            clock[0] += age_s
+        problems = shared.release(_item(harness, "slow"), failed=False, last=True)
+>       assert len(problems) == 1 and problems[0].startswith(f"idle check after slow: the shared boot outlived its SGP40 backup deadline ({age_s:.1f} s > 89 s)"), problems
+E       AssertionError: ["idle check after slow: moved error counts it does not state (before, after, newest entries): {'SGP40': (0, 1, [['W', 35]])}"]
+E       assert (1 == 1 and False)
+E        +  where 1 = len(["idle check after slow: moved error counts it does not state (before, after, newest entries): {'SGP40': (0, 1, [['W', 35]])}"])
+E        +  and   False = <built-in method startswith of str object at 0x7fc4e3918030>('idle check after slow: the shared boot outlived its SGP40 backup deadline (100.0 s > 89 s)')
+E        +    where <built-in method startswith of str object at 0x7fc4e3918030> = "idle check after slow: moved error counts it does not state (before, after, newest entries): {'SGP40': (0, 1, [['W', 35]])}".startswith
+
+tests_scripts/test_digital_twin_scenarios.py:410: AssertionError
+______ test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup ______
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/fix/redtree/scripts/_digital_twin_scenarios.py'>
+
+    def test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup(harness: ModuleType) -> None:
+        # 60 x BackupPeriod read cycles to the first backup, then WaitTimeNTP - 1 retries waiting for NTP, each one read
+        # period (asy_sgp40_driver.py _check_storage()/_run_backup()); no device overrides either default.
+        tree = ast.parse((_REPO_ROOT / "src" / "asy_sgp40_driver.py").read_text(encoding="utf-8"))
+        period = _sgp40_default(tree, "_VAL_BACKUP_PERIOD")
+        wait = min(_sgp40_default(tree, "_VAL_WAIT_TIME_NTP"), module_int_const(_REPO_ROOT / "src", "asy_sgp40_driver.py", "_MAX_NTP_WAITTIME"))
+        starter = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_timer")
+        read_ms = [k.value.value for c in ast.walk(starter) if isinstance(c, ast.Call) for k in c.keywords if k.arg == "period" and isinstance(k.value, ast.Constant) and isinstance(k.value.value, int)]
+        assert len(read_ms) == 1, read_ms
+>       assert (60 * period + max(wait - 1, 0)) * read_ms[0] / 1000 == harness._SHARED_BOOT_DEADLINE_S, (period, wait, read_ms)
+                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_scenarios' has no attribute '_SHARED_BOOT_DEADLINE_S'
+
+tests_scripts/test_digital_twin_scenarios.py:423: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_scenario_outliving_the_sgp40_backup_deadline_fails_by_name[before the twin's first move]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_scenario_outliving_the_sgp40_backup_deadline_fails_by_name[after it]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup
+4 failed, 37 deselected in 0.25s

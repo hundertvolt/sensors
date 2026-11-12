@@ -1,0 +1,6 @@
+...................                                                      [100%]
+============================= slowest 3 durations ==============================
+0.12s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[narrowed]
+0.12s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_without_a_floor_the_callers_last_marker_expression_is_the_selection
+0.12s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_the_log_and_the_record_land_in_the_evidence_archive
+19 passed in 1.85s

@@ -1,0 +1,27 @@
+........................................................................ [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 35%]
+........................................................................ [ 46%]
+........................................................................ [ 58%]
+........................................................................ [ 70%]
+........................................................................ [ 81%]
+........................................................................ [ 93%]
+............................F...........                                 [100%]
+=================================== FAILURES ===================================
+____________ test_every_tracked_kind_is_counted_or_review_enforced _____________
+
+    def test_every_tracked_kind_is_counted_or_review_enforced() -> None:
+        tracked = [p for p in repo_files() if not is_shared_excluded(p)]
+        assert tracked, "the listing found no tracked file"
+        unlisted = sorted({_kind(p) for p in tracked} - set(_COUNTED) - set(_REVIEW_ENFORCED))
+>       assert unlisted == [], f"a tracked kind this gate neither counts nor names in _REVIEW_ENFORCED with its reason: {unlisted}"
+E       AssertionError: a tracked kind this gate neither counts nor names in _REVIEW_ENFORCED with its reason: ['.gitmodules']
+E       assert ['.gitmodules'] == []
+E         
+E         Left contains one more item: '.gitmodules'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:287: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_comment_block_cap.py::test_every_tracked_kind_is_counted_or_review_enforced
+1 failed, 615 passed in 4.66s

@@ -1,0 +1,8 @@
+Task exception wasn't retrieved
+future: <Task> coro= <generator object 'churn' at 7f07a8837da0>
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneU/u3_biteChurn/test_digital_twin_uart_link.py", line 697, in churn
+RuntimeError: planted churn failure
+FAIL test_every_train_crosses_intact_while_the_heap_churns RuntimeError planted churn failure
+one-runner done fails 1

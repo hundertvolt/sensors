@@ -2,20 +2,24 @@
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
 device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
 
-# The real chain: html/ and js/ -> scripts/build_website.sh wozi (staged by scripts/_stage_website.py) ->
+# The real chain: html/ and js/ -> scripts/build_website.sh <device> (staged by scripts/_stage_website.py) ->
 # frozen_modules/frozen_html.py -> `import frozen_html` (mount on import) -> WebserverService. scripts/test.sh builds it
-# first; the import mounts /html once per process.
+# first, for the device it names; the import mounts /html once per process.
 
-import asyncio
-import json
+import io
 import sys
 
 sys.path.insert(0, "ext")
 
+import deflate
 import frozen_html  # mounts /html on import
+from _async_harness import run
+from _generated_tree import devices, require_fresh
 from microdot import Microdot, Request
 
 from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
+
+require_fresh()  # two tests read the generated definitions
 
 try:
     from typing import TYPE_CHECKING
@@ -23,7 +27,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
     from typing import Protocol, TypeVar
 
     T = TypeVar("T")
@@ -32,11 +35,6 @@ if TYPE_CHECKING:
         # send_file() streams its body from a file-like object, not raw bytes - .read() is the
         # only thing _decompress() below ever needs off it.
         def read(self) -> bytes: ...
-
-
-class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
-    def hold(self, closable: object) -> None:
-        pass
 
 
 def _bundle_modules(body: bytes) -> "list[str]":
@@ -48,13 +46,9 @@ def _bundle_modules(body: bytes) -> "list[str]":
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
-    # send_file() streams from a file-like object, so .read() first; DeflateIO(AUTO) detects the gzip
-    # header (confirmed on v1.29.0). No `with`: the real object supports it but the stubs don't declare
-    # __enter__/__exit__ (the same stub-gap class as Timer()/I2C.deinit()), and a BytesIO needs no close.
-    import io
-
-    import deflate
-
+    # send_file() streams from a file-like object; DeflateIO(AUTO) detects the gzip header (v1.29.0). No `with` (a BytesIO
+    # needs no close) and an ignore: the stub declares neither __enter__/__exit__ nor a typed read() - removal trigger:
+    # SPECIFICATION.md B.15.
     d = deflate.DeflateIO(io.BytesIO(body.read()), deflate.AUTO, 0, True)
     return d.read()  # type: ignore[no-any-return]
 
@@ -66,14 +60,13 @@ def _make_app() -> "tuple[WebserverService, Microdot]":
         int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH")), int(_src_const("_DEFAULT_CHUNK_BYTES")), int(_src_const("_DEFAULT_MAX_CONNECTIONS")),
         None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
     )
-    routes = RouteSources([], None, None, None, None, None, None, [], [])
+    routes = RouteSources([], None, None, None, None, None, None, None, [], [])
     service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
     return service, app
 
 
 def _make_request(app: "Microdot", method: str, path: str) -> Request:
-    sock = (_NoopHolder(), _NoopHolder())
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"", sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"")
 
 
 def _src_const(name: str) -> str:
@@ -90,10 +83,6 @@ async def _uptime_s() -> int:  # the drop window's clock; dispatch only, no conn
     return 0
 
 
-def run(coro: "Coroutine[object, None, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
 def test_root_serves_the_real_index_html() -> None:
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/")))
@@ -106,9 +95,9 @@ def test_root_serves_the_real_index_html() -> None:
 def test_style_css_and_definitions_json_are_not_served_as_separate_files() -> None:
     # Both are inlined directly into index.html at build time now (SPECIFICATION.md Part H.7) instead of
     # being staged as their own files, so a page load needs one fewer connection. The nested dev-preview
-    # path and another device's definitions file were already never shipped this way either.
+    # path and every device's own definitions file were already never shipped this way either.
     _, app = _make_app()
-    for path in ("/style.css", "/definitions.json", "/definitions/wozi.json", "/definitions/dev.json"):
+    for path in ["/style.css", "/definitions.json"] + [f"/definitions/{device}.json" for device in devices()]:
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
         assert res.status_code == 404, path
 
@@ -128,8 +117,15 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
     marker_start = '<script type="application/json" id="inlined-definitions">'
     start = body.index(marker_start) + len(marker_start)
     end = body.index("</script>", start)
-    data = json.loads(body[start:end])
-    assert data["device"]["id"] == "wozi"
+    # Text, not a parse: one generated device's own definitions file, verbatim but for the escaped "<" (the
+    # staging script's own inlining); a strict parse of that much JSON costs seconds on this port.
+    block = body[start:end]
+    matches = []
+    for device in devices():
+        with open(f"build/generated_src/definitions/{device}.json") as f:
+            if f.read().replace("<", "\\u003c") == block:
+                matches.append(device)
+    assert len(matches) == 1, matches
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:

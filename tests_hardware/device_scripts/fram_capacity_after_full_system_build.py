@@ -1,59 +1,75 @@
-"""Isolated-driver device script: WP4/Topic 6's real-hardware capacity check - after build_system()
-and its setup list, every module that should hold a real FRAM chunk does, rather than a silently
-degraded RAM-only fallback. mpremote-only by design; tests_hardware/README.md has both reasons."""
+"""Isolated-driver device script: the real-hardware FRAM capacity check - after the bench build's construction and its
+setup list, every logger of every FRAM-wired module holds a real FRAM chunk rather than a silently degraded RAM-only
+fallback; the host compares the set with buildgen's. mpremote-only (tests_hardware/README.md says why)."""
 
 import asyncio
+import errno
+import os
 
+import _bench_device as device  # rendered: the bench device's generated module
 import machine
-import sensortask_dev
 
-failures: list[str] = []
+# @include _shared/facts.py
+# @include _shared/watchdog.py
 
-# Every name dev's build_system() constructs that could hold a FRAM-backed logger. Probed via
-# getattr() rather than by importing the classes, since no device wires all of them - so this
-# stays correct if dev's own TOML changes, the way the mock tier's equivalents are written.
-_CANDIDATE_MODULE_NAMES = (
-    "conn", "ntp", "sysfunct", "scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "webserver",
-    "uart_link_init", "uart_link_resp",
-)
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
 
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
 
-def _check_fram_backed(label: str, pr: object) -> None:
-    if not hasattr(pr, "fram"):
-        failures.append(f"{label}.pr is not a PrintLogHistoryStore at all (expected FRAM-backed - dev.toml wires fram_target everywhere)")
-        return
-    if pr.fram is None:
-        failures.append(f"{label}.pr.fram is None - FRAM allocation failed for this module's own logger")
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# A scratch directory: every setup() finds its file absent here and writes its defaults once, never a production file.
+_SCRATCH_CFG_PATH = "hwtest-scratch/"
 
 
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # the script's own: build_system() takes it, run_setups() feeds it
+    wdt = arm()
+    try:  # an aborted run's leftover first (none: ENOENT)
+        for name in os.listdir(_SCRATCH_CFG_PATH):
+            os.remove(_SCRATCH_CFG_PATH + name)
+        os.rmdir(_SCRATCH_CFG_PATH)
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            fact("leftover_errno", e.errno)
+    os.mkdir(_SCRATCH_CFG_PATH)
+    found: list[str] = []
+    ram_only: list[str] = []
     try:
-        await sensortask_dev.build_system(watchdog=wdt, cfg_path="", web_host="127.0.0.1", web_port=8080)
-        # main()'s next step, so the check reads the system as a real boot leaves it.
-        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())
-    except Exception as e:
-        print(f"RESULT: FAIL build_system() or its setup list raised on real hardware: {e!r}")
-        return
-
-    assert sensortask_dev.fram is not None
-    for name in _CANDIDATE_MODULE_NAMES:
-        module = getattr(sensortask_dev, name, None)
-        if module is None:
-            continue
-        _check_fram_backed(name, module.pr)
-        cfgmgr = getattr(module, "cfgmgr", None)
-        if cfgmgr is not None:
-            _check_fram_backed(f"{name}.cfgmgr", cfgmgr.pr)
-
-    if failures:
-        print("RESULT: FAIL " + "; ".join(failures))
-        return
-    print(
-        f"RESULT: PASS every FRAM-wired module's own chunk allocated successfully "
-        f"(fram._allocated_size={sensortask_dev.fram._allocated_size}, fram.size={sensortask_dev.fram.size})",
-    )
+        await device.build_system(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)
+        # main()'s next step, so the check reads the system as a real boot leaves it: construction allocates no chunk.
+        sysfunct, fram = device.sysfunct, device.fram
+        assert sysfunct is not None, "the generated build constructs SystemService unconditionally"
+        await sysfunct.run_setups(device._collect_setups())
+        fact("fram_present", fram is not None)
+        for label in BENCH["fram_wired"]:
+            for logger in getattr(device, label).get_loggers():
+                if getattr(logger, "fram", None) is None:
+                    ram_only.append(label + "." + logger.name)
+                elif logger.name not in found:
+                    found.append(logger.name)
+        if fram is not None:
+            fact("allocated_size", fram._allocated_size)
+            fact("size", fram.size)
+    finally:
+        pixel = getattr(device, "neopixel", None)  # the build constructs the rig's NeoPixel where the TOML wires one
+        if pixel is not None:
+            pixel.off()
+        for name in os.listdir(_SCRATCH_CFG_PATH):
+            os.remove(_SCRATCH_CFG_PATH + name)
+        os.rmdir(_SCRATCH_CFG_PATH)
+        # The boot-phase mark build_system() left: cleared, so the next reset does not read as a boot failure.
+        phase = machine.mem_backup(1)
+        for i in range(len(phase)):
+            phase[i] = 0
+    fact("found_fram_loggers", sorted(found))
+    fact("ram_only", ram_only)  # one entry per logger at most: bounded by the build
+    done()
 
 
 asyncio.run(_main())

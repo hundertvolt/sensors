@@ -1,0 +1,45 @@
+RUN inj=8 stage=-1 rc=0
+PROBE thr=-1 ok=True locked=True early=False first_red=51 ramp_end=180426 restore=180461 s2=22294 check=223312 margin_us=41868 sum_late_us=79951 max_late_us=8829 late_us=[8829, 7950, 7889, 7965, 7466, 8215, 8055, 7795, 7865, 7922] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=8 stage=32768 rc=0
+PROBE thr=32768 ok=True locked=True early=False first_red=54 ramp_end=186884 restore=186906 s2=22207 check=223149 margin_us=35323 sum_late_us=86011 max_late_us=10593 late_us=[8601, 8730, 8563, 8314, 8392, 7842, 8303, 8348, 10593, 8325] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=10 stage=-1 rc=0
+PROBE thr=-1 ok=True locked=True early=False first_red=67 ramp_end=201058 restore=201097 s2=23999 check=225664 margin_us=22941 sum_late_us=100613 max_late_us=11435 late_us=[11435, 10029, 9394, 10163, 10036, 10231, 10001, 9869, 10132, 9323] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=10 stage=32768 rc=0
+PROBE thr=32768 ok=True locked=True early=False first_red=68 ramp_end=204031 restore=204062 s2=23207 check=223882 margin_us=19176 sum_late_us=100858 max_late_us=10800 late_us=[10800, 10151, 9843, 10171, 9249, 10478, 10335, 10060, 9958, 9813] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=11 stage=-1 rc=0
+PROBE thr=-1 ok=True locked=True early=False first_red=72 ramp_end=211156 restore=211192 s2=24360 check=226020 margin_us=13204 sum_late_us=110603 max_late_us=11892 late_us=[11892, 11148, 11171, 10406, 11213, 11208, 10688, 10731, 11418, 10728] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=11 stage=32768 rc=0
+PROBE thr=32768 ok=True locked=True early=False first_red=55 ramp_end=212227 restore=212248 s2=25243 check=226273 margin_us=13016 sum_late_us=111312 max_late_us=12728 late_us=[12728, 10155, 11411, 10537, 10890, 11052, 10917, 10965, 11116, 11541] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=12 stage=-1 rc=0
+PROBE thr=-1 ok=True locked=True early=False first_red=83 ramp_end=220226 restore=220254 s2=24795 check=225920 margin_us=4569 sum_late_us=119771 max_late_us=12454 late_us=[12454, 11964, 12166, 11585, 12144, 11986, 11559, 12231, 12218, 11464] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=12 stage=32768 rc=0
+PROBE thr=32768 ok=True locked=True early=False first_red=53 ramp_end=220452 restore=220473 s2=24854 check=226197 margin_us=4402 sum_late_us=119733 max_late_us=12475 late_us=[12475, 11756, 11839, 12212, 11912, 12071, 11772, 11507, 12223, 11966] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN inj=13 stage=-1 rc=1
+PROBE thr=-1 ok=False locked=True early=False first_red=55 ramp_end=230644 restore=None s2=26043 check=230654 margin_us=-4601 sum_late_us=130261 max_late_us=13762 late_us=[13762, 12923, 12810, 13059, 13519, 12623, 12950, 13085, 12764, 12766] writes=13
+FAIL test_overlay_write_deferred_while_ramp_holds_the_overlay_lock:
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneFX8/probe/inject/test_asy_neopixel_driver.py", line 339, in test_overlay_write_deferred_while_ramp_holds_the_overlay_lock
+53/54 passed, 1 failed, 0 skipped
+RUN inj=13 stage=32768 rc=1
+PROBE thr=32768 ok=False locked=True early=False first_red=50 ramp_end=233373 restore=None s2=26699 check=233389 margin_us=-6674 sum_late_us=132941 max_late_us=15048 late_us=[14312, 12760, 12850, 13129, 13228, 12921, 12767, 15048, 12710, 13216] writes=13
+FAIL test_overlay_write_deferred_while_ramp_holds_the_overlay_lock:
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneFX8/probe/inject/test_asy_neopixel_driver.py", line 339, in test_overlay_write_deferred_while_ramp_holds_the_overlay_lock
+53/54 passed, 1 failed, 0 skipped
+RUN inj=16 stage=-1 rc=1
+PROBE thr=-1 ok=False locked=True early=False first_red=72 ramp_end=235037 restore=None s2=28983 check=234991 margin_us=-6054 sum_late_us=144521 max_late_us=16617 late_us=[16617, 16199, 15721, 15922, 16128, 16176, 15609, 16320, 15829] writes=13
+FAIL test_overlay_write_deferred_while_ramp_holds_the_overlay_lock:
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneFX8/probe/inject/test_asy_neopixel_driver.py", line 339, in test_overlay_write_deferred_while_ramp_holds_the_overlay_lock
+53/54 passed, 1 failed, 0 skipped
+RUN inj=16 stage=32768 rc=1
+PROBE thr=32768 ok=False locked=True early=False first_red=70 ramp_end=235369 restore=None s2=29573 check=235333 margin_us=-5796 sum_late_us=144542 max_late_us=17058 late_us=[17058, 16349, 15931, 15669, 16136, 15514, 16086, 15946, 15853] writes=13
+FAIL test_overlay_write_deferred_while_ramp_holds_the_overlay_lock:
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneFX8/probe/inject/test_asy_neopixel_driver.py", line 339, in test_overlay_write_deferred_while_ramp_holds_the_overlay_lock
+53/54 passed, 1 failed, 0 skipped
+END 13:20:38

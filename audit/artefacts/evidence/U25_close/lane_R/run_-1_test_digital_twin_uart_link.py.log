@@ -1,0 +1,3 @@
+Traceback (most recent call last):
+  File "tests/test_digital_twin_uart_link.py", line 34, in <module>
+ImportError: can't import name configure_i2c_wiring

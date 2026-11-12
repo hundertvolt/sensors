@@ -1,0 +1,18 @@
+...F...                                                                  [100%]
+=================================== FAILURES ===================================
+____ test_the_field_formats_are_the_tag_parsers_and_the_python_shape_checks ____
+
+    def test_the_field_formats_are_the_tag_parsers_and_the_python_shape_checks() -> None:
+        # The tag parser emits a format, and both validators accept it on a readonly field: one set, three copies.
+        js_formats = _js_string_set(_DEFINITIONS_JS.read_text(encoding="utf-8"), "FIELD_FORMATS")
+>       assert js_formats == _FORMATS == _python_module_strings(_SHAPE_CHECK, "_FIELD_FORMATS")
+E       AssertionError: assert {'epoch', 'gm...'lasttaskend'} == frozenset({'e...mtimestruct'})
+E         
+E         Extra items in the left set:
+E         'lasttaskend'
+E         Use -v to get more diff
+
+tests_scripts/test_definitions_js_mirrors.py:91: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_definitions_js_mirrors.py::test_the_field_formats_are_the_tag_parsers_and_the_python_shape_checks
+1 failed, 6 passed in 0.17s

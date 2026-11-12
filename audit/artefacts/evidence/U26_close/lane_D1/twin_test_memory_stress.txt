@@ -1,0 +1,32 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+F...s                                                                    [100%]
+=================================== FAILURES ===================================
+___________ test_real_gc_heap_headroom_survives_a_full_system_build ____________
+
+board = <twin_board.TwinBoard object at 0x7f118c778490>
+result_note = <function result_note.<locals>._note at 0x7f118c899ee0>
+
+    def test_real_gc_heap_headroom_survives_a_full_system_build(board: "Board", result_note: "Callable[[str], None]") -> None:
+        # The one memory figure no fake can produce: real 264 KB SRAM minus the firmware's own static footprint, after the
+        # bench build's object graph exists. Survivor volume and contiguity are judged on the facts, placement on the map.
+        output = board.run_isolated(DEVICE_SCRIPTS_DIR / "heap_headroom_after_full_system_build.py", timeout_s=_HEADROOM_SCRIPT_TIMEOUT_S, worst_case_allocation=WORST_CASE_ALLOCATION)
+        facts = parse_facts(output)
+        stages, used, max_used = facts.get("gc_threshold"), facts.get("used"), facts.get("max_used")
+        largest, min_largest = facts.get("largest_block"), facts.get("min_largest_block")
+        heaps = {key: value for key, value in facts.items() if key.startswith("heap_")}
+        result_note(f"heap headroom at gc.threshold {stages}: used {used} B (max {max_used}), largest block {largest} B (min {min_largest}); {heaps}")
+>       assert isinstance(used, int) and isinstance(max_used, int) and used <= max_used, f"at gc.threshold {stages}: the built object graph holds {used} B, over {max_used} B; facts {facts}"
+E       AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 1035840 B, over 100000 B; facts {'heap_baseline': {'alloc': 660512, 'largest_block': 196608, 'free': 15922656}, 'heap_after_build_system': {'alloc': 1035840, 'largest_block': 196608, 'free': 15547296}, 'heap_after_build_system_control': {'alloc': 1035456, 'largest_block': 196608, 'free': 15547808}, 'heap_after_build_system_production_threshold': {'alloc': 1035392, 'largest_block': 196608, 'free': 15547904}, 'used': 1035840, 'max_used': 100000, 'largest_block': 196608, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}
+E       assert (True and True and 1035840 <= 100000)
+E        +  where True = isinstance(1035840, int)
+E        +  and   True = isinstance(100000, int)
+
+tests_hardware/flash/test_memory_stress.py:67: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term
+PASSED tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget
+PASSED tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit
+SKIPPED [1] tests_hardware/flash/test_memory_stress.py:124: passive soak over one named duration - run via scripts/run_bench_soak_tests.sh --duration {short,mid,long}
+FAILED tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build
+1 failed, 3 passed, 1 skipped in 44.53s

@@ -1,0 +1,4 @@
+tests/test_asy_uart_comm.py@-1	62.46	0
+tests/test_asy_webserver_service.py@-1	4.37	0
+tests/test_asy_uart_comm.py@32768	63.31	0
+tests/test_asy_webserver_service.py@32768	7.56	0

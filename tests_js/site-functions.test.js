@@ -16,11 +16,8 @@ const SAMPLES = /** @type {import("../js/definitions.js").MockSamples} */ (sampl
 const TOML_FILES = /** @type {Record<string, string>} */ (import.meta.glob("../devices/*.toml", { query: "?raw", eager: true, import: "default" }));
 // The commands the earlier pages' system page offered.
 const LEGACY_COMMANDS = ["reboot", "bootloader", "mempause"];
-// @tunable l0.section_render_wait_ms = 5000
 const SECTION_RENDER_WAIT_MS = 5000;
-// @tunable l0.render_wait_timeout_ms = 2000
 const APPLY_WAIT_MS = 2000;
-// @tunable l0.render_poll_ms = 10
 const WAIT_POLL_MS = 10;
 
 /**
@@ -119,7 +116,6 @@ describe.each(DEVICE_IDS)("%s's site", (device) => {
         stop?.();
         uninstall?.();
         mainEl?.remove();
-        vi.restoreAllMocks();
     });
 
     it("shows one Measurements group and one writable Sensors group per sensor its TOML declares", () => {
@@ -135,9 +131,12 @@ describe.each(DEVICE_IDS)("%s's site", (device) => {
 
     it("sets the Wi-Fi identity, the Wi-Fi LED and the NTP server", () => {
         const networking = sectionOf(defs, "networking");
-        for (const fieldKey of ["SSID", "PW", "LEDWifiOn", "NTPHost"]) {
-            expect(writableGroupWith(networking, fieldKey), fieldKey).toBeDefined();
-        }
+        // Each field's submitted group and its own kind: a field a submitted group shows read-only is not settable.
+        const placed = Object.fromEntries(["SSID", "PW", "LEDWifiOn", "NTPHost"].map((fieldKey) => {
+            const group = writableGroupWith(networking, fieldKey);
+            return [fieldKey, [group?.key, group?.fields.find((field) => field.key === fieldKey)?.kind]];
+        }));
+        expect(placed).toEqual({ SSID: ["identity", "string"], PW: ["identity", "string"], LEDWifiOn: ["wifiLed", "toggle"], NTPHost: ["ntp", "string"] });
     });
 
     it("sets the system settings and sends reboot, bootloader and backup-pause commands", () => {

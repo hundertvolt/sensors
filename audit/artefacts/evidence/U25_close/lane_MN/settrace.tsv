@@ -1,0 +1,6 @@
+tests/test_digital_twin_machine.py	RC=0	107/107 passed, 0 failed, 0 skipped	WALL=1.224886682	mem=0
+tests/test_digital_twin_machine_uart.py	RC=0	25/25 passed, 0 failed, 0 skipped	WALL=5.928232994	mem=0
+tests/test_digital_twin_network_neopixel.py	RC=0	40/40 passed, 0 failed, 0 skipped	WALL=15.693308141	mem=0
+tests/test_digital_twin_http_client.py	RC=0	38/38 passed, 0 failed, 0 skipped	WALL=.080902037	mem=0
+tests/test_fakes.py	RC=0	53/53 passed, 0 failed, 0 skipped	WALL=.563453437	mem=0
+tests/test_digital_twin_rp2_constants.py	RC=0	8/8 passed, 0 failed, 0 skipped	WALL=.073238581	mem=0

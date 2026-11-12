@@ -1,0 +1,42 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+F.NOTE (scd30_measuring): already measuring (no write)
+.FFs                                                                   [100%]
+=================================== FAILURES ===================================
+_____ test_soft_timer_callback_drop_self_heals_under_scheduler_saturation ______
+tests_hardware/flash/test_bus_electrical_timing.py:37: in test_soft_timer_callback_drop_self_heals_under_scheduler_saturation
+    assert facts["all_self_healed"] is True, f"a timer never fired again after the drop: busy {facts['counts_busy']}, heal {facts['counts_heal']}"
+E   AssertionError: a timer never fired again after the drop: busy [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], heal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+E   assert False is True
+________________ test_single_precision_float_boundary_at_2pow24 ________________
+tests_hardware/flash/test_bus_electrical_timing.py:61: in test_single_precision_float_boundary_at_2pow24
+    assert facts["above_value"] == 2**24, f"2**24 + 1 came back as {facts['above_value']}, expected 2**24 (round to even on a 24-bit mantissa)"
+E   AssertionError: 2**24 + 1 came back as 16777217, expected 2**24 (round to even on a 24-bit mantissa)
+E   assert 16777217 == (2 ** 24)
+______________ test_a_malformed_country_code_reaction_is_recorded ______________
+tests_hardware/flash/test_bus_electrical_timing.py:66: in test_a_malformed_country_code_reaction_is_recorded
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "wifi_country_code_reaction.py", timeout_s=_COUNTRY_SCRIPT_TIMEOUT_S))
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/twin_board.py:96: in run_isolated
+    return self._run(harness.render_device_script(Path(script_path), **extras), timeout_s, expect_reset=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/twin_board.py:71: in _run
+    raise HardwareTestFailureError(f"twin run of {script.name} at gc.threshold({self.gc_threshold}) {what}:\n{output}")
+E   harness.HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(-1) failed (exit 1):
+E   FACT country_before="XX"
+E   FACT restored="ok"
+E   Traceback (most recent call last):
+E     File "digital_twin/run_device_script.py", line 116, in main
+E     File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/build/device_scripts/wifi_country_code_reaction.py", line 126, in <module>
+E     File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/build/device_scripts/wifi_country_code_reaction.py", line 112, in _main
+E     File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/build/device_scripts/wifi_country_code_reaction.py", line 98, in _attempt
+E   AttributeError: 'WLAN' object has no attribute 'scan'
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_bus_electrical_timing.py::test_soft_timer_callback_drop_self_heals_under_scheduler_saturation
+FAILED tests_hardware/flash/test_bus_electrical_timing.py::test_single_precision_float_boundary_at_2pow24
+FAILED tests_hardware/flash/test_bus_electrical_timing.py::test_a_malformed_country_code_reaction_is_recorded
+3 failed, 2 passed, 1 skipped in 11.04s
+
+real	0m11.723s
+user	0m1.843s
+sys	0m0.318s
+rc=1

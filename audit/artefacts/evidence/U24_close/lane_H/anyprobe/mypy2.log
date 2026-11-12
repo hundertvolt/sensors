@@ -1,0 +1,209 @@
+tests/test_asy_spi_driver.py: note: In member "init" of class "_RecordingPin":
+tests/test_asy_spi_driver.py:36:20: error: Argument 1 of "init" is incompatible
+with supertype "machine.Pin"; supertype defines the argument type as
+"int | None"  [override]
+        def init(self, mode: int = -1, pull: int = -1, *, value: object = ...
+                       ^~~~~~~~~
+tests/test_asy_spi_driver.py:36:20: note: This violates the Liskov substitution principle
+tests/test_asy_spi_driver.py:36:20: note: See https://mypy.readthedocs.io/en/stable/common_issues.html#incompatible-overrides
+tests/test_asy_spi_driver.py:36:36: error: Argument 2 of "init" is incompatible
+with supertype "machine.Pin"; supertype defines the argument type as
+"int | None"  [override]
+        def init(self, mode: int = -1, pull: int = -1, *, value: object = ...
+                                       ^~~~~~~~~
+tests/test_asy_spi_driver.py: note: In function "test_device_read_propagates_rx_overrun_and_still_releases_the_lock":
+tests/test_asy_spi_driver.py:830:40: error: Argument 2 to "inject_fault" of
+"SPI" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(spi).inject_fault("readinto", OSError(errno.EIO, "SPI RX over...
+                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_scd30_driver.py: note: In function "test_fault_injected_read_half_failure_after_a_successful_write_half":
+tests/test_asy_scd30_driver.py:751:39: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        i2c.inject_fault("readfrom_into", OSError(5, "read half failed"))
+                                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_scd30_driver.py: note: In function "test_reader_start_timer_arms_periodic_timer_and_pin_irq":
+tests/test_asy_scd30_driver.py:812:12: error: "Pin" has no attribute
+"_irq_trigger"  [attr-defined]
+        assert reader._irq_pin._irq_trigger == FakePin.IRQ_RISING
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_scd30_driver.py: note: In function "test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed":
+tests/test_asy_scd30_driver.py:842:12: error: "Pin" has no attribute
+"_irq_trigger"  [attr-defined]
+        assert reader._irq_pin._irq_trigger == FakePin.IRQ_RISING
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_scd30_driver.py: note: In function "test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming":
+tests/test_asy_scd30_driver.py:862:12: error: "Pin" has no attribute
+"_irq_trigger"  [attr-defined]
+        assert reader._irq_pin._irq_trigger == FakePin.IRQ_RISING
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_notification_scd30_integration.py: note: In function "test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_own_log":
+tests/test_notification_scd30_integration.py:211:33: error: Argument 2 to
+"inject_fault" of "I2C" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+        i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
+                                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_notification_scd30_integration.py: note: In function "test_recovers_and_triggers_normally_after_a_prior_fault":
+tests/test_notification_scd30_integration.py:245:33: error: Argument 2 to
+"inject_fault" of "I2C" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+        i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
+                                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_isl29125_driver.py: note: In function "test_read_counts_raises_rather_than_returning_none_on_a_bus_fault":
+tests/test_asy_isl29125_driver.py:820:45: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_isl29125_driver.py: note: In function "test_every_protocol_read_raises_rather_than_returning_none":
+tests/test_asy_isl29125_driver.py:833:49: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+            fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO,...
+                                                    ^~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_isl29125_driver.py: note: In function "test_a_raising_device_id_re_read_prints_and_adds_no_second_entry":
+tests/test_asy_isl29125_driver.py:1484:45: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_isl29125_driver.py: note: In function "test_a_reconciling_re_read_that_itself_fails_is_retried_on_the_following_cycle":
+tests/test_asy_isl29125_driver.py:2421:49: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+            fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO,...
+                                                    ^~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_isl29125_driver.py: note: In function "test_a_corrupted_config_byte_is_found_on_a_cycle_without_a_failed_write":
+tests/test_asy_isl29125_driver.py:2534:45: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_isl29125_driver.py: note: In function "test_the_timer_and_the_falling_edge_irq_both_reach_the_read_event":
+tests/test_asy_isl29125_driver.py:2963:12: error: "Pin" has no attribute
+"_irq_trigger"  [attr-defined]
+        assert reader.irq_pin._irq_trigger == FakePin.IRQ_FALLING  # activ...
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_isl29125_driver.py: note: In function "test_start_timer_degrades_when_the_alarm_pool_is_exhausted":
+tests/test_asy_isl29125_driver.py:2983:16: error: "Pin" has no attribute
+"_irq_handler"  [attr-defined]
+            assert reader.irq_pin._irq_handler is not None
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_isl29125_driver.py: note: In function "test_two_failed_status_reads_reapply_the_shadow_and_rearm_the_thresholds":
+tests/test_asy_isl29125_driver.py:3238:45: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_isl29125_driver.py: note: In function "test_a_raising_reapply_burst_logs_one_chip_set_and_no_recovery_warning":
+tests/test_asy_isl29125_driver.py:3252:45: error: Argument 2 to "inject_fault"
+of "I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_ntp_client.py: note: In function "test_a_zero_transmit_timestamp_is_rejected":
+tests/test_asy_ntp_client.py:1284:14: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+        before = RTC._shared_datetime
+                 ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:1285:5: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+        RTC._shared_datetime = (2001, 2, 3, 4, 5, 6, 7, 0)
+        ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:1288:16: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+            assert RTC._shared_datetime == (2001, 2, 3, 4, 5, 6, 7, 0)  # ...
+                   ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:1290:9: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+            RTC._shared_datetime = before
+            ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py: note: In function "test_the_first_sync_from_the_boot_default_restarts_the_age":
+tests/test_asy_ntp_client.py:2130:17: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+        saved_rtc = RTC._shared_datetime
+                    ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2134:9: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+            RTC._shared_datetime = (2021, 1, 1, 5, 0, 0, 0, 0)
+            ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2140:19: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+                rtc = RTC._shared_datetime
+                      ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2155:13: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+                RTC._shared_datetime = saved_rtc
+                ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py: note: In function "test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced":
+tests/test_asy_ntp_client.py:2176:58: error: "type[RTC]" has no attribute
+"_shared_datetime"  [attr-defined]
+    ... return cleared, tm, await client.ntp_issynced(), RTC._shared_datetime
+                                                         ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_fram_manager.py: note: In function "test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untouched":
+tests/test_asy_fram_manager.py:695:35: error: Argument 2 to "inject_fault" of
+"SPI" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        chip.inject_fault("readinto", OSError(5, "SPI RX overrun"), times=...
+                                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_bmp3xx_driver.py: note: In function "test_two_failed_reads_reset_the_chip_and_reapply_the_stored_config":
+tests/test_asy_bmp3xx_driver.py:1682:45: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_bmp3xx_driver.py: note: In function "test_a_rejected_reset_logs_one_chip_set_error_and_writes_no_config":
+tests/test_asy_bmp3xx_driver.py:1698:45: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_system_service.py: note: In function "test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm":
+tests/test_asy_system_service.py:2097:33: error: Incompatible types in
+assignment (expression has type
+"def arm(*, period: int = ..., mode: int = ..., callback: Callable[[Timer], None] | None = ...) -> None",
+variable has type
+"def init(self, *, mode: int = ..., callback: Callable[[Timer], None] | None = ..., period: int = ..., tick_hz: int = ..., freq: float | None = ..., hard: bool = ...) -> None")
+ [assignment]
+        rig.svc._reset_timer.init = arm  # type: ignore[method-assign]
+                                    ^~~
+tests/test_asy_system_service.py:2097:33: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+tests/test_setter_microdot_integration.py: note: In function "_fault_next_i2c_write":
+tests/test_setter_microdot_integration.py:892:38: error: Argument 2 to
+"inject_fault" of "I2C" has incompatible type "Exception"; expected
+"type[BaseException]"  [arg-type]
+        real_i2c.inject_fault("writeto", exc)
+                                         ^~~
+tests/test_asy_sgp40_driver.py: note: In function "test_a_raising_heater_off_logs_one_chip_set_and_no_recovery_warning":
+tests/test_asy_sgp40_driver.py:793:38: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake_bus.inject_fault("writeto", OSError(5, "no ACK from device"))
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_i2c_driver.py: note: In function "test_write_half_of_writeto_then_readfrom_can_succeed_while_read_half_fails":
+tests/test_asy_i2c_driver.py:525:45: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno.EIO, "no ACK...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_i2c_driver.py: note: In function "test_set_bits_read_half_can_fail_before_any_write_is_attempted":
+tests/test_asy_i2c_driver.py:562:45: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno.EIO, "no ACK...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_i2c_driver.py: note: In function "test_get_register_bytes_lets_a_bus_oserror_propagate":
+tests/test_asy_i2c_driver.py:1275:45: error: Argument 2 to "inject_fault" of
+"I2C" has incompatible type "OSError"; expected "type[BaseException]" 
+[arg-type]
+        fake(i2c).inject_fault("readfrom_into", OSError(errno.ETIMEDOUT, "...
+                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_i2c_driver.py: note: In function "_clear":
+tests/test_asy_i2c_driver.py:1461:26: error: Incompatible types in assignment
+(expression has type "type[_PinSpy]", variable has type "type[Pin]") 
+[assignment]
+        asy_i2c_driver.Pin = _PinSpy  # type: ignore[misc]
+                             ^~~~~~~
+tests/test_asy_i2c_driver.py:1461:26: note: Error code "assignment" not covered by "type: ignore[misc]" comment
+Found 37 errors in 11 files (checked 202 source files)

@@ -9,8 +9,8 @@ import pytest
 from _devices import DEVICE_NAMES
 
 import buildgen.validate as validate_mod
-from buildgen.buildspec import OPTIONAL_TOML_FIELDS, REQUIRED_TOML_FIELDS
-from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, resolve_driver
+from buildgen.buildspec import MANDATORY_FILES, OPTIONAL_TOML_FIELDS, REQUIRED_TOML_FIELDS
+from buildgen.driver_registry import resolve_driver
 from buildgen.signals import WARN_SIGNALS
 from buildgen.value_wiring import parse_value_wiring
 from buildgen.wiring import parse_wiring
@@ -42,14 +42,14 @@ def _build_rows(src_dir: Path) -> "set[_Row]":
     # The same rows read from the build: the validator's own tables, buildspec's, and every driver's tags.
     rows: set[_Row] = {("[device]", key, key in validate_mod._REQUIRED_DEVICE_FIELDS) for key in validate_mod._ALLOWED_DEVICE_FIELDS - {"wiring"}}
     for key, consumers in validate_mod._DEVICE_WIRING_CONSUMERS.items():
-        tags = [wf for f, label in consumers for wf in parse_wiring(src_dir / f, "schema", label) if wf.toml_field == key]
+        tags = [wf for label in consumers for wf in parse_wiring(src_dir / MANDATORY_FILES[label], "schema", label) if wf.toml_field == key]
         rows.add(("[device.wiring]", key, any(wf.required for wf in tags)))
     for kind, table in _BUS_TABLES.items():
         required = frozenset(validate_mod._BUS_WIRE_FIELDS[kind]) | _BUS_REQUIRED_EXTRA[kind]
         rows |= {(table, key, key in required) for key in validate_mod._BUS_ALLOWED_FIELDS[kind]}
     for driver in REQUIRED_TOML_FIELDS:
         table = f"[[instance]] {driver}"
-        rows |= {(table, "driver", True), (table, "name_ext", driver not in SINGLETON_SERVICE_DRIVERS)}
+        rows |= {(table, "driver", True), (table, "name_ext", False)}
         rows |= {(table, key, True) for key in REQUIRED_TOML_FIELDS[driver]} | {(table, key, False) for key in OPTIONAL_TOML_FIELDS[driver]}
         path = resolve_driver(driver, src_dir, "schema").source_path
         wiring = f"[instance.wiring] {driver}"
@@ -62,7 +62,7 @@ def _build_rows(src_dir: Path) -> "set[_Row]":
 
 @pytest.fixture(scope="module")
 def spec_text(repo_root: Path) -> str:
-    return (repo_root / "SPECIFICATION.md").read_text()
+    return (repo_root / "SPECIFICATION.md").read_text(encoding="utf-8")
 
 
 def test_the_l3_key_table_equals_the_builds_tables(spec_text: str, repo_root: Path) -> None:

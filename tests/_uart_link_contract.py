@@ -1,5 +1,5 @@
-"""Backend-agnostic semantic assertions for a byte-stream UART crossover link (Part J.7).
-Each check takes a factory returning (uart_a, uart_b, link); tests/machine.py and digital_twin/machine.py supply their own, so the two models diverge in fidelity but never in semantics.
+"""Backend-agnostic semantic assertions for a byte-stream UART crossover link (Part J.7). tests/machine.py and
+digital_twin/machine.py each supply their own factory, so the two models diverge in fidelity but never in semantics.
 link.settle() is that one fidelity seam - a no-op on the mock, a wait for pending wire time on the twin."""
 
 import select
@@ -16,9 +16,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from typing import Any, Protocol
+    from typing import Protocol
 
-    LinkFactory = Callable[[], tuple[Any, Any, Any]]
+    # What each check takes: it returns (uart_a, uart_b, link) of the machine fake the running tier imports.
+    LinkFactory = Callable[[], tuple[machine.UART, machine.UART, machine.UARTLink]]
 
     class _BoundedRecord(Protocol):
         # What both fakes' bounded logs offer a reader: a size, a drop count, entries oldest first.
@@ -34,7 +35,7 @@ _UARTRSR = 0x004  # read: OE 0x08, BE 0x04, FE 0x01; a write (UARTECR) clears th
 _UARTIMSC = 0x038  # RXIM 0x10, RTIM 0x40
 _UARTDMACR = 0x048  # RXDMAE 0x01
 _RX_DREQ = (21, 23)
-_DMA_TRANS_COUNT_TRIG = 0x5000001C  # channel n's AL1_TRANS_COUNT_TRIG at + 0x40 * n
+_CH0_AL1_TRANS_COUNT_TRIG = 0x5000001C  # channel n's AL1_TRANS_COUNT_TRIG at + 0x40 * n
 _RUN = 2**29  # the paced channel's transfer count, the driver's (a multiple of every legal ring size)
 
 
@@ -76,19 +77,19 @@ def check_write_boundaries_are_not_preserved(make: "LinkFactory") -> None:
 
 def check_pollin_follows_fifo_content(make: "LinkFactory") -> None:
     a, b, link = make()
-    assert not (b.ioctl(3, select.POLLIN) & select.POLLIN)
+    assert not (b.poll_mask(select.POLLIN) & select.POLLIN)
     a.write(b"q")
     link.settle()
-    assert b.ioctl(3, select.POLLIN) & select.POLLIN
+    assert b.poll_mask(select.POLLIN) & select.POLLIN
     b.read()
-    assert not (b.ioctl(3, select.POLLIN) & select.POLLIN)
+    assert not (b.poll_mask(select.POLLIN) & select.POLLIN)
 
 
 def check_pollout_follows_writable_gate(make: "LinkFactory") -> None:
     a, _b, _link = make()
-    assert a.ioctl(3, select.POLLOUT) & select.POLLOUT
+    assert a.poll_mask(select.POLLOUT) & select.POLLOUT
     a.writable = False
-    assert not (a.ioctl(3, select.POLLOUT) & select.POLLOUT)
+    assert not (a.poll_mask(select.POLLOUT) & select.POLLOUT)
 
 
 def check_short_write_returns_real_count(make: "LinkFactory") -> None:
@@ -261,10 +262,6 @@ def check_readline_with_a_size_is_clamped_and_counted(make: "LinkFactory") -> No
     b.read()
 
 
-def _wire_ms(uart: "machine.UART", nbytes: int) -> int:
-    return nbytes * 10_000 // uart.baudrate + 2  # 8N1: ten bit times a byte, plus a margin
-
-
 def _arm_ring(uart: "machine.UART", ring_size: int, first_count: int = _RUN) -> "tuple[memoryview, rp2.DMA, rp2.DMA]":
     # The driver's two-channel ring: a byte-wide paced channel writing a naturally aligned window that
     # wraps on its write address, and a reload channel it chains to, rewriting its count and re-triggering.
@@ -275,24 +272,10 @@ def _arm_ring(uart: "machine.UART", ring_size: int, first_count: int = _RUN) -> 
     while (1 << log2) < ring_size:  # MicroPython's int has no bit_length()
         log2 += 1
     data, reload = rp2.DMA(), rp2.DMA()
-    reload.config(read=array("I", [_RUN]), write=_DMA_TRANS_COUNT_TRIG + 0x40 * data.channel, count=1, ctrl=reload.pack_ctrl(inc_read=False, inc_write=False))
+    reload.config(read=array("I", [_RUN]), write=_CH0_AL1_TRANS_COUNT_TRIG + 0x40 * data.channel, count=1, ctrl=reload.pack_ctrl(inc_read=False, inc_write=False))
     ctrl = data.pack_ctrl(size=0, inc_read=False, inc_write=True, ring_sel=True, ring_size=log2, treq_sel=_RX_DREQ[uart.id], chain_to=reload.channel)
     data.config(read=_UART_BASES[uart.id], write=ring, count=first_count, ctrl=ctrl, trigger=True)
     return ring, data, reload
-
-
-def _mask_off(uart: "machine.UART") -> None:
-    address = _UART_BASES[uart.id] + _UARTIMSC
-    machine.mem32[address] &= ~0x50
-
-
-def _received(data: "rp2.DMA") -> int:
-    return _RUN - data.count
-
-
-def _close(*channels: "rp2.DMA") -> None:
-    for channel in channels:
-        channel.close()
 
 
 def check_init_sets_the_rx_interrupt_mask(make: "LinkFactory") -> None:
@@ -545,7 +528,7 @@ def check_a_full_uart_buffer_leaves_bytes_to_the_fifo(make: "LinkFactory") -> No
     assert b.any() == b.rxbuf
     b.read(32)
     assert b.any() == b.rxbuf  # room again: the FIFO drained into it
-    assert b.read()[-32:] == b"x" * 32
+    assert (b.read() or b"")[-32:] == b"x" * 32
 
 
 _ONE_BLOCK_MAX = 512  # entries a bounded log may keep in one storage block (the fakes' chunk sizes: 256, 512)
@@ -568,6 +551,24 @@ def _assert_fixed_occupancy(name: str, log: "_BoundedRecord", append: "Callable[
         assert max(len(block) for block in blocks) <= _ONE_BLOCK_MAX, f"{name}: stored in one block of {cap}"
 
 
+def _close(*channels: "rp2.DMA") -> None:
+    for channel in channels:
+        channel.close()
+
+
+def _mask_off(uart: "machine.UART") -> None:
+    address = _UART_BASES[uart.id] + _UARTIMSC
+    machine.mem32[address] &= ~0x50
+
+
+def _received(data: "rp2.DMA") -> int:
+    return _RUN - data.count
+
+
+def _wire_ms(uart: "machine.UART", nbytes: int) -> int:
+    return nbytes * 10_000 // uart.baudrate + 2  # 8N1: ten bit times a byte, plus a margin
+
+
 def check_the_bounded_logs_keep_a_fixed_occupancy(make: "LinkFactory") -> None:
     a, b, link = make()
     rsr = _UART_BASES[b.id] + _UARTRSR
@@ -586,7 +587,7 @@ def check_the_bounded_logs_keep_a_fixed_occupancy(make: "LinkFactory") -> None:
     _assert_fixed_occupancy("Pin.value_log", machine.Pin.value_log(20), lambda k: pin.value(k & 1), 64)
     machine.Pin.reset_registry()
     if hasattr(a, "log"):  # the unit tier's own call log
-        _assert_fixed_occupancy("UART.log", a.log, lambda k: a.log.append(("synthetic", k)), 4096)
+        _assert_fixed_occupancy("UART.log", a.log, lambda k: a.log.append(("read", k)), 4096)
 
 
 ALL_CHECKS = (

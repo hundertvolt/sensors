@@ -1,0 +1,116 @@
+tests/_boot_contiguity_probe.py:74: collect in _dump | next: print(f"=== MAP {label} ===")
+tests/_boot_contiguity_probe.py:111: collect in _ProbeGc.collect | next: self.calls[self.label] = n + 1
+tests/_threshold_runner.py:13: threshold in _run | next: sys.argv[:] = [test_file]  # what the file sees when run directly
+tests/microtest.py:98: threshold in _reset_process_state | next: base_classes = sys.modules.get("asy_base_classes")
+tests/test_asy_base_classes.py:483: collect in test_piecebuffer_retains_nothing_after_construction | next: before = gc.mem_alloc()
+tests/test_asy_base_classes.py:486: collect in test_piecebuffer_retains_nothing_after_construction | next: ambient = gc.mem_alloc() - before
+tests/test_asy_base_classes.py:488: collect in test_piecebuffer_retains_nothing_after_construction | next: before = gc.mem_alloc()
+tests/test_asy_base_classes.py:491: collect in test_piecebuffer_retains_nothing_after_construction | next: nets[k] = gc.mem_alloc() - before - ambient
+tests/test_asy_fram_allocation_budget.py:33: collect in _priced | next: free_before = gc.mem_free()
+tests/test_asy_system_service.py:3686: collect in _call_cost | next: before = gc.mem_alloc()
+tests/test_asy_system_service.py:3703: collect in _settled_alloc | next: return gc.mem_alloc()
+tests/test_asy_system_service.py:3785: collect in test_the_reports_outputs_allocate_nothing | next: before = gc.mem_alloc()
+tests/test_asy_uart_comm.py:2476: collect in test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation.measured | next: before = gc.mem_alloc()
+tests/test_asy_uart_comm.py:2479: collect in test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation.measured | next: nets[k] = gc.mem_alloc() - before
+tests/test_asy_uart_comm.py:2574: collect in test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat | next: first = gc.mem_alloc()
+tests/test_asy_uart_comm.py:2577: collect in test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat | next: grew[k] = gc.mem_alloc() - first
+tests/test_asy_uart_driver.py:2485: collect in test_a_read_retains_nothing.grown | next: before = gc.mem_alloc()
+tests/test_asy_uart_driver.py:2488: collect in test_a_read_retains_nothing.grown | next: return gc.mem_alloc() - before
+tests/test_asy_webserver_service.py:2247: threshold in test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes | next: try:
+tests/test_asy_webserver_service.py:2257: threshold in test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes | next: 
+tests/test_asy_webserver_service.py:2263: threshold in test_f2b_hammer_all_oversized_allocates_no_body_at_all | next: try:
+tests/test_asy_webserver_service.py:2271: threshold in test_f2b_hammer_all_oversized_allocates_no_body_at_all | next: 
+tests/test_asy_webserver_service.py:2720: collect in test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat.free_after | next: return gc.mem_free()
+tests/test_asy_webserver_service.py:3677: threshold in test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset | next: try:
+tests/test_asy_webserver_service.py:3682: threshold in test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset | next: 
+tests/test_asy_webserver_service.py:3688: threshold in test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_threshold | next: try:
+tests/test_asy_webserver_service.py:3693: threshold in test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_threshold | next: 
+tests/test_asy_webserver_service.py:3809: threshold in test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold_unset | next: try:
+tests/test_asy_webserver_service.py:3814: threshold in test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold_unset | next: 
+tests/test_asy_webserver_service.py:3820: threshold in test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold | next: try:
+tests/test_asy_webserver_service.py:3825: threshold in test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold | next: 
+tests/test_asy_webserver_service.py:3830: threshold in test_i2_hammer_concurrent_sensors_requests_stay_valid_with_gc_threshold_unset | next: try:
+tests/test_asy_webserver_service.py:3835: threshold in test_i2_hammer_concurrent_sensors_requests_stay_valid_with_gc_threshold_unset | next: 
+tests/test_asy_webserver_service.py:3841: threshold in test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_threshold | next: try:
+tests/test_asy_webserver_service.py:3846: threshold in test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_threshold | next: 
+tests/test_asy_webserver_service.py:3877: threshold in _run_settings_hammer | next: try:
+tests/test_asy_webserver_service.py:3882: threshold in _run_settings_hammer | next: 
+tests/test_asy_webserver_service.py:3958: threshold in test_i3_hammer_every_memory_bounded_get_route_concurrently_with_gc_threshold_unset | next: try:
+tests/test_asy_webserver_service.py:3963: threshold in test_i3_hammer_every_memory_bounded_get_route_concurrently_with_gc_threshold_unset | next: 
+tests/test_asy_webserver_service.py:3969: threshold in test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_gc_threshold | next: try:
+tests/test_asy_webserver_service.py:3974: threshold in test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_gc_threshold | next: 
+tests/test_asy_webserver_service.py:4009: threshold in test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_gc_threshold_unset | next: try:
+tests/test_asy_webserver_service.py:4014: threshold in test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_gc_threshold_unset | next: 
+tests/test_asy_webserver_service.py:4020: threshold in test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold | next: try:
+tests/test_asy_webserver_service.py:4025: threshold in test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold | next: 
+tests/test_async_harness.py:39: collect in _growth_over_awaited_tasks.scenario | next: before = gc.mem_alloc()
+tests/test_async_harness.py:47: collect in _growth_over_awaited_tasks.scenario | next: return gc.mem_alloc() - before
+tests/test_digital_twin_sensortask_integration.py:249: collect in _heap_floor | next: used = gc.mem_alloc()
+tests/test_digital_twin_sensortask_integration.py:477: collect in test_the_supervisor_restarts_a_real_dead_task.scenario | next: 
+tests/test_digital_twin_sensortask_integration.py:548: collect in test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0.scenario | next: 
+tests/test_digital_twin_sensortask_integration.py:730: collect in test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk.scenario | next: 
+tests/test_digital_twin_sensortask_integration.py:765: collect in test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state.scenario | next: 
+tests/test_digital_twin_sensortask_integration.py:795: collect in test_a_restored_backup_reports_its_timestamp_without_ntp.scenario | next: 
+tests/test_digital_twin_uart_link.py:238: threshold in _hammer_with_the_graph_running | next: 
+tests/test_digital_twin_uart_link.py:266: collect in _hammer_with_the_graph_running | next: free_n1 = gc.mem_free()
+tests/test_digital_twin_uart_link.py:270: collect in _hammer_with_the_graph_running | next: rate = (free_n1 - gc.mem_free()) / _HAMMER_ROUNDS
+tests/test_digital_twin_uart_link.py:273: threshold in _hammer_with_the_graph_running | next: assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered tra
+tests/test_digital_twin_uart_link.py:670: collect in test_many_back_to_back_transfers_do_not_degrade_or_leak | next: free_n1 = gc.mem_free()
+tests/test_digital_twin_uart_link.py:674: collect in test_many_back_to_back_transfers_do_not_degrade_or_leak | next: rate = (free_n1 - gc.mem_free()) / (rounds - _LEAK_WARMUP_ROUNDS)
+tests/test_digital_twin_unix_port_unretrieved_report.py:88: collect in _call_cost | next: before = gc.mem_alloc()
+tests/test_digital_twin_unix_port_unretrieved_report.py:126: collect in _settled_alloc | next: return gc.mem_alloc()
+tests/test_digital_twin_unix_port_unretrieved_report.py:179: collect in test_the_reports_outputs_allocate_nothing | next: before = gc.mem_alloc()
+tests/test_fram_integration.py:185: collect in test_many_write_read_cycles_with_crc32_and_verify_show_no_state_leak | next: write_ok, data = run(run_cycle(i))
+tests/test_uart_comm_hazard.py:608: collect in _measure_retention | next: idle_before = gc.mem_alloc()
+tests/test_uart_comm_hazard.py:612: collect in _measure_retention | next: ambient = gc.mem_alloc() - idle_before
+tests/test_uart_comm_hazard.py:615: collect in _measure_retention | next: before = gc.mem_alloc()
+tests/test_uart_comm_hazard.py:622: collect in _measure_retention | next: grew = max(0, (gc.mem_alloc() - before) - ambient) / _MEASURED
+tests/test_uart_comm_hazard.py:1133: collect in _hammer_clean.hammer | next: mid[0] = gc.mem_alloc()
+tests/test_uart_comm_hazard.py:1137: collect in _hammer_clean.hammer | next: grew = gc.mem_alloc() - mid[0]
+tests/test_uart_comm_hazard.py:1191: collect in _hammer_faulted.hammer | next: before[0] = gc.mem_alloc()
+tests/test_uart_comm_hazard.py:1195: collect in _hammer_faulted.hammer | next: grew = gc.mem_alloc() - before[0]
+tests/test_uart_comm_hazard.py:1358: threshold in _under_threshold | next: try:
+tests/test_uart_comm_hazard.py:1362: threshold in _under_threshold | next: 
+digital_twin/run_device_script.py:126: threshold in main | next: try:
+digital_twin/run_generic_integration.py:341: collect in _mem_sampler | next: print(f"MEM_SAMPLE {time.time():.3f} {gc.mem_free()}")
+digital_twin/run_generic_integration.py:380: collect in _print_shutdown_line | next: micropython.mem_info()  # the largest free block's only reader (py/gc.
+digital_twin/run_generic_integration.py:876: threshold in <module> | next: try:
+tests_hardware/device_scripts/_shared/heap_probe.py:29: collect in _report | next: free, base = gc.mem_free(), gc.mem_alloc()
+tests_hardware/device_scripts/_shared/heap_probe.py:32: collect in _report | next: retained = gc.mem_alloc() - base
+tests_hardware/device_scripts/_shared/heap_probe.py:39: collect in dump_map | next: dump(label)
+tests_hardware/device_scripts/_shared/heap_probe.py:44: collect in largest_block | next: low, high = 0, _PROBE_MAX
+tests_hardware/device_scripts/_shared/heap_probe.py:57: collect in largest_block | next: return low
+tests_hardware/device_scripts/allocation_need_per_source.py:38: threshold in <module> | next: # Hole sizes in GC blocks, ascending: 16-2,048 B on the RP2040, twice 
+tests_hardware/device_scripts/allocation_need_per_source.py:70: collect in _build_sieve | next: try:
+tests_hardware/device_scripts/allocation_need_per_source.py:82: collect in _build_sieve | next: 
+tests_hardware/device_scripts/allocation_need_per_source.py:94: collect in _measure | next: before = gc.mem_alloc()
+tests_hardware/device_scripts/allocation_need_per_source.py:132: collect in _release_sieve | next: 
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:32: threshold in <module> | next: # A scratch directory: every setup() finds its file absent here and wr
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:79: threshold in _main | next: stages.append(gc.threshold())
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:37: threshold in <module> | next: # A scratch directory: every setup() finds its file absent here and wr
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:68: collect in _ProbeGc.collect | next: self.calls += 1
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:111: threshold in _boot_lists | next: stages.append(gc.threshold())
+tests_hardware/device_scripts/heap_under_connection_ceiling.py:33: threshold in <module> | next: # @tunable l3.heap_under_connection_ceiling_sample_interval_ms = 1000
+tests_hardware/device_scripts/loop_stretch_timing.py:33: threshold in <module> | next: # A scratch directory: construction writes nothing, and every config s
+tests_hardware/device_scripts/loop_stretch_timing.py:61: collect in _main | next: gc_max = max(gc_max, time.ticks_diff(time.ticks_us(), t0))
+tests_hardware/device_scripts/serving_at_default_gc.py:38: threshold in <module> | next: # A fixed wait, never an in-process readiness request: one would share
+tests_hardware/device_scripts/serving_at_default_gc.py:95: collect in _observe | next: dump(f"{phase}{dumps[phase]:02d}")
+tests_hardware/device_scripts/uart_crossover_exchange.py:47: threshold in <module> | next: 
+tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:42: threshold in <module> | next: 
+tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:364: collect in _sweep | next: heap_before, largest_before = gc.mem_free(), largest_block()
+tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:368: collect in _sweep | next: fact("heap", {"heap_before": heap_before, "heap_after": gc.mem_free(),
+tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:393: collect in _window | next: wdt.feed()
+tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:165: collect in _trial | next: buf = bytearray(FRAME)
+tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:195: collect in main | next: fact("idle_gap_us", await _idle_gap())
+tests_hardware/device_scripts/uart_idle_poll_rate.py:59: collect in _count_rounds | next: uart = asy_uart_driver.UART(
+tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:128: collect in _heap_floor | next: sample = gc.mem_alloc()
+tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:237: collect in _main | next: gc.threshold(-1)
+tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:238: threshold in _main | next: fact("gc_threshold", gc.threshold())
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:47: threshold in _at_threshold | next: result: dict[str, object] = {"gc_threshold": gc.threshold(), "reports"
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:75: collect in _at_threshold | next: result["free_after"] = gc.mem_free()
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:167: collect in _locked_reports | next: context = {"message": _MESSAGE, "exception": exc, "future": svc}
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:214: collect in _settled_alloc | next: return gc.mem_alloc()
+src/asy_system_service.py:646: collect in SystemService.run_setups | next: for setup in setups:
+src/asy_system_service.py:650: collect in SystemService.run_setups | next: self._config_faults = [store.module_name for store in self._config_sto
+src/asy_system_service.py:678: collect in SystemService.start_tasks | next: # A task that dies with nobody awaiting it reaches SYSTEM's level-gate
+src/asy_system_service.py:687: collect in SystemService.start_tasks | next: 

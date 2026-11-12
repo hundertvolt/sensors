@@ -1,12 +1,12 @@
+// Tests js/render.js: the banner, a rendered section and its live updates, the Apply path's sparse body and
+// per-field results, the errcount cards, the reset toggle and the section controller's failure handling.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 import { hideBanner, renderSection, showBanner } from "../js/render.js";
+import { mustQuery } from "./_dom_helpers.js";
 
-// @tunable l0.render_wait_timeout_ms = 2000
 const WAIT_TIMEOUT_MS = 2000;
-// @tunable l0.render_poll_ms = 10
 const WAIT_POLL_MS = 10;
-// @tunable l0.render_banner_wait_ms = 5000
 const BANNER_WAIT_MS = 5000;
 
 // Polls `check` instead of a fixed sleep: some flows chain two requests, so a fixed wait would be flaky or slow.
@@ -20,29 +20,12 @@ async function waitFor(check, timeoutMs = WAIT_TIMEOUT_MS) {
         if (check()) {
             return;
         }
-        // Intentionally sequential: each retry must wait out the previous delay before rechecking.
-        // eslint-disable-next-line no-await-in-loop
+        // eslint-disable-next-line no-await-in-loop -- each retry waits out the previous delay before rechecking
         await new Promise((resolve) => {
             setTimeout(resolve, WAIT_POLL_MS);
         });
     }
     throw new Error("waitFor timed out");
-}
-
-/**
- * querySelector with a runtime + type assertion that the element exists, so tests can chain
- * straight into `.value`/`.click()`/`.dataset` without every call site null-checking.
- * @template {Element} [T=HTMLElement]
- * @param {ParentNode} root
- * @param {string} selector
- * @returns {T}
- */
-function mustQuery(root, selector) {
-    const found = root.querySelector(selector);
-    if (found === null) {
-        throw new Error(`Expected to find "${selector}"`);
-    }
-    return /** @type {T} */ (found);
 }
 
 /**
@@ -375,7 +358,6 @@ describe("renderSection", () => {
         stop?.();
         uninstall?.();
         mainEl?.remove();
-        vi.restoreAllMocks();
     });
 
     /** @returns {HTMLElement} */
@@ -583,6 +565,31 @@ describe("renderSection", () => {
         mustQuery(main, ".action-button").click(); // "Show flagged"
         expect(mustQuery(main, ".errcount-row-name").textContent).toBe("Captive DNS");
         expect(mustQuery(mustQuery(main, ".errcount-row"), ".errcount-row-count").textContent).toBe("1");
+    });
+
+    it("describes a history code from the page's one code table, in the Status and the Networking group alike", async () => {
+        /** @type {import("../js/definitions.js").Section} */
+        const section = {
+            key: "networking", label: "Networking", rest: { get: "/networking", put: "/networking" }, pollGroup: "settings",
+            groups: [{ key: "dnsErrors", label: "Captive DNS Error History", kind: "errcount", modules: [{ key: "DNSSRV", label: "Captive DNS" }] }],
+        };
+        const defs = { ...DEFS, errcountCodes: { E: { 2: "no answer" }, W: { 3: "slow answer" } }, sections: [...DEFS.sections, section] };
+        const errcount = { SCD30: { counter: 1, history: [{ num: 2, type: /** @type {const} */ ("E") }] }, DNSSRV: { counter: 1, history: [{ num: 3, type: /** @type {const} */ ("W") }] } };
+        uninstall = installMockFetch(defs, { ...DATA, status: { ...DATA.status, errcount } });
+        /** @param {import("../js/definitions.js").Section} shown */
+        async function firstDescription(shown) {
+            const main = mount();
+            stop = renderSection(defs, shown, main);
+            await waitFor(() => main.querySelector("button.history-entry-num") !== null);
+            mustQuery(main, ".action-button").click(); // "Show flagged"
+            mustQuery(main, "button.history-entry-num").click();
+            const text = mustQuery(main, ".code-description").textContent;
+            stop();
+            main.remove();
+            return text;
+        }
+        expect(await firstDescription(getSection("status"))).toBe("2: no answer");
+        expect(await firstDescription(section)).toBe("3: slow answer");
     });
 
     it("preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update", async () => {
@@ -1561,16 +1568,15 @@ describe("renderSection", () => {
             expect(log.slice(log.indexOf("begin"))).toEqual(["begin", "PUT /sensors", "GET /sensors", "end"]);
         });
 
-        it("shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere", async () => {
+        it("paints a GET answering JSON that is not an object with no banner: every GET route answers an object", async () => {
             uninstall = installMockFetch(DEFS, DATA);
             const inner = window.fetch;
             window.fetch = (input, init) => (String(input) === "/measurements" ? Promise.resolve(new Response("[1, 2]", { status: 200 })) : inner(input, init));
             const main = mount();
             stop = renderSection(DEFS, getSection("measurements"), main);
 
-            await waitFor(() => mustQuery(main, ".error-banner").dataset.shown === "true");
-            expect(mustQuery(main, ".error-banner").textContent).toMatch(/GET \/measurements returned no JSON object/);
-            expect(main.querySelector("[data-group-key]")).toBeNull();
+            await waitFor(() => main.querySelector("[data-group-key]") !== null);
+            expect(mustQuery(main, ".error-banner").dataset.shown).toBe("false");
         });
 
         it("words a failed GET whose body is not JSON by its status, not as an empty body", async () => {
@@ -2030,8 +2036,9 @@ describe("renderSection", () => {
          * @param {Record<string, unknown>} values
          */
         async function anotherClientWrites(values) {
-            const response = await window.fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: values }) });
+            const response = await window.fetch("/sensors", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ SCD30: values }) });
             expect(response.ok).toBe(true);
+            expect((await response.json()).code).toBe(0); // HTTP 200 alone also carries a refused body's code 1
         }
 
         it("sends one GET of the section before the PUT, and a toggle and dropdown another client changed", async () => {

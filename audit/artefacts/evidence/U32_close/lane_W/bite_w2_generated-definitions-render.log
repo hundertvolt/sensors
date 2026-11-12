@@ -1,0 +1,175 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneW/bite_w2
+
+ ❯ |chromium| tests_js/generated-definitions-render.test.js (48 tests | 12 failed) 2228ms
+   ❯ arzi's generated definitions (8)
+     × pass the validator 235ms
+     × load through the inlined element a device build serves 91ms
+     ✓ render the measurements section's every group, field and errcount row, with no error 28ms
+     ✓ render the sensors section's every group, field and errcount row, with no error 23ms
+     ✓ render the networking section's every group, field and errcount row, with no error 26ms
+     ✓ render the system section's every group, field and errcount row, with no error 24ms
+     ✓ render the status section's every group, field and errcount row, with no error 44ms
+     ✓ render the notification section's every group, field and errcount row, with no error 24ms
+   ❯ dev's generated definitions (8)
+     × pass the validator 93ms
+     × load through the inlined element a device build serves 87ms
+     ✓ render the measurements section's every group, field and errcount row, with no error 24ms
+     ✓ render the sensors section's every group, field and errcount row, with no error 25ms
+     ✓ render the networking section's every group, field and errcount row, with no error 23ms
+     ✓ render the system section's every group, field and errcount row, with no error 22ms
+     ✓ render the status section's every group, field and errcount row, with no error 23ms
+     ✓ render the notification section's every group, field and errcount row, with no error 22ms
+   ❯ grkizi's generated definitions (8)
+     × pass the validator 97ms
+     × load through the inlined element a device build serves 85ms
+     ✓ render the measurements section's every group, field and errcount row, with no error 22ms
+     ✓ render the sensors section's every group, field and errcount row, with no error 22ms
+     ✓ render the networking section's every group, field and errcount row, with no error 22ms
+     ✓ render the system section's every group, field and errcount row, with no error 22ms
+     ✓ render the status section's every group, field and errcount row, with no error 22ms
+     ✓ render the notification section's every group, field and errcount row, with no error 22ms
+   ❯ klkizi's generated definitions (8)
+     × pass the validator 146ms
+     × load through the inlined element a device build serves 105ms
+     ✓ render the measurements section's every group, field and errcount row, with no error 25ms
+     ✓ render the sensors section's every group, field and errcount row, with no error 22ms
+     ✓ render the networking section's every group, field and errcount row, with no error 22ms
+     ✓ render the system section's every group, field and errcount row, with no error 23ms
+     ✓ render the status section's every group, field and errcount row, with no error 34ms
+     ✓ render the notification section's every group, field and errcount row, with no error 37ms
+   ❯ schlafzi's generated definitions (8)
+     × pass the validator 95ms
+     × load through the inlined element a device build serves 85ms
+     ✓ render the measurements section's every group, field and errcount row, with no error 22ms
+     ✓ render the sensors section's every group, field and errcount row, with no error 23ms
+     ✓ render the networking section's every group, field and errcount row, with no error 22ms
+     ✓ render the system section's every group, field and errcount row, with no error 31ms
+     ✓ render the status section's every group, field and errcount row, with no error 35ms
+     ✓ render the notification section's every group, field and errcount row, with no error 22ms
+   ❯ wozi's generated definitions (8)
+     × pass the validator 120ms
+     × load through the inlined element a device build serves 92ms
+     ✓ render the measurements section's every group, field and errcount row, with no error 22ms
+     ✓ render the sensors section's every group, field and errcount row, with no error 22ms
+     ✓ render the networking section's every group, field and errcount row, with no error 22ms
+     ✓ render the system section's every group, field and errcount row, with no error 22ms
+     ✓ render the status section's every group, field and errcount row, with no error 26ms
+     ✓ render the notification section's every group, field and errcount row, with no error 22ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > pass the validator
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > pass the validator
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > pass the validator
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > pass the validator
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > pass the validator
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > pass the validator
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---pass-the-validator.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---pass-the-validator.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---pass-the-validator.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---pass-the-validator.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---pass-the-validator.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---pass-the-validator.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "sections[4].groups[1].fields[8].format must be one of gmtimestruct, epoch on a readonly field when present",[39m
+[31m+ ][39m
+
+ ❯ tests_js/generated-definitions-render.test.js:63:43
+     61|
+     62|     it("pass the validator", () => {
+     63|         expect(validateDefinitions(defs)).toEqual([]);
+       |                                           ^
+     64|     });
+     65|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > load through the inlined element a device build serves
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > load through the inlined element a device build serves
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > load through the inlined element a device build serves
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > load through the inlined element a device build serves
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > load through the inlined element a device build serves
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > load through the inlined element a device build serves
+AssertionError: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---load-through-the-inlined-element-a-device-build-serves.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---load-through-the-inlined-element-a-device-build-serves.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---load-through-the-inlined-element-a-device-build-serves.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---load-through-the-inlined-element-a-device-build-serves.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---load-through-the-inlined-element-a-device-build-serves.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---load-through-the-inlined-element-a-device-build-serves.png
+
+ ❯ _Assertion.__VITEST_RESOLVES__ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgg0N3yO.js?v=549b9f68:2257:33
+ ❯ tests_js/generated-definitions-render.test.js:70:69
+     68|         inlined.type = "application/json";
+     69|         inlined.textContent = JSON.stringify(defs);
+     70|         await expect(loadDefinitions("never-fetched.json", inlined)).r…
+       |                                                                     ^
+     71|     });
+     72|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5695:10
+
+Caused by: Error: never-fetched.json failed definitions validation:
+- sections[4].groups[1].fields[8].format must be one of gmtimestruct, epoch on a readonly field when present
+ ❯ loadDefinitions js/definitions.js:432:15
+ ❯ tests_js/generated-definitions-render.test.js:70:22
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Dg_hQ0Dv.js?v=549b9f68:5648:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  12 failed | 36 passed (48)
+   Start at  09:05:29
+   Duration  4.64s (tests 64%, worker 29%, import 7%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 36 · failed 12 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > pass the validator: expected [ Array(1) ] to deeply equal []
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > load through the inlined element a device build serves: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > pass the validator: expected [ Array(1) ] to deeply equal []
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > load through the inlined element a device build serves: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > pass the validator: expected [ Array(1) ] to deeply equal []
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > load through the inlined element a device build serves: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > pass the validator: expected [ Array(1) ] to deeply equal []
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > load through the inlined element a device build serves: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > pass the validator: expected [ Array(1) ] to deeply equal []
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > load through the inlined element a device build serves: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > pass the validator: expected [ Array(1) ] to deeply equal []
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > load through the inlined element a device build serves: promise rejected "Error: never-fetched.json failed definiti…" instead of resolving
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

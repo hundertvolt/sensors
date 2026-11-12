@@ -1,0 +1,46 @@
+..........F..............F.............................................. [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 32%]
+........................................................................ [ 42%]
+........................................................................ [ 53%]
+........................................................................ [ 64%]
+........................................................................ [ 74%]
+........................................................................ [ 85%]
+........................................................................ [ 96%]
+.........................                                                [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 3'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           SPECIFICATION.md: tests_scripts/test_timing_budget.py
+E       assert not [('SPECIFICATION.md', 'tests_scripts/test_timing_budget.py')]
+
+tests_scripts/test_citations.py:251: AssertionError
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('scripts/cro...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           SPECIFICATION.md: never without such a host, and the shipped level prints no client-triggered line
+E           SPECIFICATION.md: | `stall.sync_wait` | the deliberate synchronous waits: the SPI CS settle and th
+E       assert not [('SPECIFICATION.md', 'never without such a host, and the shipped level prints no client-triggered line'), ('SPECIFICATION.md', '| `stall.sync_wait` | the deliberate synchronous waits: the SPI CS settle and th')]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31d/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+2 failed, 671 passed, 1 warning in 27.37s

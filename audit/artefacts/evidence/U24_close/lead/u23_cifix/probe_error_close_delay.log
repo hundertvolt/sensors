@@ -1,0 +1,10 @@
+browser 153.0.8010.12
+1 reset(s), close 0 ms later (url about:blank): settled (5 ms)
+1 reset(s), close 50 ms later (url chrome-error://chromewebdata/): settled (4 ms)
+1 reset(s), close 200 ms later (url chrome-error://chromewebdata/): settled (4 ms)
+1 reset(s), close 1000 ms later (url chrome-error://chromewebdata/): settled (4 ms)
+2 reset(s), close 0 ms later (url chrome-error://chromewebdata/): pending after 6000 ms (6001 ms)
+2 reset(s), close 50 ms later (url chrome-error://chromewebdata/): settled (3 ms)
+2 reset(s), close 200 ms later (url chrome-error://chromewebdata/): settled (6 ms)
+2 reset(s), close 1000 ms later (url chrome-error://chromewebdata/): settled (8 ms)
+context.close: settled

@@ -3,8 +3,8 @@ with an exact set of external-API mirrors exempted per file, and every src/ cons
 ends with the fixed tail (SPECIFICATION.md D.10, C.2). The ESLint half: tests_js/lint-ceilings.test.js."""
 
 import ast
+import os
 import re
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -13,11 +13,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 import tomllib
+from _repo_scan import pinned_ruff
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-_SCOPES = ("src", "tests", "digital_twin", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
+_SCOPES = ("src", "tests", "digital_twin", "fakes", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,8 @@ _MAX_ARGS_EXEMPT = frozenset({
 })
 
 _TAIL = ("max_module_error", "name_ext", "cfg_path")
-# The classes whose test-only `logger=` reach-through stays for now (C.7): no other constructor takes one.
+# The classes that take `logger=`, sharing an already-built sibling's logger in place of making one (no device wires it;
+# tests do): no other constructor takes one.
 _LOGGER_ALLOWED = frozenset({
     ("src/asy_uart_comm.py", "UARTComm"),
     ("src/asy_uart_link_driver.py", "UARTLinkDriver"),
@@ -59,36 +61,16 @@ _DUMMY = re.compile(r"^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$")
 _UNCOUNTED_DECORATORS = frozenset({"overload", "override"})
 
 
-def _ruff() -> str:
-    found = shutil.which("ruff") or str(Path(sys.executable).with_name("ruff"))
-    assert Path(found).is_file(), "ruff is not installed - run `uv sync` (it is a pinned dev dependency)"
-    return found
-
-
-def _lint_tables(repo_root: Path) -> "dict[str, dict[str, object]]":
-    # pyproject.toml's [tool.ruff.lint.*] tables by name.
-    with (repo_root / "pyproject.toml").open("rb") as f:
-        lint = tomllib.load(f)["tool"]["ruff"]["lint"]
-    return {name: table for name, table in lint.items() if isinstance(table, dict)}
-
-
-def _configured(repo_root: Path, ceiling: _Ceiling) -> int:
-    value = _lint_tables(repo_root)[ceiling.section][ceiling.option]
-    assert isinstance(value, int), f"pyproject.toml's {ceiling.option} is not an integer: {value!r}"
-    return value
-
-
-def _findings(repo_root: Path, ceiling: _Ceiling, value: int, paths: "tuple[str, ...]" = _SCOPES) -> "list[str]":
-    # Ruff's findings for one ceiling at `value` - per-file ignores applied, no cache written.
-    cmd = [_ruff(), "check", "--no-cache", "--quiet", "--output-format", "concise", "--select", ceiling.rule,
-           "--config", f"lint.{ceiling.section}.{ceiling.option}={value}", *paths]
-    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
-    assert result.returncode in {0, 1}, f"ruff itself failed: {result.stderr}"
-    lines = [line for line in result.stdout.splitlines() if line.strip()]
-    # Anything else (a file ruff could not parse) would hide that file's functions from the probe.
-    foreign = [line for line in lines if f" {ceiling.rule} " not in line]
-    assert not foreign, f"ruff reported more than {ceiling.rule}: {foreign}"
-    return lines
+def _arg_count(node: "ast.FunctionDef | ast.AsyncFunctionDef", *, is_method: bool) -> "int | None":
+    # PLR0913's count: non-variadic parameters, dummies excluded, self/cls excluded; None = not counted.
+    decorators = _decorator_names(node)
+    if decorators & _UNCOUNTED_DECORATORS:
+        return None
+    params = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    count = sum(1 for p in params if not _DUMMY.match(p.arg))
+    if is_method and "staticmethod" not in decorators and params and not _DUMMY.match(params[0].arg):
+        count -= 1
+    return count
 
 
 def _ceiling_problem(repo_root: Path, ceiling: _Ceiling, value: int) -> "str | None":
@@ -101,11 +83,28 @@ def _ceiling_problem(repo_root: Path, ceiling: _Ceiling, value: int) -> "str | N
     return None
 
 
-def _linted_files(repo_root: Path, paths: "tuple[str, ...]" = _SCOPES) -> "list[Path]":
-    # The exact file set ruff checks (its own exclusions and .gitignore applied).
-    result = subprocess.run([_ruff(), "check", "--no-cache", "--show-files", *paths], cwd=repo_root, capture_output=True, text=True, check=True)
-    root = repo_root.resolve()
-    return sorted(Path(line.strip()).resolve().relative_to(root) for line in result.stdout.splitlines() if line.strip().endswith(".py"))
+def _configured(repo_root: Path, ceiling: _Ceiling) -> int:
+    value = _lint_tables(repo_root)[ceiling.section][ceiling.option]
+    assert isinstance(value, int), f"pyproject.toml's {ceiling.option} is not an integer: {value!r}"
+    return value
+
+
+def _constructor_tail_problems(repo_root: Path, files: "list[Path]") -> "list[str]":
+    problems, checked = [], 0
+    for path in files:
+        tree = ast.parse((repo_root / path).read_text(encoding="utf-8"), filename=str(path))
+        for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+            for init in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
+                params = [p.arg for p in [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]][1:]
+                if "log" not in params:
+                    continue
+                checked += 1
+                problem = _tail_problem(params, logger_allowed=(path.as_posix(), cls.name) in _LOGGER_ALLOWED)
+                if problem is not None:
+                    problems.append(f"{path.as_posix()} {cls.name}.__init__: {problem}")
+    if not checked:
+        problems.append("no constructor takes log= - the check measures nothing")
+    return problems
 
 
 def _decorator_names(node: "ast.FunctionDef | ast.AsyncFunctionDef") -> "set[str]":
@@ -117,6 +116,19 @@ def _decorator_names(node: "ast.FunctionDef | ast.AsyncFunctionDef") -> "set[str
         elif isinstance(target, ast.Name):
             names.add(target.id)
     return names
+
+
+def _findings(repo_root: Path, ceiling: _Ceiling, value: int, paths: "tuple[str, ...]" = _SCOPES) -> "list[str]":
+    # Ruff's findings for one ceiling at `value` - per-file ignores applied, no cache written.
+    cmd = [pinned_ruff(), "check", "--no-cache", "--quiet", "--output-format", "concise", "--select", ceiling.rule,
+           "--config", f"lint.{ceiling.section}.{ceiling.option}={value}", *paths]
+    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
+    assert result.returncode in {0, 1}, f"ruff itself failed: {result.stderr}"
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    # Anything else (a file ruff could not parse) would hide that file's functions from the probe.
+    foreign = [line for line in lines if f" {ceiling.rule} " not in line]
+    assert not foreign, f"ruff reported more than {ceiling.rule}: {foreign}"
+    return lines
 
 
 def _functions(tree: ast.Module) -> "Iterator[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, bool]]":
@@ -133,22 +145,24 @@ def _functions(tree: ast.Module) -> "Iterator[tuple[str, ast.FunctionDef | ast.A
     yield from walk(tree, "", in_class=False)
 
 
-def _arg_count(node: "ast.FunctionDef | ast.AsyncFunctionDef", *, is_method: bool) -> "int | None":
-    # PLR0913's count: non-variadic parameters, dummies excluded, self/cls excluded; None = not counted.
-    decorators = _decorator_names(node)
-    if decorators & _UNCOUNTED_DECORATORS:
-        return None
-    params = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-    count = sum(1 for p in params if not _DUMMY.match(p.arg))
-    if is_method and "staticmethod" not in decorators and params and not _DUMMY.match(params[0].arg):
-        count -= 1
-    return count
+def _lint_tables(repo_root: Path) -> "dict[str, dict[str, object]]":
+    # pyproject.toml's [tool.ruff.lint.*] tables by name.
+    with (repo_root / "pyproject.toml").open("rb") as f:
+        lint = tomllib.load(f)["tool"]["ruff"]["lint"]
+    return {name: table for name, table in lint.items() if isinstance(table, dict)}
+
+
+def _linted_files(repo_root: Path, paths: "tuple[str, ...]" = _SCOPES) -> "list[Path]":
+    # The exact file set ruff checks (its own exclusions and .gitignore applied).
+    result = subprocess.run([pinned_ruff(), "check", "--no-cache", "--show-files", *paths], cwd=repo_root, capture_output=True, text=True, check=True)
+    root = repo_root.resolve()
+    return sorted(Path(line.strip()).resolve().relative_to(root) for line in result.stdout.splitlines() if line.strip().endswith(".py"))
 
 
 def _over_max_args(repo_root: Path, files: "list[Path]", limit: int) -> "set[tuple[str, str]]":
     over = set()
     for path in files:
-        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+        tree = ast.parse((repo_root / path).read_text(encoding="utf-8"), filename=str(path))
         for name, node, is_method in _functions(tree):
             count = _arg_count(node, is_method=is_method)
             if count is not None and count > limit:
@@ -161,7 +175,7 @@ def _tail_problem(params: "list[str]", *, logger_allowed: bool) -> "str | None":
     rest = list(params)
     if rest and rest[-1] == "logger":
         if not logger_allowed:
-            return "takes logger=, which only the classes C.7 names keep"
+            return "takes logger=, which only the classes in _LOGGER_ALLOWED keep"
         rest.pop()
     if not rest or rest[-1] != "log":
         return "log is not its last parameter (logger= aside)"
@@ -174,24 +188,6 @@ def _tail_problem(params: "list[str]", *, logger_allowed: bool) -> "str | None":
     if run != [t for t in _TAIL if t in run]:
         return f"the tail is not in the order {_TAIL}: {run}"
     return None
-
-
-def _constructor_tail_problems(repo_root: Path, files: "list[Path]") -> "list[str]":
-    problems, checked = [], 0
-    for path in files:
-        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
-        for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
-            for init in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
-                params = [p.arg for p in [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]][1:]
-                if "log" not in params:
-                    continue
-                checked += 1
-                problem = _tail_problem(params, logger_allowed=(path.as_posix(), cls.name) in _LOGGER_ALLOWED)
-                if problem is not None:
-                    problems.append(f"{path.as_posix()} {cls.name}.__init__: {problem}")
-    if not checked:
-        problems.append("no constructor takes log= - the check measures nothing")
-    return problems
 
 
 @pytest.mark.parametrize("ceiling", _CEILINGS, ids=[c.option for c in _CEILINGS])
@@ -222,7 +218,7 @@ def test_the_ast_count_agrees_with_ruff_on_every_file_without_an_exemption(repo_
     ruff_sites = {line.split(":")[0] + ":" + line.split(":")[1] for line in _findings(repo_root, _CEILINGS[3], 4)}
     ast_sites = set()
     for path in files:
-        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+        tree = ast.parse((repo_root / path).read_text(encoding="utf-8"), filename=str(path))
         for _, node, is_method in _functions(tree):
             count = _arg_count(node, is_method=is_method)
             if count is not None and count > 4:
@@ -244,7 +240,7 @@ def test_a_ceiling_raised_by_one_fails_the_check(repo_root: Path) -> None:
 
 def test_a_ninth_parameter_on_a_non_exempt_function_fails_the_check(repo_root: Path, tmp_path: Path) -> None:
     planted = tmp_path / "planted.py"
-    planted.write_text("class C:\n    def __init__(self, a, b, c, d, e, f, g, h, i):\n        pass\n\n\ndef ok(a, b, c, d, e, f, g, _h, i):\n    pass\n")
+    planted.write_text("class C:\n    def __init__(self, a, b, c, d, e, f, g, h, i):\n        pass\n\n\ndef ok(a, b, c, d, e, f, g, _h, i):\n    pass\n", encoding="utf-8")
     over = _over_max_args(tmp_path, [Path("planted.py")], 8)
     assert over == {("planted.py", "C.__init__")}
     assert len(_findings(repo_root, _CEILINGS[3], 8, (str(planted),))) == 1
@@ -272,6 +268,28 @@ def test_the_tail_check_accepts_the_tail_and_names_each_break(params: "list[str]
 
 def test_a_file_ruff_cannot_parse_fails_the_probe_rather_than_reading_as_no_finding(repo_root: Path, tmp_path: Path) -> None:
     planted = tmp_path / "broken.py"
-    planted.write_text("def f(:\n")
+    planted.write_text("def f(:\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="ruff reported more than PLR0913"):
         _findings(repo_root, _CEILINGS[3], 8, (str(planted),))
+
+
+def test_the_venv_ruff_comes_before_a_stray_one_on_path(repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A stray ruff ahead on PATH runs a rule set nobody pinned: the venv's is taken first, PATH's only without one.
+    with (repo_root / "pyproject.toml").open("rb") as f:
+        pins = [d for group in tomllib.load(f)["dependency-groups"].values() for d in group if isinstance(d, str) and d.startswith("ruff==")]
+
+    def fake(where: Path, version: str) -> Path:
+        where.mkdir(parents=True, exist_ok=True)
+        (where / "ruff").write_text(f"#!/bin/sh\necho 'ruff {version}'\n", encoding="utf-8")
+        (where / "ruff").chmod(0o755)
+        return where / "ruff"
+
+    venv, stray = fake(tmp_path / "venv", pins[0].removeprefix("ruff==")), fake(tmp_path / "stray", pins[0].removeprefix("ruff=="))
+    monkeypatch.setenv("PATH", f"{stray.parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(sys, "executable", str(venv.with_name("python")))
+    assert pinned_ruff() == str(venv)
+    venv.unlink()
+    assert pinned_ruff() == str(stray)
+    fake(stray.parent, "0.0.0")
+    with pytest.raises(AssertionError, match=r"pyproject\.toml pins"):
+        pinned_ruff()

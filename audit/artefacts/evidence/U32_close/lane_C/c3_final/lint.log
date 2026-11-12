@@ -1,0 +1,1 @@
+error: activate the project venv first (uv sync && source .venv/bin/activate), or run through uv run

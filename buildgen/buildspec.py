@@ -1,6 +1,6 @@
 """Per-driver "what does this need from the TOML" facts: required/optional fields, which drivers
 sit on a bus, and which have a real TOML-configurable `address` (SPECIFICATION.md's schema note -
-each fact datasheet-checked (agent, 2026-09-09), not re-derived here)."""
+each fact datasheet-checked, not re-derived here)."""
 
 # One of the two tables buildgen keeps by hand (owner, 2026-09-18; the other is definitions.py's
 # status/errcount catalog): TOML field names and constructor parameter names are independent naming
@@ -69,5 +69,11 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 # reason - a UART is point-to-point and has no address concept at all.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}
 
-# CRC mode of a uart_link end -> (asy_crc_checks class, width in bytes); held equal to src/asy_crc_checks.py by a test
+# The mandatory modules every device builds, never [[instance]] entries: each by its generated name, and its src/ file.
+MANDATORY_FILES: dict[str, str] = {
+    "sysfunct": "asy_system_service.py", "conn": "asy_wifi_service.py", "ntp": "asy_ntp_client.py",
+    "webserver": "asy_webserver_service.py", "dns": "asy_captive_dns.py",
+}
+
+# CRC mode of a uart_link end -> (crc_checks class, width in bytes); held equal to src/crc_checks.py by a test
 UART_CRC_MODES: dict[str, tuple[str, int]] = {"none": ("CRCPass", 0), "crc16": ("CRC16", 2)}

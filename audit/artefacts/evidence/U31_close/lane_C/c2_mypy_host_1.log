@@ -1,0 +1,10 @@
+tests_scripts/test_src_sleep_forms.py: note: In function "_refusal":
+tests_scripts/test_src_sleep_forms.py:95:16: error: List comprehension has
+incompatible type List[Name]; expected List[Constant]  [misc]
+        floats += [n for n in nodes if isinstance(n, ast.Name) and type(va...
+                   ^
+Found 1 error in 1 file (checked 303 source files)
+
+real	0m9.266s
+user	0m8.878s
+sys	0m0.277s

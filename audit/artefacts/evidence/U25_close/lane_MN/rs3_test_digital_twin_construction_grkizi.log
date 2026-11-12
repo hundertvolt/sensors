@@ -1,0 +1,41 @@
+PASS test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash
+FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 225, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 127, in _scenario_boots_against_real_twin_buses
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 123, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 93, in _boot_device
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_get_measurements_and_sensors_are_reachable_and_shaped_correctly:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 225, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 156, in _scenario_measurements_and_sensors_shape
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 138, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_digital_twin_construction_scenarios.py", line 93, in _boot_device
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+1/3 passed, 2 failed, 0 skipped
+RC=1 WALL=1.443633404 FILE=tests/test_digital_twin_construction_grkizi.py STAGE=-1

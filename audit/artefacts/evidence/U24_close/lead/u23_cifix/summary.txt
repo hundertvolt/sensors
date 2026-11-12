@@ -1,0 +1,46 @@
+r1_hs_all rc=0 wall=197s
+r2_hs_cpu01 rc=0 wall=208s
+r3_hs_traced rc=0 wall=195s
+r4_hs_ciset rc=0 wall=209s
+r5_hs_cpu0 rc=0 wall=226s
+r6_forced_arzi_overrun rc=1 wall=207s
+r7_before_forced_wozi rc=1 wall=60s
+r8_fixA_forced_wozi rc=1 wall=7s
+r9_fixB_forced_wozi rc=1 wall=58s
+r10_final_forced_wozi rc=1 wall=54s
+f1_hs_cpu01 rc=0 wall=195s
+f2_hs_cpu01 rc=0 wall=207s
+f3_hs_cpu01 rc=0 wall=205s
+f4_normal rc=0 wall=143s
+final-done
+g1_hs153_2ad4747 rc=0 wall=185s
+g2_hs153_ciset rc=0 wall=206s
+e1_zombie_arzi_hs153 rc=0 wall=84s
+e2_diag_stuck_close rc=1 wall=43s
+h0_ctx_forced_wozi rc=1 wall=54s
+h1_ctx_hs153 rc=0 wall=180s
+h2_ctx_normal rc=0 wall=195s
+h3_ctx_hs153_ciset rc=0 wall=210s
+final2-done
+i0_resetprobe_held rc=1 wall=59s
+i1_resetprobe_hs153 rc=0 wall=218s
+j0_old_forced_busy rc=0 wall=137s
+j1_old_forced_churn rc=0 wall=160s
+j2_old_forced_inflight rc=1 wall=135s
+j3_old_forced_saturated rc=1 wall=209s
+j4_drain_forced_saturated rc=0 wall=136s
+k1_drain_hs153 rc=0 wall=166s
+finishA-start 18:45:28
+m1_drain_hs153 rc=0 wall=205s
+m2_drain_normal rc=0 wall=204s
+m3_drain_forced_saturated rc=0 wall=146s
+m4_drain_hs153_ciset rc=0 wall=215s
+finishA-done
+n0_old_hang_wozi rc=1 wall=188s
+n0_old_hang_wozi restored
+finishA2-start 19:06:34
+n1_new_hang_wozi rc=1 wall=23s
+n1_new_hang_wozi restored
+m3b_bounded_forced_saturated rc=0 wall=133s
+m1b_bounded_hs153 rc=0 wall=192s
+finishA2-done

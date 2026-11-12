@@ -1,43 +1,38 @@
-// Standalone (non-Vitest) cross-browser smoke check: boots the twin of every device of devices/*.toml in
-// turn and drives that device's real site through WebKitGTK, Firefox, Edge and Playwright's Chromium.
-// Run: `node scripts/cross_browser_smoke.mjs`. See SPECIFICATION.md Part H.7 ("Cross-browser coverage").
+// Standalone cross-browser smoke: boots the twin of one device per hardware family in turn and drives its real site
+// through WebKitGTK, Firefox, Edge and Playwright's Chromium (SPECIFICATION.md Part H.7, "Cross-browser coverage").
+// `--require-all-engines` (CI) fails on a missing engine; without it a missing engine is a warning.
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "../tests_js/_memory_markers.js";
-import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
+import { acquirePortLock } from "../tests_js/_port_lock.js";
+import { HOST, MEMORY_ERROR_MARKERS, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, waitUntilServing } from "../tests_js/_twin_process.js";
+import { engineVerdict, pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
 import { classifyConnections, settledPageLoadConnections, startCountingProxy } from "./_page_load_connections.mjs";
 
+/** @typedef {import("./_cross_browser_probe.mjs").CheckResult} CheckResult */
 /** @typedef {import("./_cross_browser_probe.mjs").Probe} Probe */
 /** @typedef {import("./_cross_browser_probe.mjs").ProbeDefinitions} ProbeDefinitions */
 /** @typedef {import("./_page_load_connections.mjs").CountingProxy} CountingProxy */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
-const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-// Every device's module, wiring plan and definitions come from build/generated_src/ and its site from
-// build/generated_html/<device>/ (SPECIFICATION.md Part L.2); `npm run build:site` writes both.
-/** @param {string} device */
-function micropythonPath(device) {
-    return `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
-}
-const HOST = "127.0.0.1";
+// Every twin's captive DNS binds the product's port 53: the smoke holds its lock for the whole run (CLAUDE.md).
+const DNS_PORT = 53;
+const LOCK_RUNNER = "scripts/cross_browser_smoke.mjs";
 // Distinct from every other fixed port this repo already uses for a twin/integration run - see
 // tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19481,
 // 19482 already taken by that file and _live_matrix_command.js).
 const PORT = 19420;
 // Every browser loads the site through a counting proxy on the next port up, never the twin directly.
 const PROXY_PORT = 19421;
-const TWIN_URL = `http://${HOST}:${PORT}/`;
 const SITE_URL = `http://${HOST}:${PROXY_PORT}/`;
-// @tunable l0.live_twin_ready_timeout_ms = 20000
-const READY_TIMEOUT_MS = 20000;
-// @tunable l0.live_twin_shutdown_timeout_ms = 15000
-const SHUTDOWN_TIMEOUT_MS = 15000;
-// @tunable l0.smoke_h1_wait_ms = 10000
+// The wait for Xvfb to report the display it took: the bound it shared with the twin's start before it had its own.
+const DISPLAY_READY_TIMEOUT_MS = 20000;
+// How much of Xvfb's stderr a failed start quotes: its last lines, which say why.
+const XVFB_STDERR_TAIL_CHARS = 4096;
 const H1_WAIT_MS = 10000;
 // The connections one page load opens for itself (the document and its assets, SPECIFICATION.md H.7), counted
 // per engine at the proxy apart from the data requests that follow: a higher count, or none, fails the check.
@@ -45,10 +40,8 @@ const H1_WAIT_MS = 10000;
 const CONNECTIONS_PER_PAGE_LOAD = 2;
 // A Chromium-family engine sometimes opens spare sockets that carry no request (Edge two, Chromium one), counted once the
 // page's first data request went out, so the socket opened for it is not one; they are printed and bounded.
-// @tunable l0.smoke_speculative_connections_max = 2
 const SPECULATIVE_CONNECTIONS_MAX = 2;
 // The count waits for that first data request; this bounds only a page that never sends one.
-// @tunable l0.smoke_first_data_request_wait_ms = 10000
 const FIRST_DATA_REQUEST_WAIT_MS = 10000;
 
 const CROSS_BROWSER_DIR = process.env.CROSS_BROWSER_TOOLCHAIN_DIR || path.join(homedir(), "cross-browser-toolchain");
@@ -56,15 +49,18 @@ const FIREFOX_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff", "bi
 const GECKODRIVER_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff", "bin", "geckodriver");
 const WEBKIT_DRIVER_BIN = "/usr/bin/WebKitWebDriver";
 const EDGE_BIN = "/usr/bin/microsoft-edge-stable";
-const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium"; // same dev-sandbox path vitest.config.js already special-cases
+const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium"; // same fallback rule as vitest.config.js
+const REQUIRE_ALL_ENGINES = "--require-all-engines";
 
-const USAGE = `Usage: node scripts/cross_browser_smoke.mjs [-h | --help]
-Boots the twin of every device of devices/*.toml in turn and drives its site through every installed
+const USAGE = `Usage: node scripts/cross_browser_smoke.mjs [${REQUIRE_ALL_ENGINES}] [-h | --help]
+Boots the twin of one device per hardware family in turn and drives its site through every installed
 engine (WebKitGTK, Firefox, Edge, Playwright's Chromium) at two viewports (SPECIFICATION.md H.7).
+  ${REQUIRE_ALL_ENGINES}  a missing engine fails the run (CI); without it a missing engine is skipped, with a warning
 Environment:
   PICO_TOOLCHAIN_DIR           the MicroPython toolchain (default: ~/pico-toolchain)
   CROSS_BROWSER_TOOLCHAIN_DIR  Firefox and geckodriver (default: ~/cross-browser-toolchain)
-Exit codes: 0 every check passed; 1 a check failed, a twin logged an allocation failure, or nothing ran; 2 a usage error.`;
+Exit codes: 0 every check passed; 1 a check failed, a required engine is missing, a twin logged an allocation failure,
+nothing ran, the Unix port is not built or port 53 is held; 2 a usage error.`;
 
 // Loaded only after the arguments are read, so --help answers on a checkout with no node_modules.
 /** @type {typeof import("playwright")} */
@@ -92,6 +88,27 @@ function derivedDevices() {
         .sort();
 }
 
+/** One derived device per [device] hardware_family, a device naming none its own: scripts/_devices.sh's distinct_devices. */
+function distinctDevices() {
+    /** @type {Set<string>} */
+    const seen = new Set();
+    return derivedDevices().filter((device) => {
+        const toml = readFileSync(path.join(REPO_ROOT, "devices", `${device}.toml`), "utf8");
+        const section = toml.split(/^\[/m).find((part) => part.startsWith("device]\n"));
+        const family = section?.match(/^hardware_family = "(?<family>.*)"$/m)?.groups?.family;
+        if (family === undefined) {
+            return true;
+        }
+        if (seen.has(family)) {
+            return false;
+        }
+        seen.add(family);
+        return true;
+    });
+}
+
+// Every device's module, wiring plan and definitions come from build/generated_src/ and its site from
+// build/generated_html/<device>/ (SPECIFICATION.md Part L.2); `npm run build:site` writes both.
 /** @param {string} device */
 function definitionsPath(device) {
     return path.join(REPO_ROOT, "build", "generated_src", "definitions", `${device}.json`);
@@ -109,23 +126,21 @@ function sleep(ms) {
     });
 }
 
-/** @param {string} url @param {number} timeoutMs */
-async function waitUntilServing(url, timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        try {
-            // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-            const res = await fetch(url);
-            if (res.status === 200 || res.status === 404) {
-                return; // 404 still proves something is listening and answering HTTP (WebDriver root)
-            }
-        } catch {
-            // Not up yet - keep polling.
-        }
-        // eslint-disable-next-line no-await-in-loop -- same reasoning as above
-        await sleep(250);
+/**
+ * Whether a WebDriver server answers its status endpoint yet (any HTTP reply proves it listens); throws once its process
+ * has exited, so a driver that died is named rather than waited out.
+ * @param {import("node:child_process").ChildProcess} proc @param {number} port @returns {Promise<boolean>}
+ */
+async function driverAnswers(proc, port) {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+        throw new Error(`the driver exited before answering on port ${port} (exit code ${proc.exitCode ?? "none"}, signal ${proc.signalCode ?? "none"})`);
     }
-    throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
+    try {
+        const res = await fetch(`http://${HOST}:${port}/status`);
+        return res.status === 200 || res.status === 404;
+    } catch {
+        return false; // not up yet
+    }
 }
 
 /** Fails a check whose page load opened more of its own connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {(string | null)[]} firstRequests */
@@ -138,7 +153,7 @@ function checkPageLoadConnections(device, engine, firstRequests) {
     }
 }
 
-// Every spawned child is tracked from creation until stopProcess() or a signal handler reaps it:
+// Every spawned child is tracked from creation until stopHelper(), stopTwin() or a signal handler reaps it:
 // Node's synchronous crash on an unhandled ChildProcess 'error' happens outside every try/catch
 // here, skipping the cleanup and leaking whatever else runs. Part H.7 has the overall design.
 /** @type {Set<import("node:child_process").ChildProcess>} */
@@ -153,78 +168,66 @@ function trackProcess(proc, label) {
     return proc;
 }
 
-/** @param {string} device */
-function spawnTwin(device) {
-    return trackProcess(
-        spawn(
-            MICROPYTHON_BIN,
-            [
-                "digital_twin/run_generic_integration.py",
-                "--module",
-                `sensortask_${device}`,
-                "--wiring-plan",
-                path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
-                "--device",
-                device,
-                "--host",
-                HOST,
-                "--port",
-                String(PORT),
-                "--fram-state-path",
-                "",
-                "--scd30-state-path",
-                "",
-            ],
-            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
-            { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH: micropythonPath(device), TZ: "UTC" }, stdio: ["ignore", "pipe", "pipe"] },
-        ),
-        `${device} twin`,
-    );
-}
-
-/** @param {import("node:child_process").ChildProcess} proc @param {NodeJS.Signals} [signal] */
-async function stopProcess(proc, signal = "SIGINT") {
-    activeProcesses.delete(proc);
-    if (proc.exitCode !== null || proc.signalCode !== null) {
-        return;
-    }
-    proc.kill(signal);
-    await Promise.race([
-        new Promise((resolve) => {
+/**
+ * Stops a driver or Xvfb (the twin stops through stopTwin()): `signal`, then SIGKILL past the shutdown bound, returning
+ * once it has exited, with the fallback timer cleared so no pending timer holds Node's event loop open.
+ * @param {import("node:child_process").ChildProcess} proc @param {NodeJS.Signals} [signal]
+ */
+async function stopHelper(proc, signal = "SIGINT") {
+    if (proc.pid !== undefined && proc.exitCode === null && proc.signalCode === null) {
+        const exited = new Promise((resolve) => {
             proc.once("exit", resolve);
-        }),
-        sleep(SHUTDOWN_TIMEOUT_MS).then(() => proc.kill("SIGKILL")),
-    ]);
-}
-
-// Both drivers need a real X display even headless - confirmed for WebKitGTK, and geckodriver
-// is wrapped the same way for consistency.
-
-// Xvfb is spawned directly rather than through `xvfb-run`, which is a layer this file cannot
-// reliably tear down: an earlier version sent SIGINT to the wrapper's PID and left both Xvfb
-// and the driver running, found with pgrep after a run. Spawning it here gives a real handle.
-let nextDisplayNumber = 90;
-
-/** @returns {{display: string, xvfbProc: import("node:child_process").ChildProcess}} */
-function spawnVirtualDisplay() {
-    nextDisplayNumber += 1;
-    const display = `:${nextDisplayNumber}`;
-    const xvfbProc = trackProcess(spawn("Xvfb", [display, "-screen", "0", "1280x1024x24", "-nolisten", "tcp"], { stdio: ["ignore", "ignore", "pipe"] }), "Xvfb");
-    return { display, xvfbProc };
-}
-
-/** @param {string} display @param {number} timeoutMs */
-async function waitForVirtualDisplay(display, timeoutMs) {
-    const lockFile = `/tmp/.X${display.slice(1)}-lock`;
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        if (existsSync(lockFile)) {
-            return;
-        }
-        // eslint-disable-next-line no-await-in-loop -- sequential polling
-        await sleep(100);
+        });
+        proc.kill(signal);
+        /** @type {ReturnType<typeof setTimeout> | undefined} */
+        let killTimer;
+        await Promise.race([exited, new Promise((resolve) => {
+            killTimer = setTimeout(() => resolve(proc.kill("SIGKILL")), SHUTDOWN_TIMEOUT_MS);
+        })]);
+        clearTimeout(killTimer);
+        await exited;
     }
-    throw new Error(`Xvfb never created ${lockFile} within ${timeoutMs}ms`);
+    activeProcesses.delete(proc);
+}
+
+/**
+ * Starts the X display both drivers need even headless, directly (an `xvfb-run` wrapper left Xvfb running when stopped),
+ * on a display Xvfb picks itself: ready once this process writes its number to fd 3 (`-displayfd`), so a display another
+ * process holds never reads as this one's. On its exit or past `timeoutMs` it is stopped and the error quotes its stderr.
+ * @param {number} timeoutMs
+ * @returns {Promise<{display: string, xvfbProc: import("node:child_process").ChildProcess}>}
+ */
+async function startVirtualDisplay(timeoutMs) {
+    const xvfbProc = trackProcess(spawn("Xvfb", ["-displayfd", "3", "-screen", "0", "1280x1024x24", "-nolisten", "tcp"], { stdio: ["ignore", "ignore", "pipe", "pipe"] }), "Xvfb");
+    let stderr = "";
+    xvfbProc.stderr?.on("data", (chunk) => {
+        stderr = (stderr + String(chunk)).slice(-XVFB_STDERR_TAIL_CHARS);
+    });
+    const [, , , fd3] = xvfbProc.stdio;
+    const displayFd = /** @type {import("node:stream").Readable} */ (fd3);
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
+    try {
+        const number = await new Promise((resolve, reject) => {
+            let written = "";
+            displayFd.on("data", (chunk) => {
+                written += String(chunk);
+                if (written.includes("\n")) {
+                    resolve(written.trim());
+                }
+            });
+            // "close", not "exit": its stderr has been read whole by then, so the error quotes all of it.
+            xvfbProc.once("close", (code, signal) => reject(new Error(`Xvfb exited before reporting a display (exit code ${code ?? "none"}, signal ${signal ?? "none"})`)));
+            xvfbProc.once("error", reject);
+            timer = setTimeout(() => reject(new Error(`Xvfb reported no display within ${timeoutMs}ms`)), timeoutMs);
+        });
+        return { display: `:${number}`, xvfbProc };
+    } catch (err) {
+        await stopHelper(xvfbProc, "SIGKILL");
+        throw new Error(`${err instanceof Error ? err.message : String(err)}${stderr ? `\n--- Xvfb stderr ---\n${stderr}` : ""}`, { cause: err });
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 // --- Minimal raw W3C WebDriver HTTP client - used for WebKitWebDriver and geckodriver, neither of
@@ -350,18 +353,22 @@ async function pollUntil(readFn, isReady, timeoutMs, timeoutMessage) {
  */
 async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue, proxy, driverProcessFactory, driverBase, driverPort, capabilities }) {
     const label = `${device} ${engine} (${viewport})`;
-    const { display, xvfbProc } = spawnVirtualDisplay();
+    /** @type {import("node:child_process").ChildProcess | undefined} */
+    let xvfbProc;
+    /** @type {import("node:child_process").ChildProcess | undefined} */
     let driverProc;
     let driverStderr = "";
     /** @type {string | undefined} */
     let sid;
     try {
-        await waitForVirtualDisplay(display, READY_TIMEOUT_MS);
-        driverProc = driverProcessFactory(display);
-        driverProc.stderr?.on("data", (chunk) => {
+        const virtual = await startVirtualDisplay(DISPLAY_READY_TIMEOUT_MS);
+        ({ xvfbProc } = virtual);
+        const driver = driverProcessFactory(virtual.display);
+        driverProc = driver;
+        driver.stderr?.on("data", (chunk) => {
             driverStderr += chunk.toString();
         });
-        await waitUntilServing(`http://127.0.0.1:${driverPort}/status`, READY_TIMEOUT_MS);
+        await pollUntil(() => driverAnswers(driver, driverPort), (answered) => answered, READY_TIMEOUT_MS, `the ${engine} driver never answered on port ${driverPort} within ${READY_TIMEOUT_MS}ms`);
         sid = await wdCreateSession(driverBase, capabilities);
 
         const target = viewport === "mobile" ? MOBILE_VIEWPORT : DESKTOP_VIEWPORT;
@@ -409,12 +416,13 @@ async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue,
             await wdDeleteSession(driverBase, sid);
         }
         if (driverProc) {
-            await stopProcess(driverProc);
+            await stopHelper(driverProc);
         }
-        // SIGKILL, not SIGINT: Xvfb does not reliably exit on SIGINT within SHUTDOWN_TIMEOUT_MS
-        // once a driver has connected to it, and it has no graceful-shutdown state worth waiting
-        // for - unlike the twin's own FRAM/SCD30 flush, stopProcess()'s other caller.
-        await stopProcess(xvfbProc, "SIGKILL");
+        // SIGKILL, not SIGINT: Xvfb does not reliably exit on SIGINT within SHUTDOWN_TIMEOUT_MS once a driver has
+        // connected to it, and it has no graceful-shutdown state worth waiting for, unlike the twin's FRAM/SCD30 flush.
+        if (xvfbProc) {
+            await stopHelper(xvfbProc, "SIGKILL");
+        }
     }
 }
 
@@ -486,8 +494,8 @@ async function runChromiumFamily(which, device, viewport, probe, probeValue, pro
     let executablePath;
     if (which === "edge") {
         executablePath = EDGE_BIN;
-    } else if (existsSync(SANDBOX_CHROMIUM)) {
-        executablePath = SANDBOX_CHROMIUM;
+    } else if (!existsSync(playwright.chromium.executablePath()) && existsSync(SANDBOX_CHROMIUM)) {
+        executablePath = SANDBOX_CHROMIUM; // the lock-pinned build whenever it is installed
     }
     let browser;
     try {
@@ -541,19 +549,20 @@ for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
  * Boots one device's twin and runs every available (engine, viewport) check against it.
  * @param {string} device
  * @param {Probe} probe
- * @param {{name: string, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<{label: string, ok: boolean, detail?: string}>}[]} engines
+ * @param {{name: string, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<CheckResult>}[]} engines
  * @param {{value: number}} counter
- * @param {{label: string, ok: boolean, detail?: string}[]} results
+ * @param {CheckResult[]} results
  */
 async function smokeDevice(device, probe, engines, counter, results) {
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
-    const twin = spawnTwin(device);
-    const output = drainChildOutput(twin);
+    const configDir = makeConfigDir(); // its own config directory, never the manual run's
+    const twin = spawnTwin({ device, port: PORT, configDir });
+    activeProcesses.add(twin); // a signal mid-run kills it with the drivers
+    const output = drainChildOutput(twin, MEMORY_ERROR_MARKERS);
     let failed = false;
     /** @type {CountingProxy | undefined} */
     let proxy;
     try {
-        await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
+        await waitUntilServing(twin, PORT, READY_TIMEOUT_MS);
         proxy = await startCountingProxy(HOST, PROXY_PORT, PORT);
         for (const engine of engines) {
             for (const viewport of /** @type {const} */ (["desktop", "mobile"])) {
@@ -578,7 +587,9 @@ async function smokeDevice(device, probe, engines, counter, results) {
         console.error(`FAIL ${device} twin: ${message}`);
     } finally {
         await proxy?.close();
-        await stopProcess(twin);
+        await stopTwin(twin);
+        activeProcesses.delete(twin);
+        removeConfigDir(configDir);
     }
     // The memory gate (SPECIFICATION.md Part I.4(e)): a marker fails the device even when every check passed.
     const drained = await output.closed(SHUTDOWN_TIMEOUT_MS);
@@ -600,21 +611,26 @@ async function main() {
         console.log(USAGE);
         process.exit(0);
     }
-    if (args.length > 0) {
-        console.error(`error: unknown argument ${JSON.stringify(args[0])}\n${USAGE}`);
+    const unknown = args.find((arg) => arg !== REQUIRE_ALL_ENGINES);
+    if (unknown !== undefined) {
+        console.error(`error: unknown argument ${JSON.stringify(unknown)}\n${USAGE}`);
         process.exit(2);
     }
+    const requireAllEngines = args.includes(REQUIRE_ALL_ENGINES);
     playwright = await import("playwright");
-    if (!existsSync(MICROPYTHON_BIN)) {
-        console.error(`MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first.`);
+    try {
+        requireInterpreter();
+        acquirePortLock(DNS_PORT, LOCK_RUNNER); // released at this process's exit
+    } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
     }
 
-    // Every device's probe is picked before any twin boots, so a missing build or a device with no
+    // Every booted device's probe is picked before any twin boots, so a missing build or a device with no
     // probe-able field fails the run at once, naming the device.
     /** @type {{device: string, probe: Probe}[]} */
     const plan = [];
-    for (const device of derivedDevices()) {
+    for (const device of distinctDevices()) {
         if (!existsSync(definitionsPath(device)) || !existsSync(sitePath(device))) {
             console.error(`${device}: no generated definitions or site under build/ - run 'npm run build:site' first.`);
             process.exit(1);
@@ -622,19 +638,25 @@ async function main() {
         plan.push({ device, probe: pickProbe(/** @type {ProbeDefinitions} */ (JSON.parse(readFileSync(definitionsPath(device), "utf8")))) });
     }
 
-    /** @type {{name: string, available: boolean, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<{label: string, ok: boolean, detail?: string}>}[]} */
-    const engines = [
-        { name: "WebKit", available: existsSync(WEBKIT_DRIVER_BIN), run: runWebKit },
-        { name: "Firefox", available: existsSync(FIREFOX_BIN) && existsSync(GECKODRIVER_BIN), run: runFirefox },
-        { name: "Edge", available: existsSync(EDGE_BIN), run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("edge", device, viewport, probe, probeValue, proxy) },
-        { name: "Chromium", available: true, run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("chromium", device, viewport, probe, probeValue, proxy) },
+    // Chromium names no binary: the lock-pinned build or the sandbox's always runs, and a missing one fails its launch.
+    /** @type {{name: string, binaries: string[], run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<CheckResult>}[]} */
+    const declared = [
+        { name: "WebKit", binaries: [WEBKIT_DRIVER_BIN], run: runWebKit },
+        { name: "Firefox", binaries: [FIREFOX_BIN, GECKODRIVER_BIN], run: runFirefox },
+        { name: "Edge", binaries: [EDGE_BIN], run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("edge", device, viewport, probe, probeValue, proxy) },
+        { name: "Chromium", binaries: [], run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("chromium", device, viewport, probe, probeValue, proxy) },
     ];
-    for (const engine of engines.filter((e) => !e.available)) {
-        console.warn(`SKIP ${engine.name}: binary not found (run scripts/setup_cross_browser_toolchain.sh)`);
+    const engines = declared.map((engine) => ({ ...engine, missing: engine.binaries.filter((binary) => !existsSync(binary)) }));
+    const missing = engineVerdict(engines, [], { requireAllEngines });
+    for (const failure of missing.results) {
+        console.error(`FAIL ${failure.label}: ${failure.detail ?? ""}`);
     }
-    const available = engines.filter((e) => e.available);
+    for (const skip of missing.skips) {
+        console.warn(`SKIP ${skip.label}: ${skip.detail}`);
+    }
+    const available = engines.filter((engine) => engine.missing.length === 0);
 
-    /** @type {{label: string, ok: boolean, detail?: string}[]} */
+    /** @type {CheckResult[]} */
     const results = [];
     const counter = { value: 0 };
     for (const { device, probe } of plan) {
@@ -643,14 +665,13 @@ async function main() {
         await smokeDevice(device, probe, available, counter, results);
     }
 
-    const ran = results.length;
-    const failed = results.filter((r) => !r.ok).length;
-    console.log(`\n${ran - failed}/${ran} cross-browser smoke checks passed.`);
-    if (ran === 0) {
+    const verdict = engineVerdict(engines, results, { requireAllEngines });
+    console.log(`\n${verdict.passed}/${verdict.ran} cross-browser smoke checks passed; engines skipped: ${verdict.skipped}.`);
+    if (results.length === 0) {
         console.error("No device or no engine was available - nothing was actually checked.");
         process.exit(1);
     }
-    if (failed > 0) {
+    if (verdict.passed < verdict.ran) {
         process.exit(1);
     }
 }

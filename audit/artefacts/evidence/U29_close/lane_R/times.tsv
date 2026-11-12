@@ -1,0 +1,21 @@
+before	wozi	-1	22.83	rc=0	mem=0	heavy_at_start=1	4/11 passed, 0 failed, 7 skipped
+before	wozi	32768	23.06	rc=0	mem=0	heavy_at_start=1	4/11 passed, 0 failed, 7 skipped
+before	wozi	settrace	23.65	rc=0	mem=0	heavy_at_start=1	4/11 passed, 0 failed, 7 skipped
+before	arzi	-1	111.47	rc=0	mem=0	heavy_at_start=1	11/11 passed, 0 failed, 0 skipped
+before	arzi	32768	113.50	rc=0	mem=0	heavy_at_start=1	11/11 passed, 0 failed, 0 skipped
+before	arzi	settrace	114.35	rc=0	mem=0	heavy_at_start=1	11/11 passed, 0 failed, 0 skipped
+after1	arzi	-1	118.03	rc=0	mem=0	heavy_at_start=1	12/12 passed, 0 failed, 0 skipped
+bite_noreselect	arzi	-1	0.11	rc=1	mem=0	heavy_at_start=3	
+bite_noreselect	arzi	-1	116.66	rc=1	mem=0	heavy_at_start=3	11/12 passed, 1 failed, 0 skipped
+after1	arzi	32768	121.56	rc=0	mem=0	heavy_at_start=3	12/12 passed, 0 failed, 0 skipped
+after1	arzi	settrace	121.60	rc=0	mem=0	heavy_at_start=3	12/12 passed, 0 failed, 0 skipped
+after1	wozi	-1	22.15	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+after1	wozi	32768	22.97	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+after1	wozi	settrace	23.45	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+after1	dev	-1	23.22	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+after1	grkizi	-1	21.64	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+after1	klkizi	-1	21.78	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+after1	schlafzi	-1	21.83	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped
+final	arzi	-1	118.12	rc=0	mem=0	heavy_at_start=1	12/12 passed, 0 failed, 0 skipped
+final	arzi	32768	119.68	rc=0	mem=0	heavy_at_start=1	12/12 passed, 0 failed, 0 skipped
+final	wozi	-1	22.18	rc=0	mem=0	heavy_at_start=1	4/12 passed, 0 failed, 8 skipped

@@ -1,0 +1,107 @@
+..........F.FF.F                                                         [100%]
+=================================== FAILURES ===================================
+_____________ test_every_traced_file_gets_its_line_table_up_front ______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+settrace_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8065/test_every_traced_file_gets_it0')
+
+    def test_every_traced_file_gets_its_line_table_up_front(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+        # A file without a table records through the allocating fallback; subdirectories count (digital_twin/unixport/).
+        source = (repo_root / _RUNNER).read_text()
+        assert source.count("sys.exit(_run())") == 1, "the runner's entry line moved - update this probe"
+        lister = tmp_path / "list_tables.py"
+        lister.write_text(source.replace("sys.exit(_run())", "print(json.dumps(sorted(_line_tables())))"))
+        completed = subprocess.run([str(settrace_bin), str(lister)], cwd=repo_root, env={"MICROPYPATH": ".frozen"}, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False)
+        assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+        expected = sorted(p.relative_to(repo_root).as_posix() for prefix in ("src", "digital_twin", "build/generated_src") for p in (repo_root / prefix).rglob("*.py"))
+>       assert json.loads(completed.stdout) == expected
+E       AssertionError: assert ['digital_twi...chip.py', ...] == ['build/gener...tart.py', ...]
+E         
+E         At index 0 diff: 'digital_twin/_bmp3xx_chip.py' != 'build/generated_src/sensortask_arzi.py'
+E         Right contains 18 more items, first extra item: 'src/asy_i2c_driver.py'
+E         Use -v to get more diff
+
+tests_scripts/test_coverage_runner.py:190: AssertionError
+_____ test_a_file_that_never_reaches_microtests_exit_fails_and_still_dumps _____
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+settrace_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8065/test_a_file_that_never_reaches0')
+
+    def test_a_file_that_never_reaches_microtests_exit_fails_and_still_dumps(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+        out, probe = tmp_path / "raw.json", _probe(tmp_path, "import math_helpers\nmath_helpers.dew_point(20.0, 50.0)\n")
+        completed = _run(repo_root, settrace_bin, probe, out)
+>       assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+E       AssertionError: 
+E         
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython', 'tests/_coverage_runn...e.py', '/tmp/pytest-of-root/pytest-8065/test_a_file_that_never_reaches0/raw.json'], returncode=0, stdout='', stderr='').returncode
+
+tests_scripts/test_coverage_runner.py:206: AssertionError
+________ test_a_raising_top_level_fails_and_its_lines_are_still_dumped _________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+settrace_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8065/test_a_raising_top_level_fails0')
+
+    def test_a_raising_top_level_fails_and_its_lines_are_still_dumped(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+        out, probe = tmp_path / "raw.json", _probe(tmp_path, "import math_helpers\nmath_helpers.dew_point(20.0, 50.0)\nraise RuntimeError('import-time failure')\n")
+        completed = _run(repo_root, settrace_bin, probe, out)
+        assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+        assert "RuntimeError" in completed.stdout + completed.stderr
+>       assert "src/math_helpers.py" in json.loads(out.read_text()), "the lines run before the escape were lost"
+                                                   ^^^^^^^^^^^^^^^
+
+tests_scripts/test_coverage_runner.py:216: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/pytest-of-root/pytest-8065/test_a_raising_top_level_fails0/raw.json')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-root/pytest-8065/test_a_raising_top_level_fails0/raw.json'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+_______________ test_a_generated_device_modules_lines_are_traced _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+settrace_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8065/test_a_generated_device_module0')
+
+    def test_a_generated_device_modules_lines_are_traced(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+        # build/generated_src/ is measured like src/: a device module imported by a test reaches the dump.
+        out, module = tmp_path / "raw.json", f"sensortask_{DEVICE_NAMES[0]}"
+        completed = _run(repo_root, settrace_bin, _probe(tmp_path, f"import {module}\nimport sys\nsys.exit(0)\n"), out)
+>       assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+E       AssertionError: Traceback (most recent call last):
+E           File "tests/_coverage_runner.py", line 111, in <module>
+E           File "tests/_coverage_runner.py", line 93, in _run
+E           File "/tmp/pytest-of-root/pytest-8065/test_a_generated_device_module0/probe_case.py", line 1, in <module>
+E           File "build/generated_src/sensortask_arzi.py", line 9, in <module>
+E         ImportError: no module named 'microdot'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython', 'tests/_coverage_runn..."build/generated_src/sensortask_arzi.py", line 9, in <module>\nImportError: no module named \'microdot\'\n', stderr='').returncode
+
+tests_scripts/test_coverage_runner.py:230: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_coverage_runner.py::test_every_traced_file_gets_its_line_table_up_front
+FAILED tests_scripts/test_coverage_runner.py::test_a_file_that_never_reaches_microtests_exit_fails_and_still_dumps
+FAILED tests_scripts/test_coverage_runner.py::test_a_raising_top_level_fails_and_its_lines_are_still_dumped
+FAILED tests_scripts/test_coverage_runner.py::test_a_generated_device_modules_lines_are_traced
+4 failed, 12 passed in 0.67s

@@ -1,0 +1,33 @@
+.........FF                                                              [100%]
+=================================== FAILURES ===================================
+_____ test_a_fields_tuple_equal_only_to_a_twin_of_the_readers_tuple_fails ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7971/test_a_fields_tuple_equal_only0')
+
+    def test_a_fields_tuple_equal_only_to_a_twin_of_the_readers_tuple_fails(tmp_path: Path) -> None:
+        # The reader publishes X; a second NamedTuple that happens to equal _FIELDS proves nothing about it.
+        (tmp_path / "asy_x_driver.py").write_text(_TWIN, encoding="utf-8")
+        problems = _field_problems(tmp_path / "asy_x_driver.py")
+>       assert len(problems) == 1 and "X" in problems[0], problems
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_measurement_field_tuple_agreement.py:122: AssertionError
+_________ test_a_reader_passing_no_named_tuple_fails_naming_its_module _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7971/test_a_reader_passing_no_named0')
+
+    def test_a_reader_passing_no_named_tuple_fails_naming_its_module(tmp_path: Path) -> None:
+        (tmp_path / "asy_x_driver.py").write_text(_TWIN.replace("X(None, None, None)", "None"), encoding="utf-8")
+>       assert _field_problems(tmp_path / "asy_x_driver.py") == ["src/asy_x_driver.py: its reader passes no NamedTuple of the module as super().__init__()'s first argument"]
+E       assert [] == ['src/asy_x_d...rst argument']
+E         
+E         Right contains one more item: "src/asy_x_driver.py: its reader passes no NamedTuple of the module as super().__init__()'s first argument"
+E         Use -v to get more diff
+
+tests_scripts/test_measurement_field_tuple_agreement.py:127: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_measurement_field_tuple_agreement.py::test_a_fields_tuple_equal_only_to_a_twin_of_the_readers_tuple_fails
+FAILED tests_scripts/test_measurement_field_tuple_agreement.py::test_a_reader_passing_no_named_tuple_fails_naming_its_module
+2 failed, 9 passed in 0.32s

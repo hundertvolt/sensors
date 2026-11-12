@@ -1,0 +1,5 @@
+FAILED tests_scripts/test_build_website_sh.py::test_unknown_device_fails_naming_its_missing_toml_and_the_valid_devices
+FAILED tests_scripts/test_build_website_sh.py::test_stage_only_without_a_stage_directory_is_a_usage_error
+FAILED tests_scripts/test_build_website_sh.py::test_the_work_dir_is_wiped_at_the_start_and_kept_after_the_build
+FAILED tests_scripts/test_build_website_sh.py::test_a_build_date_reaches_the_staged_page
+4 failed, 11 passed in 8.51s

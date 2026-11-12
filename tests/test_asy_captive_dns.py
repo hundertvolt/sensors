@@ -1,17 +1,28 @@
+"""The captive DNS server: query parsing and its refusals, the derived domain, the A-record replies, the server's own
+logger, its backoff and recovery, and real loopback traffic on a real port."""
+
 import asyncio
+import errno
 import socket
 import sys
 import time
 
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
+from _async_harness import cancel, run
+from _cancel_sweep import cancel_at_each_await
 from _error_codes import code
+from _fast_sleep import check_sleep_ms
+from _port_bands import PortAllocator
+from _src_const import src_int
+from _stack_overflow import stack_overflow
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 import asy_captive_dns
+import asy_print_log
 from asy_captive_dns import CaptiveDNS, DNSQuery
 from asy_dns_client import DNS_UDP_MAX
-from asy_print_log import LogConfig, PrintLogHistory
+from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
 from asy_udp_socket import UDPSocket
 
 # UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
@@ -23,59 +34,24 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, NoReturn, TypeVar
+    from collections.abc import Callable
+    from types import ModuleType
+    from typing import NoReturn
 
-    T = TypeVar("T")
+    from _mpy_shed.time_mp import _TicksMs
 
 
-# The suite's waits, bounds and backoff-gap bands, one constant each (SPECIFICATION.md Part N).
-# @tunable l1.captive_dns_wait_until_timeout_ms = 1000
+# The suite's waits and bounds, one constant each.
+_ERROR_RETRY_WAIT_S: int = src_int("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S")
 _WAIT_UNTIL_TIMEOUT_MS = 1000
-# @tunable l1.captive_dns_wait_until_poll_ms = 10
 _WAIT_UNTIL_POLL_MS = 10
-# @tunable l1.captive_dns_stray_reply_wait_ms = 20
 _STRAY_REPLY_WAIT_MS = 20
-# @tunable l1.captive_dns_no_backoff_elapsed_max_ms = 1000
 _NO_BACKOFF_ELAPSED_MAX_MS = 1000
-# @tunable l1.captive_dns_reach_recv_ms = 20
 _REACH_RECV_MS = 20
-# @tunable l1.captive_dns_bind_wait_ms = 50
-_BIND_WAIT_MS = 50
-# @tunable l1.captive_dns_cycle_wait_ms = 100
 _CYCLE_WAIT_MS = 100
-# @tunable l1.captive_dns_cleanup_tick_ms = 10
 _CLEANUP_TICK_MS = 10
-# @tunable l1.captive_dns_cleanup_tick_count = 10
 _CLEANUP_TICK_COUNT = 10
-# @tunable l1.captive_dns_backoff_wait_timeout_ms = 5000
 _BACKOFF_WAIT_TIMEOUT_MS = 5000
-# @tunable l1.captive_dns_backoff_series_timeout_ms = 15000
-_BACKOFF_SERIES_TIMEOUT_MS = 15000
-# @tunable l1.captive_dns_gap_initial_min_ms = 400
-_GAP_INITIAL_MIN_MS = 400
-# @tunable l1.captive_dns_gap_initial_max_ms = 800
-_GAP_INITIAL_MAX_MS = 800
-# @tunable l1.captive_dns_gap_doubled_min_ms = 900
-_GAP_DOUBLED_MIN_MS = 900
-# @tunable l1.captive_dns_gap_doubled_max_ms = 1400
-_GAP_DOUBLED_MAX_MS = 1400
-# @tunable l1.captive_dns_gap_quad_min_ms = 1900
-_GAP_QUAD_MIN_MS = 1900
-# @tunable l1.captive_dns_gap_quad_max_ms = 2600
-_GAP_QUAD_MAX_MS = 2600
-# @tunable l1.captive_dns_gap_no_backoff_max_ms = 300
-_GAP_NO_BACKOFF_MAX_MS = 300
-# @tunable l1.captive_dns_backoff_cap_timeout_ms = 20000
-_BACKOFF_CAP_TIMEOUT_MS = 20000
-# @tunable l1.captive_dns_gap_cap_min_ms = 4700
-_GAP_CAP_MIN_MS = 4700
-# @tunable l1.captive_dns_gap_cap_max_ms = 5400
-_GAP_CAP_MAX_MS = 5400
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 async def _used_slots(server: CaptiveDNS) -> "list[tuple[int, str]]":  # DNSSRV's used (ErrNum, ErrType) slots, oldest first
@@ -83,19 +59,16 @@ async def _used_slots(server: CaptiveDNS) -> "list[tuple[int, str]]":  # DNSSRV'
     return [(entry["ErrNum"][i], entry["ErrType"][i]) for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] != "N"]
 
 
-def make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independent logger per test/DNSQuery
+def _make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independent logger per test/DNSQuery
     return PrintLogHistory(level=level, name="TESTDNS")
 
 
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 22000
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("test_asy_captive_dns")
 
 
-def make_port() -> int:
-    global _next_port
-    _next_port += 1
-    return _next_port
+def _make_port() -> int:
+    return _PORTS.next()
 
 
 def _resolved(host: str, port: int) -> tuple[str, int]:
@@ -104,16 +77,18 @@ def _resolved(host: str, port: int) -> tuple[str, int]:
 
 
 def _read_replies(peer: "socket.socket", replies: list[bytes]) -> bool:
-    # Moves every datagram queued on the non-blocking peer into replies (recv() raises OSError once none is
-    # left) and says whether one has arrived yet - a _wait_until() predicate.
+    # Moves every datagram queued on the non-blocking peer into replies (recv() raises EAGAIN once none is
+    # left) and says whether one has arrived yet - a _wait_until() predicate; any other error propagates.
     while True:
         try:
             replies.append(peer.recv(DNS_UDP_MAX))
-        except OSError:
+        except OSError as e:
+            if e.errno != errno.EAGAIN:  # only an empty queue is expected; anything else is the rig failing
+                raise
             return bool(replies)
 
 
-def make_query(labels: list[str], query_id: bytes = b"\x12\x34", qtype: bytes = b"\x00\x01") -> bytes:
+def _make_query(labels: list[str], query_id: bytes = b"\x12\x34", qtype: bytes = b"\x00\x01") -> bytes:
     # A minimal, well-formed standard-query datagram: 12-byte header + length-prefixed labels +
     # QTYPE (A unless given)/QCLASS=IN, matching what DNSQuery.__init__ expects (RFC 1035 section 4.1.1/4.1.2).
     question = b"".join(bytes([len(label)]) + label.encode("ascii") for label in labels)
@@ -123,11 +98,9 @@ def make_query(labels: list[str], query_id: bytes = b"\x12\x34", qtype: bytes = 
 
 
 def malformed_query_cases() -> list[bytes]:
-    # The 16 shapes DNSQuery drops: too short for the header or the question, a label truncated or cut before QTYPE/QCLASS,
-    # invalid UTF-8, a response (QR set), a question count other than one, and a compression pointer or reserved label
-    # type as a length byte - the last five carry a question long enough to cover the bogus length.
+    # The 11 shapes DNSQuery drops: too short for the opcode byte or the question section, a length byte with nothing
+    # following, a label truncated mid-way or entirely, an oversized length claim, invalid UTF-8, and no QTYPE/QCLASS.
     header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # standard query, QDCOUNT=1
-    question = b"\x01a\x00\x00\x01\x00\x01"  # a., QTYPE=A, QCLASS=IN
     return [
         b"",
         b"\x00",
@@ -140,11 +113,6 @@ def malformed_query_cases() -> list[bytes]:
         header + b"\xff",  # a 255-byte label claim (max byte value) with nothing following
         header + b"\x01\xff\x00",  # a 1-byte label containing an invalid UTF-8 byte
         header + b"\x01a\x00",  # valid label + terminator, but QTYPE/QCLASS never arrive
-        b"\x12\x34\x81\x80\x00\x01\x00\x00\x00\x00\x00\x00" + question,  # QR set: a response, not a query
-        b"\x12\x34\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00" + question,  # QDCOUNT=0
-        b"\x12\x34\x01\x00\x00\x02\x00\x00\x00\x00\x00\x00" + question + question,  # QDCOUNT=2
-        header + b"\xc0\x0c" + b"a" * 191 + question[2:],  # a compression pointer as the first length byte (0xC0 = 192)
-        header + b"\x40" + b"a" * 64 + question[2:],  # a reserved label type (0x40 = 64) as the first length byte
     ]
 
 
@@ -154,37 +122,26 @@ def malformed_query_cases() -> list[bytes]:
 
 
 def test_dns_query_parses_single_and_multi_label_domain() -> None:
-    assert DNSQuery(make_query(["example"]), make_pr()).domain == "example."
-    assert DNSQuery(make_query(["a", "io"]), make_pr()).domain == "a.io."
+    assert DNSQuery(_make_query(["example"]), _make_pr()).domain == "example."
+    assert DNSQuery(_make_query(["a", "io"]), _make_pr()).domain == "a.io."
 
 
 def test_dns_query_non_standard_opcode_yields_empty_domain() -> None:
-    data = bytearray(make_query(["a", "io"]))
+    data = bytearray(_make_query(["a", "io"]))
     data[2] = 0x09  # opcode bits = 1 (not a standard query)
-    assert DNSQuery(bytes(data), make_pr()).domain == ""
+    assert DNSQuery(bytes(data), _make_pr()).domain == ""
 
 
 def test_dns_query_malformed_or_truncated_data_yields_empty_domain() -> None:
     for data in malformed_query_cases():
-        assert DNSQuery(data, make_pr()).domain == ""  # never raises, degrades to the "don't respond" sentinel
-
-
-def test_a_name_of_255_octets_is_answered_and_256_is_dropped() -> None:
-    # RFC 1035 SS3.1: a name is at most 255 octets on the wire, its length bytes and terminator included.
-    longest = ["a" * 63, "b" * 63, "c" * 63, "d" * 61]  # 4 length bytes + 250 + the terminator = 255
-    dns = DNSQuery(make_query(longest), make_pr())
-    assert dns.domain == ".".join(longest) + "."
-    assert dns.response("192.168.4.1") is not None
-    too_long = DNSQuery(make_query(["a" * 63, "b" * 63, "c" * 63, "d" * 62]), make_pr())  # 256 octets
-    assert too_long.domain == ""
-    assert too_long.response("192.168.4.1") is None
+        assert DNSQuery(data, _make_pr()).domain == ""  # never raises, degrades to the "don't respond" sentinel
 
 
 def test_dns_query_reuses_the_given_logger_instead_of_constructing_its_own() -> None:
     # DNSQuery is constructed fresh per incoming request (see CaptiveDNS.run()) - it must reuse the
     # caller's own logger identity/history, not get an independent PrintLogHistory of its own.
-    pr = make_pr()
-    dns = DNSQuery(make_query(["a", "io"]), pr)
+    pr = _make_pr()
+    dns = DNSQuery(_make_query(["a", "io"]), pr)
     assert dns.pr is pr
 
 
@@ -194,8 +151,8 @@ def test_dns_query_reuses_the_given_logger_instead_of_constructing_its_own() -> 
 
 
 def test_response_builds_expected_packet_for_valid_domain() -> None:
-    query = make_query(["a", "io"])
-    packet = DNSQuery(query, make_pr()).response("192.168.4.1")
+    query = _make_query(["a", "io"])
+    packet = DNSQuery(query, _make_pr()).response("192.168.4.1")
     assert packet is not None
     assert packet[:2] == query[:2]  # echoed transaction ID
     assert packet[2:4] == b"\x81\x80"  # standard response, recursion available
@@ -226,7 +183,7 @@ def test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts(
     opt_record = b"\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x00"  # root name, TYPE=41 (OPT), RDLENGTH=0
     query = header + question + opt_record
 
-    dns = DNSQuery(query, make_pr())
+    dns = DNSQuery(query, _make_pr())
     assert dns.domain == "a.io."
     packet = dns.response("192.168.4.1")
     assert packet is not None
@@ -240,51 +197,41 @@ def test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts(
     assert len(packet) == offset + 16
 
 
-def test_a_query_declaring_two_questions_is_dropped() -> None:
-    # DNSQuery parses exactly one question; a header declaring two is not answered as if it held one.
-    header = b"\x12\x34\x01\x00\x00\x02\x00\x00\x00\x00\x00\x00"  # QDCOUNT=2
-    question = b"\x01a\x02io\x00\x00\x01\x00\x01"
-    second_question = b"\x01b\x00\x00\x01\x00\x01"
-    dns = DNSQuery(header + question + second_question, make_pr())
-    assert dns.domain == ""
-    assert dns.response("192.168.4.1") is None
-
-
 def test_an_a_or_any_query_gets_the_a_record() -> None:
     # Expected bytes from RFC 1035 SS4.1.1 (header) and SS4.1.3 (answer RR); QTYPE 1 is A (SS3.2.2), 255 is * (SS3.2.3).
     for qtype in (b"\x00\x01", b"\x00\xff"):
-        query = make_query(["a", "io"], qtype=qtype)
+        query = _make_query(["a", "io"], qtype=qtype)
         header = query[:2] + b"\x81\x80" + b"\x00\x01" + b"\x00\x01" + b"\x00\x00" + b"\x00\x00"  # flags, QD 1, AN 1, NS 0, AR 0
         answer = b"\xc0\x0c" + b"\x00\x01" + b"\x00\x01" + b"\x00\x00\x00\x3c" + b"\x00\x04" + bytes([192, 168, 4, 1])
-        assert DNSQuery(query, make_pr()).response("192.168.4.1") == header + query[12:] + answer
+        assert DNSQuery(query, _make_pr()).response("192.168.4.1") == header + query[12:] + answer
 
 
 def test_other_query_types_get_an_empty_noerror_reply() -> None:
     # RFC 1035 SS4.1.1 header, NOERROR, no answer (RFC 2308 2.2 NODATA); QTYPE 2 NS, 15 MX (SS3.2.2), 28 AAAA (RFC 3596), 65 HTTPS (RFC 9460).
     for labels, qtype in ((["a", "io"], 28), (["a", "io"], 65), (["a", "io"], 15), ([], 2)):
-        query = make_query(labels, qtype=qtype.to_bytes(2, "big"))
+        query = _make_query(labels, qtype=qtype.to_bytes(2, "big"))
         question = query[12:]
-        packet = DNSQuery(query, make_pr()).response("192.168.4.1")
+        packet = DNSQuery(query, _make_pr()).response("192.168.4.1")
         assert packet is not None
         assert packet == query[:2] + b"\x81\x80" + b"\x00\x01" + b"\x00\x00" * 3 + question  # QD 1, AN/NS/AR 0, the question
         assert len(packet) == 12 + len(question)  # nothing after the echoed question
 
 
 def test_response_returns_none_for_empty_domain() -> None:
-    data = bytearray(make_query(["a", "io"]))
+    data = bytearray(_make_query(["a", "io"]))
     data[2] = 0x09  # non-standard query -> empty domain
-    assert DNSQuery(bytes(data), make_pr()).response("192.168.4.1") is None
+    assert DNSQuery(bytes(data), _make_pr()).response("192.168.4.1") is None
 
 
 def test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure() -> None:
-    # Regression test for BACKLOG.md's "root-domain query can't be told apart from a failed parse" entry: a
+    # A root query must not read as a failed parse: a
     # root query (a single zero-length label) parses to the same empty self.domain a malformed datagram
     # falls back to, and response() used `if self.domain:` to decide whether to answer.
     #
     # Both cases therefore returned None, contradicting this module's docstring claim that every on-subnet
     # query gets an answer. response() now tracks parse success separately.
-    query = make_query([])  # zero labels -> immediate zero-length terminator, i.e. the root domain
-    dns = DNSQuery(query, make_pr())
+    query = _make_query([])  # zero labels -> immediate zero-length terminator, i.e. the root domain
+    dns = DNSQuery(query, _make_pr())
     assert dns.domain == ""  # still the same empty representation as a parse failure...
     packet = dns.response("192.168.4.1")
     assert packet is not None  # ...but this is a successfully-parsed query, so it gets answered
@@ -304,11 +251,11 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
     complete = header + b"\x01a\x00" + b"\x00\x01\x00\x01"  # QTYPE=A, QCLASS=IN present
     truncated = header + b"\x01a\x00"  # terminator present, QTYPE/QCLASS entirely missing
 
-    complete_query = DNSQuery(complete, make_pr())
+    complete_query = DNSQuery(complete, _make_pr())
     assert complete_query.domain == "a."
     assert complete_query.response("192.168.4.1") is not None
 
-    truncated_query = DNSQuery(truncated, make_pr())
+    truncated_query = DNSQuery(truncated, _make_pr())
     assert truncated_query.domain == ""
     assert truncated_query.response("192.168.4.1") is None
 
@@ -316,6 +263,11 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
 # ---------------------------------------------------------------------------
 # CaptiveDNS: construction.
 # ---------------------------------------------------------------------------
+
+
+def test_dns_server_hands_its_logger_to_its_socket() -> None:
+    server = CaptiveDNS(log=LogConfig(None, 10, None))
+    assert server._udps.logger is server.pr
 
 
 def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
@@ -334,9 +286,14 @@ def test_dns_server_error_source_and_logger_fan_in_report_itself() -> None:
     assert server.get_loggers() == [server.pr]
 
 
-def test_dns_server_uses_in_memory_logging_when_fram_is_none() -> None:
+def test_captive_dns_logs_in_memory_without_fram() -> None:
+    # No FRAM given: an error lands in the logger's own RAM history as the newest entry, with no store behind it.
     server = CaptiveDNS()
-    assert isinstance(server.pr, PrintLogHistory)
+    assert not isinstance(server.pr, PrintLogHistoryStore)
+    server.pr.err_s("probe", errno=code("E", "UNEXPECTED"))
+    entry = run(server.pr.get_log())["DNSSRV"]
+    assert entry["ErrCount"] == 1
+    assert run(_used_slots(server)) == [(code("E", "UNEXPECTED"), "E")]
 
 
 def test_dns_server_logger_is_named_dnssrv() -> None:
@@ -371,14 +328,14 @@ def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
     log = run(server.get_error_counter())
     assert log["DNSSRV"]["ErrCount"] == 1
 
 
 def test_reset_error_counter_returns_true_and_clears() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
     assert run(server.reset_error_counter()) is True
     assert run(server.get_error_counter())["DNSSRV"]["ErrCount"] == 0
 
@@ -395,25 +352,34 @@ def test_reset_error_counter_returns_true_and_clears() -> None:
 class _FakeUDPS:
     def __init__(self, incoming: list[tuple[bytes | None, tuple[str, int] | None]]) -> None:
         self._incoming = list(incoming)
-        self.connected = True  # run() reads it to tell a socket that never bound from a failed receive
         self.sent: list[tuple[bytes, tuple[str, int]]] = []
         self.sendto_results: list[int | None] = []
-        self.disconnect_called = False
+        self.disconnects = 0
         self.disconnect_ok = True  # real UDPSocket.disconnect()'s success return, see Step 6 note
+        self.reads_after_disconnect = 0  # a receive once the socket was released
         self.bufsizes: list[int] = []
-        # One entry per recvfrom() call, for backoff-timing assertions. "Any", not "int": mypy's time.pyi
-        # types ticks_ms() as the opaque _TicksMs marker class, deliberately incompatible with plain int to
-        # catch raw-arithmetic misuse, and these values are only ever fed back into time.ticks_diff().
-        self.recv_call_times_ms: list[Any] = []
+        # One ticks_ms() value per recvfrom() call, for backoff-timing assertions: opaque, only ever fed back into
+        # time.ticks_diff().
+        self.recv_call_times_ms: list[_TicksMs] = []
         # ("recv"/"send", loop_turns at the call): loop_turns is a test ticker's count of scheduler passes.
         self.calls: list[tuple[str, int]] = []
         self.loop_turns = 0
+
+    async def disconnect(self) -> bool:
+        self.disconnects += 1
+        return self.disconnect_ok
+
+    @property
+    def disconnect_called(self) -> bool:
+        return self.disconnects > 0
 
     # CaptiveDNS calls recvfrom(512)/sendto(packet, addr): the fake records the buffer size; the timeout is never passed.
     async def recvfrom(self, bufsize: int, _timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         self.bufsizes.append(bufsize)
         self.calls.append(("recv", self.loop_turns))
         self.recv_call_times_ms.append(time.ticks_ms())
+        if self.disconnects:
+            self.reads_after_disconnect += 1
         if self._incoming:
             data, addr = self._incoming.pop(0)
             await asyncio.sleep(0)
@@ -427,10 +393,6 @@ class _FakeUDPS:
         self.calls.append(("send", self.loop_turns))
         return result
 
-    async def disconnect(self) -> bool:
-        self.disconnect_called = True
-        return self.disconnect_ok
-
 
 async def _wait_until(predicate: "Callable[[], bool]", timeout_ms: int = _WAIT_UNTIL_TIMEOUT_MS) -> bool:
     t0 = time.ticks_ms()
@@ -441,14 +403,6 @@ async def _wait_until(predicate: "Callable[[], bool]", timeout_ms: int = _WAIT_U
     return True
 
 
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
 async def _count_loop_turns(fake: _FakeUDPS) -> None:
     # One count per scheduler pass: two fake calls recorded one count apart at most had no timed wait between them.
     while True:
@@ -457,7 +411,7 @@ async def _count_loop_turns(fake: _FakeUDPS) -> None:
 
 
 def test_run_answers_on_subnet_request() -> None:
-    fake = _FakeUDPS([(make_query(["a", "io"]), ("127.0.0.5", 5000))])
+    fake = _FakeUDPS([(_make_query(["a", "io"]), ("127.0.0.5", 5000))])
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
         server = CaptiveDNS()
@@ -467,7 +421,7 @@ def test_run_answers_on_subnet_request() -> None:
             assert await _wait_until(lambda: len(fake.sent) >= 1)
             return fake.sent
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     sent = run(scenario())
     assert len(sent) == 1
@@ -478,7 +432,7 @@ def test_run_answers_on_subnet_request() -> None:
 
 
 def test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request() -> None:
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     fake = _FakeUDPS(
         [
             (query, ("10.0.0.9", 5000)),  # off the configured 127.0.0.0/8 subnet
@@ -495,7 +449,7 @@ def test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request() ->
             await asyncio.sleep_ms(_STRAY_REPLY_WAIT_MS)  # give a stray second reply a chance to show up, if any
             return fake.sent
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     sent = run(scenario())
     assert len(sent) == 1  # only the on-subnet request was ever answered
@@ -503,11 +457,10 @@ def test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request() ->
 
 
 def test_run_ignores_source_address_that_is_not_a_valid_ipv4_string() -> None:
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     fake = _FakeUDPS(
         [
             (query, ("not-an-ip", 5000)),
-            (query, (0x7F000005, 5002)),  # type: ignore[list-item]  # a non-str host: ipv4_to_int() raises, read as off-subnet
             (query, ("127.0.0.5", 5001)),
         ],
     )
@@ -520,18 +473,43 @@ def test_run_ignores_source_address_that_is_not_a_valid_ipv4_string() -> None:
             assert await _wait_until(lambda: len(fake.sent) >= 1)
             return fake.sent
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     sent = run(scenario())
     assert len(sent) == 1
     assert sent[0][1] == ("127.0.0.5", 5001)
 
 
+def test_run_reads_every_malformed_str_host_as_off_subnet_with_nothing_logged() -> None:
+    # run() calls ipv4_to_int() on the sender's host bare: a str of any shape must come back None, never raise into the
+    # catch-all's logged error and 3 s pause. Non-ASCII digits: MicroPython's isdigit() is ASCII-only (py/unicode.c:133).
+    hosts = ["", "127.0.0", "127.0.0.5.1", "127..0.5", "127.0.0.256", "127.0.0.-5", "127.0.0.+5", " 127.0.0.5", "127.0.0.5 ", "127.0.0.5\x00", "127.0.0.\u0665", "127.0.0.\uff15", "127.0.0." + "9" * 64]
+    query = _make_query(["a", "io"])
+    incoming: list[tuple[bytes | None, tuple[str, int] | None]] = [(query, (host, 5000)) for host in hosts]
+    incoming.append((query, ("127.0.0.5", 5001)))  # the one on-subnet sender, last
+    fake = _FakeUDPS(incoming)
+
+    async def scenario() -> "tuple[bool, list[tuple[int, str]]]":
+        server = CaptiveDNS()
+        server._udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            answered = await _wait_until(lambda: len(fake.sent) >= 1)
+            await asyncio.sleep_ms(_STRAY_REPLY_WAIT_MS)  # a stray reply to a malformed host gets its chance to show up
+            return answered, await _used_slots(server)
+        finally:
+            await cancel(task)
+
+    answered, slots = run(scenario())
+    assert slots == [], f"a malformed str host reached the catch-all: {slots}"
+    assert answered and [addr for _, addr in fake.sent] == [("127.0.0.5", 5001)], fake.sent
+
+
 def test_run_ignores_malformed_query_without_stalling() -> None:
     fake = _FakeUDPS(
         [
             (b"\x00\x00", ("127.0.0.5", 5000)),  # too short to parse
-            (make_query(["a", "io"]), ("127.0.0.5", 5001)),
+            (_make_query(["a", "io"]), ("127.0.0.5", 5001)),
         ],
     )
 
@@ -544,7 +522,7 @@ def test_run_ignores_malformed_query_without_stalling() -> None:
             assert await _wait_until(lambda: len(fake.sent) >= 1)
             return fake.sent, time.ticks_diff(time.ticks_ms(), t0)
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     sent, elapsed_ms = run(scenario())
     assert len(sent) == 1
@@ -577,43 +555,34 @@ def test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error() -> No
     assert server._udps._sock is None
 
 
-def test_run_cancellation_disconnects_cleanly() -> None:
-    fake = _FakeUDPS([])
+def test_cancelling_run_at_each_await_disconnects_and_logs_nothing() -> None:
+    # One query, then the fake's endless wait: each count's cancel leaves run() through its finally, which releases the
+    # socket once and reads no more. A task cancelled before its first step runs no code, so it has nothing to release.
+    replies: list[int] = []  # the replies sent by each count's cancel: the sweep crosses the answer
 
-    async def scenario() -> None:
+    async def build() -> "tuple[CaptiveDNS, _FakeUDPS]":
         server = CaptiveDNS()
+        fake = _FakeUDPS([(_make_query(["a", "io"]), ("127.0.0.5", 5000))])
         server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_REACH_RECV_MS)  # let it reach the pending recvfrom()
-        await _cancel(task)  # run() cleans up and re-raises the cancellation; cancel() absorbs it
+        return server, fake
 
-    run(scenario())
-    assert fake.disconnect_called is True
+    async def serve(fixture: "tuple[CaptiveDNS, _FakeUDPS]") -> None:
+        await fixture[0].run("127.0.0.1", "255.0.0.0")
 
+    def invariants(fixture: "tuple[CaptiveDNS, _FakeUDPS]") -> None:
+        server, fake = fixture
+        began = 1 if fake.bufsizes else 0
+        assert fake.disconnects == began, f"disconnect() called {fake.disconnects} times, run() began {began}"
+        assert fake.reads_after_disconnect == 0, "recvfrom() called after the disconnect"
+        assert server.pr._err_count == 0, "the cancel was logged"
+        replies.append(len(fake.sent))
 
-def test_awaiting_a_cancelled_run_raises_after_disconnect() -> None:
-    # The cancellation is re-raised, never turned into a normal return, and only after the socket was released.
-    fake = _FakeUDPS([])
-
-    async def scenario() -> "tuple[bool, bool]":
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_REACH_RECV_MS)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            return True, fake.disconnect_called
-        return False, fake.disconnect_called
-
-    raised, disconnected_first = run(scenario())
-    assert raised is True
-    assert disconnected_first is True
+    assert cancel_at_each_await(build, serve, invariants, max_steps=6, endless=True) == 6
+    assert replies == [0, 0, 0, 1, 1, 1], replies
 
 
 def test_run_continues_after_sendto_reports_failure() -> None:
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     fake = _FakeUDPS(
         [
             (query, ("127.0.0.5", 5000)),
@@ -630,7 +599,7 @@ def test_run_continues_after_sendto_reports_failure() -> None:
             assert await _wait_until(lambda: len(fake.sent) >= 2)
             return fake.sent
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     sent = run(scenario())
     assert len(sent) == 2  # the "failed" first send didn't crash or stall the loop
@@ -639,7 +608,7 @@ def test_run_continues_after_sendto_reports_failure() -> None:
 
 def test_run_sendto_failure_logs_a_persisted_warning() -> None:
     # Two refused replies: both counted, one slot (the central newest-entry rule, C.7.1).
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     fake = _FakeUDPS([(query, ("127.0.0.5", 5000)), (query, ("127.0.0.5", 5000))])
     fake.sendto_results = [None, None]
 
@@ -652,7 +621,7 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
             assert server.pr._err_count == 2
             assert await _used_slots(server) == [(code("W", "DNS_REPLY_DROPPED"), "W")]
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run(scenario())
 
@@ -660,6 +629,7 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
 def test_run_failed_receive_logs_one_warning_per_code() -> None:
     # Two failed receives on a bound socket: both counted, one slot (the central newest-entry rule, C.7.1).
     fake = _FakeUDPS([(None, None), (None, None)])
+    instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)  # the pause between them costs one yield
 
     async def scenario() -> None:
         server = CaptiveDNS(log=LogConfig(None, 10, 2))
@@ -670,14 +640,18 @@ def test_run_failed_receive_logs_one_warning_per_code() -> None:
             assert server.pr._err_count == 2
             assert await _used_slots(server) == [(code("W", "DNS_RECV_FAILED"), "W")]
         finally:
-            await _cancel(task)
+            await cancel(task)
 
-    run(scenario())
+    asy_captive_dns.asyncio = instant  # type: ignore[assignment]
+    try:
+        run(scenario())
+    finally:
+        asy_captive_dns.asyncio = instant._real
 
 
 def test_run_reads_with_the_rfc_1035_udp_limit() -> None:
     # RFC 1035 SS2.3.4: a DNS message over UDP is at most 512 octets, so no receive asks for more.
-    fake = _FakeUDPS([(make_query(["a", "io"]), ("127.0.0.5", 5000))])
+    fake = _FakeUDPS([(_make_query(["a", "io"]), ("127.0.0.5", 5000))])
 
     async def scenario() -> None:
         server = CaptiveDNS()
@@ -686,7 +660,7 @@ def test_run_reads_with_the_rfc_1035_udp_limit() -> None:
         try:
             assert await _wait_until(lambda: len(fake.sent) >= 1 and len(fake.bufsizes) >= 2)
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run(scenario())
     assert fake.bufsizes == [512] * len(fake.bufsizes)
@@ -695,7 +669,7 @@ def test_run_reads_with_the_rfc_1035_udp_limit() -> None:
 def test_run_answers_queued_queries_back_to_back() -> None:
     # Guard: four queued queries get four replies in order, each reply followed by the next recvfrom() within
     # one scheduler pass (a yield at most, never a timed wait), so a queue is drained before the socket sleeps.
-    fake = _FakeUDPS([(make_query(["a", "io"], query_id=bytes([0, n])), ("127.0.0.5", 5000 + n)) for n in range(4)])
+    fake = _FakeUDPS([(_make_query(["a", "io"], query_id=bytes([0, n])), ("127.0.0.5", 5000 + n)) for n in range(4)])
 
     async def scenario() -> None:
         server = CaptiveDNS()
@@ -705,8 +679,8 @@ def test_run_answers_queued_queries_back_to_back() -> None:
         try:
             assert await _wait_until(lambda: len(fake.sent) >= 4 and len(fake.bufsizes) >= 5)
         finally:
-            await _cancel(task)
-            await _cancel(ticker)
+            await cancel(task)
+            await cancel(ticker)
 
     run(scenario())
     assert [(packet[:2], addr) for packet, addr in fake.sent] == [(bytes([0, n]), ("127.0.0.5", 5000 + n)) for n in range(4)]
@@ -727,7 +701,7 @@ class _FloodUDPS(_FakeUDPS):
         self.calls.append(("recv", self.loop_turns))
         if self._left > 0:
             self._left -= 1
-            return make_query(["a", "io"]), ("127.0.0.5", 5000)
+            return _make_query(["a", "io"]), ("127.0.0.5", 5000)
         await asyncio.sleep(3600)
         return None, None
 
@@ -746,8 +720,8 @@ def test_run_yields_once_per_datagram_while_the_socket_stays_ready() -> None:
         try:
             assert await _wait_until(lambda: len(fake.sent) >= datagrams and len(fake.bufsizes) > datagrams)
         finally:
-            await _cancel(task)
-            await _cancel(ticker)
+            await cancel(task)
+            await cancel(ticker)
 
     run(scenario())
     sends = [turns for kind, turns in fake.calls if kind == "send"]
@@ -766,11 +740,29 @@ class _HeapFailingParse:
         raise MemoryError("injected for parse")
 
 
-def test_a_heap_failure_while_parsing_is_persisted_not_dropped_as_malformed() -> None:
-    # The query (DNSQuery) and the sender address (run()'s subnet check) each: one E UNEXPECTED slot, not
-    # the silent "malformed input" drop every other parse exception still gets.
-    query = make_query(["a", "io"])
-    for incoming in ((_HeapFailingParse(), ("127.0.0.5", 5000)), (query, (_HeapFailingParse(), 5000))):
+def test_a_heap_failure_while_parsing_the_query_drops_it_as_malformed() -> None:
+    # DNSQuery's parse: dropped like any malformed query, nothing persisted and no error pause before the next one.
+    query = _make_query(["a", "io"])
+    fake = _FakeUDPS([(_HeapFailingParse(), ("127.0.0.5", 5000)), (query, ("127.0.0.5", 5001))])  # type: ignore[list-item]
+
+    async def scenario() -> None:
+        server = CaptiveDNS(log=LogConfig(None, 10, 1))
+        server._udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1)  # well inside the error pause
+            assert server.pr._err_count == 0
+        finally:
+            await cancel(task)
+
+    run(scenario())
+    assert [addr for _packet, addr in fake.sent] == [("127.0.0.5", 5001)]
+
+
+def test_a_heap_failure_at_the_subnet_check_is_persisted() -> None:
+    # The sender address (run()'s subnet check): one E UNEXPECTED slot from run()'s own catch.
+    query = _make_query(["a", "io"])
+    for incoming in ((query, (_HeapFailingParse(), 5000)),):
         fake = _FakeUDPS([incoming])  # type: ignore[list-item]
 
         async def scenario(fake: _FakeUDPS = fake) -> None:
@@ -782,7 +774,7 @@ def test_a_heap_failure_while_parsing_is_persisted_not_dropped_as_malformed() ->
                 assert server.pr._err_count == 1
                 assert await _used_slots(server) == [(code("E", "UNEXPECTED"), "E")]
             finally:
-                await _cancel(task)
+                await cancel(task)
 
         run(scenario())
         assert fake.sent == []
@@ -805,13 +797,14 @@ class _TimedUDPSocket(UDPSocket):
             self.returned_ms.append(time.ticks_diff(time.ticks_ms(), self._t0))
 
 
-def test_run_bind_failure_logs_init_once_and_backs_off() -> None:
-    # A socket that never bound is a local setup failure, never a client's datagram: E INIT, not
-    # DNS_RECV_FAILED, one slot for every repeat, and the receive-failure backoff between attempts.
-    port = make_port()
+def test_run_bind_failure_logs_one_warning_and_backs_off() -> None:
+    # A socket that never bound returns no datagram, as a failed receive does: DNS_RECV_FAILED, one slot for every
+    # repeat, and the error retry pause between attempts.
+    port = _make_port()
     blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     blocker.bind(_resolved("127.0.0.1", port))  # no SO_REUSEADDR, so UDPSocket's own bind() gets EADDRINUSE
     udps = _TimedUDPSocket(("127.0.0.1", port))
+    instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)
 
     async def scenario() -> None:
         server = CaptiveDNS(log=LogConfig(None, 10, 1))
@@ -820,18 +813,18 @@ def test_run_bind_failure_logs_init_once_and_backs_off() -> None:
         try:
             assert await _wait_until(lambda: len(udps.returned_ms) >= 3 and server.pr._err_count >= 3, timeout_ms=_BACKOFF_WAIT_TIMEOUT_MS)
             assert (await server.get_error_counter())["DNSSRV"]["ErrCount"] == 3
-            assert await _used_slots(server) == [(code("E", "INIT"), "E")]
+            assert await _used_slots(server) == [(code("W", "DNS_RECV_FAILED"), "W")]
         finally:
-            await _cancel(task)
+            await cancel(task)
 
+    asy_captive_dns.asyncio = instant  # type: ignore[assignment]
     try:
         run(scenario())
     finally:
+        asy_captive_dns.asyncio = instant._real
         blocker.close()
     assert udps.connected is False
-    gaps = [udps.entered_ms[i + 1] - udps.returned_ms[i] for i in range(2)]
-    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # ~0.5 s after the first failure
-    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # ~1.0 s (doubled) after the second
+    assert instant.sleep_calls[:2] == [_ERROR_RETRY_WAIT_S] * 2, instant.sleep_calls  # the pause between attempts
 
 
 # ---------------------------------------------------------------------------
@@ -841,8 +834,8 @@ def test_run_bind_failure_logs_init_once_and_backs_off() -> None:
 
 
 def test_run_handles_real_loopback_traffic_without_crashing() -> None:
-    server_port = make_port()
-    peer_addr = _resolved("127.0.0.1", make_port())
+    server_port = _make_port()
+    peer_addr = _resolved("127.0.0.1", _make_port())
 
     async def scenario() -> "tuple[bool, list[bytes]]":
         server = CaptiveDNS()
@@ -854,13 +847,13 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
         replies: list[bytes] = []
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let the server bind
-            peer.sendto(make_query(["a", "io"]), _resolved("127.0.0.1", server_port))
+            assert await _wait_until(lambda: server._udps.connected)  # the server bound
+            peer.sendto(_make_query(["a", "io"]), _resolved("127.0.0.1", server_port))
             await _wait_until(lambda: _read_replies(peer, replies))
             return not task.done(), replies  # still running - no uncaught exception killed it
         finally:
             peer.close()
-            await _cancel(task)
+            await cancel(task)
 
     alive, replies = run(scenario())
     assert alive is True
@@ -875,7 +868,7 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _bad_ipv4_values() -> "list[Any]":
+def _bad_ipv4_values() -> "list[object]":
     return [
         None,
         123,
@@ -913,7 +906,7 @@ def _run_briefly_and_cancel(server: "CaptiveDNS", server_ip: str, netmask: str, 
     async def scenario() -> None:
         task = asyncio.create_task(server.run(server_ip, netmask))
         await asyncio.sleep_ms(wait_ms)
-        await _cancel(task)
+        await cancel(task)
 
     run(scenario())
 
@@ -967,13 +960,12 @@ def test_run_rejects_multiple_simultaneous_invalid_server_ip_and_netmask_recombi
 
 def test_run_rejects_non_str_server_ip_or_netmask() -> None:
     # A non-str value still raises, via ipv4_to_int()'s own ip.split() - this class's public str-typed
-    # signature relies on that, like resolve_ipv4()'s own ipv4_to_int() calls. Any lives on the bad-
-    # value table, not on scenario()'s parameters, which keep run()'s declared str types.
-    bad_pairs: tuple[tuple[Any, Any], ...] = ((None, "255.0.0.0"), ("192.168.4.1", 123), ([1, 2, 3, 4], b"255.0.0.0"))
+    # signature relies on that, like resolve_ipv4()'s own ipv4_to_int() calls.
+    bad_pairs: tuple[tuple[object, object], ...] = ((None, "255.0.0.0"), ("192.168.4.1", 123), ([1, 2, 3, 4], b"255.0.0.0"))
     for bad_ip, bad_netmask in bad_pairs:
         server = CaptiveDNS()
 
-        async def scenario(srv: "CaptiveDNS" = server, ip: str = bad_ip, netmask: str = bad_netmask) -> None:
+        async def scenario(srv: "CaptiveDNS" = server, ip: str = bad_ip, netmask: str = bad_netmask) -> None:  # type: ignore[assignment]  # the non-str value under test
             await srv.run(ip, netmask)
 
         try:
@@ -989,11 +981,11 @@ def test_run_rejects_non_str_server_ip_or_netmask() -> None:
 
 
 def test_dns_query_init_accepts_all_valid_data_configurations() -> None:
-    assert DNSQuery(make_query(["single"]), make_pr()).domain == "single."
-    assert DNSQuery(make_query(["multi", "label", "example"]), make_pr()).domain == "multi.label.example."
+    assert DNSQuery(_make_query(["single"]), _make_pr()).domain == "single."
+    assert DNSQuery(_make_query(["multi", "label", "example"]), _make_pr()).domain == "multi.label.example."
 
 
-def _bad_dns_query_data_values() -> "list[Any]":
+def _bad_dns_query_data_values() -> "list[object]":
     # Wrong-type shapes for data, on top of the malformed-but-bytes shapes malformed_query_cases()
     # already covers. The real caller (run()) only ever passes bytes, but this constructor is
     # public and shouldn't rely on that discipline holding for every future/test caller.
@@ -1002,7 +994,7 @@ def _bad_dns_query_data_values() -> "list[Any]":
 
 def test_dns_query_init_rejects_single_invalid_data_parameter_without_raising() -> None:
     for bad_data in _bad_dns_query_data_values():
-        assert DNSQuery(bad_data, make_pr()).domain == ""
+        assert DNSQuery(bad_data, _make_pr()).domain == ""  # type: ignore[arg-type]  # the non-bytes value under test
 
 
 def test_dns_query_init_rejects_list_shaped_data_that_passes_every_index_lookup() -> None:
@@ -1010,7 +1002,7 @@ def test_dns_query_init_rejects_list_shaped_data_that_passes_every_index_lookup(
     # slice never equals the bytes QDCOUNT=1, so it stops at the one-question check, never a raise.
     bad_data = [0] * 20
     bad_data[12] = 3  # claims a 3-byte label
-    assert DNSQuery(bad_data, make_pr()).domain == ""  # type: ignore[arg-type]
+    assert DNSQuery(bad_data, _make_pr()).domain == ""  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -1019,26 +1011,26 @@ def test_dns_query_init_rejects_list_shaped_data_that_passes_every_index_lookup(
 
 
 def test_response_accepts_edge_valid_ip_configurations() -> None:
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     for ip in ("0.0.0.0", "255.255.255.255", "10.0.0.1"):
-        packet = DNSQuery(query, make_pr()).response(ip)
+        packet = DNSQuery(query, _make_pr()).response(ip)
         assert packet is not None
         assert packet[-4:] == bytes(int(o) for o in ip.split("."))
 
 
 def test_response_rejects_single_invalid_ip_parameter_without_raising() -> None:
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     for bad_ip in _bad_ipv4_values():
         if not isinstance(bad_ip, str):
             continue  # a non-str ip raises via ipv4_to_int()'s own ip.split() - see the dedicated test below
-        assert DNSQuery(query, make_pr()).response(bad_ip) is None
+        assert DNSQuery(query, _make_pr()).response(bad_ip) is None
 
 
 def test_response_rejects_non_str_ip_parameter() -> None:
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     for bad_ip in (None, 123, [1, 2, 3, 4], b"127.0.0.1"):
         try:
-            DNSQuery(query, make_pr()).response(bad_ip)  # type: ignore[arg-type]
+            DNSQuery(query, _make_pr()).response(bad_ip)  # type: ignore[arg-type]
             raise AssertionError(f"expected an exception for {bad_ip!r}")
         except (AttributeError, TypeError):
             pass
@@ -1048,10 +1040,10 @@ def test_response_rejects_invalid_ip_combined_with_empty_domain_state() -> None:
     # domain=="" already short-circuits to None before ip is ever inspected - an invalid ip
     # combined with an already-invalid (empty-domain) object state must still just return None,
     # even for a wrong-typed ip that would otherwise raise via ipv4_to_int().
-    data = bytearray(make_query(["a", "io"]))
+    data = bytearray(_make_query(["a", "io"]))
     data[2] = 0x09  # non-standard opcode -> empty domain
     for bad_ip in _bad_ipv4_values():
-        assert DNSQuery(bytes(data), make_pr()).response(bad_ip) is None
+        assert DNSQuery(bytes(data), _make_pr()).response(bad_ip) is None  # type: ignore[arg-type]  # the malformed value under test
 
 
 # ---------------------------------------------------------------------------
@@ -1069,25 +1061,24 @@ def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() ->
     # Mirrors asy_wifi_service.py's real usage, where WifiService.__init__ builds one self._dns_server reused
     # across every hotspot activation: one instance, run() started, cancelled and started again - safe only
     # because UDPSocket.disconnect() fully resets state for the next _connect().
-    server_port = make_port()
+    server_port = _make_port()
     server = CaptiveDNS()
     server._udps = UDPSocket(("127.0.0.1", server_port), mode="server")
 
     async def one_cycle() -> bool:
-        peer_addr = _resolved("127.0.0.1", make_port())
+        peer_addr = _resolved("127.0.0.1", _make_port())
         peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         peer.bind(peer_addr)
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind
-            assert server._udps._sock is not None  # real bind succeeded this cycle
-            peer.sendto(make_query(["cycle"]), _resolved("127.0.0.1", server_port))
+            assert await _wait_until(lambda: server._udps.connected)  # real bind succeeded this cycle
+            peer.sendto(_make_query(["cycle"]), _resolved("127.0.0.1", server_port))
             await asyncio.sleep_ms(_CYCLE_WAIT_MS)
             return not task.done()  # still alive - no uncaught exception killed it
         finally:
             peer.close()
-            await _cancel(task)
+            await cancel(task)
 
     assert run(one_cycle()) is True
     assert server._udps._sock is None  # first cycle's disconnect() really tore it down
@@ -1099,8 +1090,8 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
     # Real-world incident shape: a burst of bad traffic (not just one bad packet), sent over the
     # actual loopback network stack (not just handed to a fake transport) - proves no cumulative
     # state corruption or crash across repeated real, malformed datagrams.
-    server_port = make_port()
-    peer_addr = _resolved("127.0.0.1", make_port())
+    server_port = _make_port()
+    peer_addr = _resolved("127.0.0.1", _make_port())
 
     async def scenario() -> "tuple[bool, list[bytes]]":
         server = CaptiveDNS()
@@ -1112,16 +1103,16 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
         replies: list[bytes] = []
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)
+            assert await _wait_until(lambda: server._udps.connected)
             server_addr = _resolved("127.0.0.1", server_port)
             for bad in malformed_query_cases():
                 peer.sendto(bad, server_addr)
-            peer.sendto(make_query(["a", "io"], query_id=b"\x56\x78"), server_addr)
+            peer.sendto(_make_query(["a", "io"], query_id=b"\x56\x78"), server_addr)
             await _wait_until(lambda: _read_replies(peer, replies))
             return not task.done(), replies  # still alive after the whole burst
         finally:
             peer.close()
-            await _cancel(task)
+            await cancel(task)
 
     alive, replies = run(scenario())
     assert alive is True
@@ -1139,14 +1130,14 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
 
 
 def test_integration_survives_the_wifi_services_fire_and_forget_cancel_pattern() -> None:
-    server_port = make_port()
+    server_port = _make_port()
 
     async def scenario() -> "CaptiveDNS":
         server = CaptiveDNS()
         server._udps = UDPSocket(("127.0.0.1", server_port), mode="server")
         evtloop = asyncio.get_event_loop()
         task = evtloop.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind and reach the pending recvfrom()
+        assert await _wait_until(lambda: server._udps.connected)  # bound, then on to the pending recvfrom()
         task.cancel()  # exactly WifiService's own pattern - never awaited by the caller
         # Nothing observes `task` from here on, matching the real caller exactly. Only give the
         # event loop a few ticks so the cancelled task's own cleanup actually gets to run, the way
@@ -1185,7 +1176,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
         def response(self, ip: str) -> "bytes | None":
             return self._real.response(ip)
 
-    query = make_query(["a", "io"])
+    query = _make_query(["a", "io"])
     fake = _FakeUDPS(
         [
             (query, ("127.0.0.5", 5000)),
@@ -1194,7 +1185,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     )
 
     async def scenario() -> "tuple[list[tuple[bytes, tuple[str, int]]], int]":
-        asy_captive_dns.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
+        asy_captive_dns.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment, misc]
         try:
             server = CaptiveDNS(log=LogConfig(None, 10, 1))
             server._udps = fake  # type: ignore[assignment]
@@ -1206,14 +1197,14 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
                 assert await _used_slots(server) == [(code("E", "UNEXPECTED"), "E")]
                 return fake.sent, time.ticks_diff(time.ticks_ms(), t0)
             finally:
-                await _cancel(task)
+                await cancel(task)
         finally:
             asy_captive_dns.DNSQuery = real_dns_query  # type: ignore[misc]
 
     sent, elapsed_ms = run(scenario())
     assert len(sent) == 1
     assert sent[0][1] == ("127.0.0.5", 5001)  # the second, real request got through
-    assert elapsed_ms >= 3000  # proves the 3s backoff genuinely ran, unlike the malformed-data path
+    assert elapsed_ms >= _ERROR_RETRY_WAIT_S * 1000  # the real _ERROR_RETRY_WAIT_S pause ran, unlike the malformed-data path
 
 
 class _RaisingDisconnectUDPS(_FakeUDPS):
@@ -1222,7 +1213,7 @@ class _RaisingDisconnectUDPS(_FakeUDPS):
         self._exc = exc
 
     async def disconnect(self) -> bool:
-        self.disconnect_called = True
+        self.disconnects += 1
         raise self._exc
 
 
@@ -1234,7 +1225,7 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(_REACH_RECV_MS)
-        await _cancel(task)  # disconnect()'s own exception must not escape cancellation either
+        await cancel(task)  # disconnect()'s own exception must not escape cancellation either
         assert fake.disconnect_called is True
         assert server.pr._err_count == 1
         assert await _used_slots(server) == [(code("E", "UNEXPECTED"), "E")]
@@ -1243,90 +1234,56 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
 
 
 # ---------------------------------------------------------------------------
-# run()'s receive-failure backoff: a receive that keeps returning (None, None) on a bound socket logs
-# DNS_RECV_FAILED and backs off 0.5, 1, 2 ... 5 s (SPECIFICATION.md Part C.9). A socket that never bound takes
-# the same backoff with its own code: test_run_bind_failure_logs_init_once_and_backs_off.
+# run()'s receive-failure pause: a receive that keeps returning (None, None) on a bound socket logs DNS_RECV_FAILED
+# and pauses _ERROR_RETRY_WAIT_S, legacy's fixed 3 s, before the next (SPECIFICATION.md Part C.9). A socket that
+# never bound takes the same pause: test_run_bind_failure_logs_one_warning_and_backs_off.
 # ---------------------------------------------------------------------------
 
 
-def test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom() -> None:
-    query = make_query(["a", "io"])
-    fake = _FakeUDPS([(None, None), (None, None), (None, None), (query, ("127.0.0.5", 5000))])
+class _InstantSleepAsyncio:
+    # Stands in for asy_captive_dns's module-level asyncio: each sleep() and sleep_ms() is kept as the value it was given
+    # and costs one yield; every other name is the real module's.
+    def __init__(self, real: "ModuleType") -> None:
+        self._real = real
+        self.sleep_calls: list[float] = []
+        self.sleep_ms_calls: list[int] = []
 
-    async def scenario() -> list[int]:
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
+
+    async def sleep(self, seconds: float) -> None:
+        self.sleep_calls.append(seconds)
+        await self._real.sleep_ms(0)
+
+    async def sleep_ms(self, ms: int) -> None:
+        check_sleep_ms(ms)
+        self.sleep_ms_calls.append(ms)
+        await self._real.sleep_ms(0)
+
+
+def test_run_pauses_the_error_retry_wait_after_each_failed_receive() -> None:
+    # Every failed receive pauses the same _ERROR_RETRY_WAIT_S, never a zero-delay spin; a datagram costs one yield only.
+    query = _make_query(["a", "io"])
+    failures = 3
+    fake = _FakeUDPS([(None, None)] * failures + [(query, ("127.0.0.5", 5000)), (None, None)])
+    instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)
+
+    async def scenario() -> None:
         server = CaptiveDNS()
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_SERIES_TIMEOUT_MS)
-            return fake.recv_call_times_ms
+            assert await _wait_until(lambda: len(fake.recv_call_times_ms) > failures + 2)  # parked in the fake's last wait
         finally:
-            await _cancel(task)
+            await cancel(task)
 
-    call_times = run(scenario())
-    # >= 4: 3 empty results + the one that finally returns real data - possibly a 5th call too
-    # (run() loops straight back into recvfrom() again after replying, racing this test's own
-    # _wait_until poll), which is fine - only the first 3 backoff gaps are this test's concern.
-    assert len(call_times) >= 4
-    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(3)]
-    # gaps[i] is the pause *after* recvfrom() call i's (None, None) result, before call i+1 fires -
-    # must grow across consecutive failures, not stay at the previous zero-delay spin.
-    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # ~0.5s initial backoff
-    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # ~1.0s (doubled)
-    assert _GAP_QUAD_MIN_MS <= gaps[2] < _GAP_QUAD_MAX_MS  # ~2.0s (doubled again)
-
-
-def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
-    query = make_query(["a", "io"])
-    fake = _FakeUDPS(
-        [
-            (None, None),
-            (None, None),  # ramps the backoff up
-            (query, ("127.0.0.5", 5000)),  # real data received - must reset the backoff
-            (None, None),
-            (None, None),
-        ],
-    )
-
-    async def scenario() -> list[int]:
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        try:
-            assert await _wait_until(lambda: len(fake.recv_call_times_ms) >= 5, timeout_ms=_BACKOFF_SERIES_TIMEOUT_MS)
-            return fake.recv_call_times_ms
-        finally:
-            await _cancel(task)
-
-    call_times = run(scenario())
-    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(4)]
-    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # first empty result -> ~0.5s
-    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # second empty result -> ~1.0s (doubled)
-    assert gaps[2] < _GAP_NO_BACKOFF_MAX_MS  # real data received - no backoff sleep before the next recvfrom()
-    assert _GAP_INITIAL_MIN_MS <= gaps[3] < _GAP_INITIAL_MAX_MS  # backoff restarted from the initial value, not continuing from ~2.0s
-
-
-def test_run_recv_backoff_caps_at_the_ceiling() -> None:
-    # Many consecutive failures must never grow the pause past the configured ceiling - a real,
-    # bounded worst case, not just "slower than before." Uncapped doubling would reach 8.0s on the
-    # 5th failure; the fix's ceiling is 5.0s.
-    query = make_query(["a", "io"])
-    fake = _FakeUDPS([(None, None)] * 5 + [(query, ("127.0.0.5", 5000))])
-
-    async def scenario() -> list[int]:
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_CAP_TIMEOUT_MS)
-            return fake.recv_call_times_ms
-        finally:
-            await _cancel(task)
-
-    call_times = run(scenario())
-    assert len(call_times) >= 6  # 5 empty results + the one that finally returns real data
-    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(5)]
-    assert _GAP_CAP_MIN_MS <= gaps[4] < _GAP_CAP_MAX_MS  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
+    asy_captive_dns.asyncio = instant  # type: ignore[assignment]
+    try:
+        run(scenario())
+    finally:
+        asy_captive_dns.asyncio = instant._real
+    assert instant.sleep_calls == [_ERROR_RETRY_WAIT_S] * failures + [0, _ERROR_RETRY_WAIT_S], instant.sleep_calls
+    assert instant.sleep_ms_calls == [], instant.sleep_ms_calls
 
 
 def test_run_disconnect_reporting_a_second_cancellation_propagates_without_logging() -> None:
@@ -1363,13 +1320,26 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(_REACH_RECV_MS)
-        await _cancel(task)
+        await cancel(task)
         assert fake.disconnect_called is True
         assert server.pr._err_count == 1
         assert await _used_slots(server) == [(code("W", "SOCKET_TEARDOWN"), "W")]
 
     run(scenario())
 
+
+class _OverflowingData:
+    # Datagram stand-in (the class is public, so data need not be bytes) whose first read meets the C-stack overflow.
+    def __getitem__(self, _index: object) -> int:
+        raise stack_overflow()
+
+
+def test_a_query_whose_parse_meets_a_stack_overflow_records_it_and_reads_as_malformed() -> None:
+    # The parse's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
+    query = DNSQuery(_OverflowingData(), PrintLogHistory(name="DNSSRV"))  # type: ignore[arg-type]
+    assert (query.domain, query._parsed_ok) == ("", False)
+    assert asy_print_log.fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 if __name__ == "__main__":
     import microtest

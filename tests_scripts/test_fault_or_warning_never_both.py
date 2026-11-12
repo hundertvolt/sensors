@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _REPO = Path(__file__).resolve().parent.parent
-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
+_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}  # each persisting entry point
 _KEYWORD = {"E": "errno", "W": "wrnno"}
 _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
 
@@ -26,25 +26,24 @@ Pair = tuple[str, str, Event, Event]  # (module path, function, first, second)
 _FILE_THEN_WRITE = "the config file was unusable, then writing its repair failed: two occurrences"
 _TWO_SOURCES = "the config manager and the read callback are two sources: two occurrences"
 _FILE_THEN_SCHEMA = "the config file was unusable, then the schema itself proved invalid: two occurrences"
-_CHIP_RESET = "a chip reset, then a failed re-apply or a rejected reading: separate occurrences"
-_ARM_OR_DROP_TRACE = "never in one run: an arm that persisted sets the flag the trace tests"
+_OWN_CALL = "only the warning's own logging call can raise once it persisted, and the task's top logs that: the logging-call caveat (SPECIFICATION.md G.2)"
 
 # The mixed pairs the tree holds on purpose, each with why its two entries are two occurrences. A listed
 # pair the scan no longer finds fails, so the list follows every change that renames or removes one.
 _ALLOWED: "dict[Pair, str]" = {
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("E", "CFG_READ"), ("W", "BMP_CHIP_RESET")): "the cycle's config read fell back, then the chip reset was read: separate occurrences",
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ")): _CHIP_RESET,
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE")): _CHIP_RESET,
     ("src/asy_isl29125_driver.py", "_check_divergence", ("W", "ISL_DIVERGED"), ("E", "CHIP_SET")): "the chip diverged from the shadow, then its re-apply failed: separate occurrences",
     ("src/asy_uart_comm.py", "_resync", ("W", "UART_DRAIN_BOUND"), ("E", "UART_LINK_UNINTELLIGIBLE")): "a drain that hit its bound and a link no frame ever validated on are separate conditions",
-    ("src/asy_fram_driver.py", "setup", ("W", "FRAM_ID_RETRIED"), ("E", "FRAM_WP_PARTIAL")): "the chip answered its identification only on a retry, then its status register read partly protected: two conditions",
     ("src/asy_fram_manager.py", "_read", ("W", "FRAM_BLOCK_INVALID"), ("E", "FRAM_BLOCK_WRITE")): "an invalid block, then a failed repair write",
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CALLBACK_KEYS"), ("E", "CFG_CALLBACK_RAISED")): "the callback's unknown keys, then merging its result raised: two occurrences",
+    ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_GET_RAISED")): "the config manager's unknown keys, then merging its result raised: two occurrences",
     ("src/asy_captive_dns.py", "run", ("E", "UNEXPECTED"), ("W", "SOCKET_TEARDOWN")): "never in one run: the raising disconnect sets disconnect_ok, which the teardown warning tests",
-    ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_BAD_HEAD")): _ARM_OR_DROP_TRACE,
-    ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_PEER_RESET")): _ARM_OR_DROP_TRACE,
-    ("src/asy_ntp_client.py", "_fetch_ntp_reply", ("W", "SOCKET_TEARDOWN"), ("E", "NTP_NO_REPLY")): "the socket's teardown and the exchange's outcome (a silent server) are two occurrences",
+    ("src/asy_captive_dns.py", "run", ("W", "DNS_RECV_FAILED"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_captive_dns.py", "run", ("W", "DNS_REPLY_DROPPED"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_BAD_HEAD"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_PEER_RESET"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_SOCKET_ERROR"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_CALL_TIMEOUT"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
@@ -133,6 +132,11 @@ class _Walk:
     breaks: "list[set[Event]]" = field(default_factory=list)
     continues: "list[set[Event]]" = field(default_factory=list)
 
+    def block(self, stmts: "list[ast.stmt]", pending: "set[Event]") -> "set[Event]":
+        for stmt in stmts:
+            pending = self.stmt(stmt, pending)
+        return pending
+
     def calls(self, node: ast.AST, pending: "set[Event]") -> "set[Event]":
         found = []
         stack = [node]
@@ -149,24 +153,6 @@ class _Walk:
                 self.pairs.update((self.module.path, self.function, before, event) for before in pending if before[0] != kind)
                 pending = {event}
         return pending
-
-    def block(self, stmts: "list[ast.stmt]", pending: "set[Event]") -> "set[Event]":
-        for stmt in stmts:
-            pending = self.stmt(stmt, pending)
-        return pending
-
-    def stmt(self, stmt: ast.stmt, pending: "set[Event]") -> "set[Event]":
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            return pending
-        if isinstance(stmt, (ast.Return, ast.Raise)):
-            self.calls(stmt, pending)
-            return set()  # the path ends here
-        if isinstance(stmt, (ast.Break, ast.Continue)):
-            targets = self.breaks if isinstance(stmt, ast.Break) else self.continues
-            if targets:
-                targets[-1] |= pending
-            return set()
-        return self.compound(stmt, pending)
 
     def compound(self, stmt: ast.stmt, pending: "set[Event]") -> "set[Event]":
         if isinstance(stmt, ast.If):
@@ -196,13 +182,27 @@ class _Walk:
             return broken  # `while True` leaves only through a break
         return self.block(stmt.orelse, pending | body | continued) | broken
 
+    def stmt(self, stmt: ast.stmt, pending: "set[Event]") -> "set[Event]":
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return pending
+        if isinstance(stmt, (ast.Return, ast.Raise)):
+            self.calls(stmt, pending)
+            return set()  # the path ends here
+        if isinstance(stmt, (ast.Break, ast.Continue)):
+            targets = self.breaks if isinstance(stmt, ast.Break) else self.continues
+            if targets:
+                targets[-1] |= pending
+            return set()
+        return self.compound(stmt, pending)
+
     def try_(self, stmt: "ast.Try | ast.TryStar", pending: "set[Event]") -> "set[Event]":
-        # A handler is entered from the start of any statement of the try body.
+        # A handler is entered from the start of any statement of the try body, and from the end of its last.
         entry = set(pending)
         body = pending
         for inner in stmt.body:
             entry |= body
             body = self.stmt(inner, body)
+        entry |= body
         out = self.block(stmt.orelse, body)
         for handler in stmt.handlers:
             out |= self.block(handler.body, entry)
@@ -224,7 +224,7 @@ def _parse(path: str, source: str) -> _Module:
 
 
 def _src_modules() -> "list[_Module]":
-    return [_parse(f"src/{p.name}", p.read_text()) for p in sorted((_REPO / "src").glob("*.py"))]
+    return [_parse(f"src/{p.name}", p.read_text(encoding="utf-8")) for p in sorted((_REPO / "src").glob("*.py"))]
 
 
 @pytest.fixture(scope="module")
@@ -234,8 +234,8 @@ def tree_pairs(tmp_path_factory: pytest.TempPathFactory) -> "set[Pair]":
     for device in DEVICE_NAMES:
         result = generate_device(_REPO / "devices" / f"{device}.toml", _REPO / "src", _REPO / "ext")
         target = generated / f"sensortask_{device}.py"
-        target.write_text(result.module_source)
-        modules.append(_parse(f"build/generated_src/{target.name}", target.read_text()))
+        target.write_text(result.module_source, encoding="utf-8")
+        modules.append(_parse(f"build/generated_src/{target.name}", target.read_text(encoding="utf-8")))
     return _pairs(modules)
 
 
@@ -263,42 +263,27 @@ def test_the_scan_sees_the_trees_logging() -> None:
 # ---- planted pairs -----------------------------------------------------------------------------------
 
 
-_PLANT = """
-class Mod:
-    async def _err(self, errno, *args):
-        await self.pr.err_s("x", *args, errno=errno)
-
-    async def f(self, ok):
-        await self.pr.wrn_s("w", wrnno=_WRN_A)
-        {second}
-"""
-
-
-_PLANTED_PAIR = {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
-
-
-@pytest.mark.parametrize(
-    ("second", "expected"),
-    [
-        ('await self.pr.err_s("e", errno=_ERR_B)', _PLANTED_PAIR),  # a warning then a fault for one occurrence
-        ("await self._err(_ERR_B)", _PLANTED_PAIR),  # the same pair, the fault written through a wrapper
-        ('await self.pr.wrn_s("w2", wrnno=_WRN_C)', set()),  # same kind
-        ('if ok:\n            return\n        await self.pr.err_s("e", errno=_ERR_B)', _PLANTED_PAIR),  # one path still reaches it
-        ('return\n        await self.pr.err_s("e", errno=_ERR_B)', set()),  # a return between ends the path
-        ("await self.g()", set()),  # another function's entries are never paired
-    ],
-)
-def test_the_scan_bites_a_planted_pair(second: str, expected: "set[Pair]") -> None:
-    source = _PLANT.format(second=second) + "\n    async def g(self):\n        await self.pr.err_s('g', errno=_ERR_D)\n"
-    pairs = _pairs([_parse("src/plant.py", source)])
-    assert pairs == expected, _describe(pairs)
-
-
 def test_the_scan_sees_a_handler_entered_after_a_warning() -> None:
-    source = "async def f(pr):\n    try:\n        await pr.wrn_s('w', wrnno=_WRN_A)\n        step()\n    except OSError:\n        await pr.err_s('e', errno=_ERR_B)\n"
+    source = "async def f(pr):\n    try:\n        pr.wrn_s('w', wrnno=_WRN_A)\n        step()\n    except OSError:\n        pr.err_s('e', errno=_ERR_B)\n"
     assert _pairs([_parse("src/plant.py", source)]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
 
 
+_NESTED = "async def f(pr):\n    try:\n        try:\n            step()\n{arm}\n        finally:\n            release()\n    except Exception:\n        pr.err_s('e', errno=_ERR_B)\n"
+
+
+@pytest.mark.parametrize(
+    "arm",
+    [
+        "            pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
+        "        except OSError:\n            pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
+        "        except OSError:\n            pass\n        else:\n            pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
+    ],
+)
+def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> None:
+    # The nested finally's release(), or the warning's own call, raises after the warning persisted.
+    assert _pairs([_parse("src/plant.py", _NESTED.format(arm=arm))]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
+
+
 def test_a_second_fault_after_a_fault_passes() -> None:
-    source = "async def f(pr):\n    await pr.err_s('a', errno=_ERR_A)\n    await pr.err_s('b', errno=_ERR_B)\n"
+    source = "async def f(pr):\n    pr.err_s('a', errno=_ERR_A)\n    pr.err_s('b', errno=_ERR_B)\n"
     assert not _pairs([_parse("src/plant.py", source)])

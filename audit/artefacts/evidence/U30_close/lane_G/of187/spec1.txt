@@ -1,0 +1,7 @@
+arzi -1 10 0
+arzi 32768 10 0
+dev -1 10 0
+wozi -1 10 0
+arzi -1 10 128
+arzi -1 20 0
+arzi -1 20 64

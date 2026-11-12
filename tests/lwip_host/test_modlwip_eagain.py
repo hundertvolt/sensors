@@ -1,6 +1,6 @@
 """The patched modlwip send path on build-lwip, the Unix port over loopback lwIP (SPECIFICATION.md B.14): each
 non-blocking write is bounded at every pool edge, a reading peer gets every byte, capacity returns. One listener
-serves the whole file, never closed: modlwip's close() trips lwIP's LISTEN-state assert, which aborts here."""
+serves the whole file; closing a listener is test_modlwip_listener_close.py's case."""
 
 import errno
 import gc
@@ -11,27 +11,19 @@ import lwip
 
 # One write's bound; the unpatched ERR_MEM loop holds a non-blocking write for up to 10,000 ms
 # (extmod/modlwip.c, 200 rounds of mp_hal_delay_ms(50)).
-# @tunable l1.lwip_host_write_bound_ms = 250
 _WRITE_BOUND_MS = 250
 # How long a fresh connection's handshake may take before the pool counts as exhausted.
-# @tunable l1.lwip_host_connect_bound_ms = 200
 _CONNECT_BOUND_MS = 200
 # Covers modlwip's 10 s close-abort (MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS) with margin.
-# @tunable l1.lwip_host_recovery_s = 15
 _RECOVERY_S = 15
-# @tunable l1.lwip_host_rounds = 20
 _ROUNDS = 20
-# @tunable l1.lwip_host_spin_rounds = 1000
 _SPIN_ROUNDS = 1000
 # One drain() round on this host includes select's own 1 ms poll() sleep (modselect.c); the
 # unpatched path sleeps 50 ms per round instead, so the bound stays well below that.
-# @tunable l1.lwip_host_spin_round_max_us = 20000
 _SPIN_ROUND_MAX_US = 20000
-# @tunable l1.lwip_host_spin_round_alloc_max_b = 64
 _SPIN_ROUND_ALLOC_MAX_B = 64
 # The bound holds for the fastest of every run of this many consecutive rounds, so one late wake-up
 # of the host is not a failure while a round that sleeps every time still is (owner, 2026-10-13).
-# @tunable l1.lwip_host_spin_window_rounds = 3
 _SPIN_WINDOW_ROUNDS = 3
 
 _HOST = "127.0.0.1"
@@ -74,6 +66,10 @@ _MSS_PIECE = b"\x96" * _MSS
 _SEGMENT_POOL = _LWIP["MEMP_NUM_TCP_SEG"]
 # lwIP's own default for the per-connection queue limit (lib/lwip/src/include/lwip/opt.h).
 _QUEUE_LIMIT = (4 * _LWIP["TCP_SND_BUF"] + (_MSS - 1)) // _MSS
+# Round-robin writers that empty the shared segment pool while each stays below its own queue limit.
+_SEGMENT_WRITERS = _SEGMENT_POOL // _QUEUE_LIMIT + 1
+# Clients that fill the arena: each stalled one holds its peer's unread TCP_WND and its own TCP_SND_BUF queue.
+_ARENA_LOADERS = -(-_LWIP["MEM_SIZE"] // (_LWIP["TCP_WND"] + _LWIP["TCP_SND_BUF"]))
 
 # Once per process: nothing else on the Unix port initialises lwIP, and a second lwip_init()
 # would re-add the loopback netif under live pcbs.
@@ -89,7 +85,7 @@ def _listen() -> "lwip.socket":
     return listener
 
 
-_LISTENER = _listen()  # never closed - the header says why
+_LISTENER = _listen()  # serves every test in this file
 
 
 def _assert_patched_edge(sock: "lwip.socket", edge: str) -> None:
@@ -131,12 +127,11 @@ def _drain(server: "lwip.socket") -> int:
         got += len(chunk)
 
 
-def _drain_all(pairs: "list[tuple[lwip.socket, lwip.socket]]", owed: int) -> None:
-    # Until the first peer has what it is owed, then a further fast-timer period in which nothing more
+def _drain_all(pairs: "list[tuple[lwip.socket, lwip.socket]]", expected: "list[int]") -> None:
+    # Until every peer has what it is owed, then a further fast-timer period in which nothing more
     # arrives at any peer.
     deadline = time.ticks_add(time.ticks_ms(), _RECOVERY_S * 1000)
     received = [0] * len(pairs)
-    expected = [owed] + [0] * (len(pairs) - 1)
     while received != expected:
         assert time.ticks_diff(deadline, time.ticks_ms()) > 0, f"the readers drained {received} of {expected} B within {_RECOVERY_S} s"
         for i, (_, server) in enumerate(pairs):
@@ -148,20 +143,21 @@ def _drain_all(pairs: "list[tuple[lwip.socket, lwip.socket]]", owed: int) -> Non
     assert received == expected, f"the readers received {received} B, owed {expected} B"
 
 
-def _load(pairs: "list[tuple[lwip.socket, lwip.socket]]") -> int:
-    # The first client fills the arena with whole-MSS writes to a peer that never reads, until its
-    # zero-window EAGAIN holds after a settle; every other client's MSS write then finds no room for its
-    # segment and EAGAINs before anything is sent. Returns the bytes the first peer is owed.
-    owed = 0
-    for _ in range(_FILL_ATTEMPTS):
-        written = _write_until_eagain(pairs[0][0], _MSS_PIECE, pump=True)
-        owed += written
-        if written == 0 and owed > 0:
-            break
-        _pump(_SETTLE_MS)
-    else:
-        raise AssertionError(f"the arena still took writes after {_FILL_ATTEMPTS} settles ({owed} B)")
-    for index, (client, _) in enumerate(pairs[1:], 1):
+def _load(pairs: "list[tuple[lwip.socket, lwip.socket]]") -> "list[int]":
+    # The first _ARENA_LOADERS clients fill the arena with whole-MSS writes to peers that never read, each until a settle
+    # brings no more; an ENOMEM ends one with its piece queued (tcp_write() took it, the loopback copy found no arena).
+    # Every later client's MSS write then finds no room for its segment and EAGAINs. Returns the bytes each peer is owed.
+    owed = [0] * len(pairs)
+    for index, (client, _) in enumerate(pairs[:_ARENA_LOADERS]):
+        for _ in range(_FILL_ATTEMPTS):
+            written, ended = _write_to_edge(client, _MSS_PIECE, pump=True)
+            owed[index] += written + (_MSS if ended == _REFUSED else 0)
+            if written == 0 or ended == _REFUSED:
+                break
+            _pump(_SETTLE_MS)
+        else:
+            raise AssertionError(f"the arena still took writes after {_FILL_ATTEMPTS} settles ({owed} B)")
+    for index, (client, _) in enumerate(pairs[_ARENA_LOADERS:], _ARENA_LOADERS):
         assert _timed_write(client, _MSS_PIECE) is None, f"loader {index}'s first write into the full arena was not EAGAIN"
     return owed
 
@@ -169,7 +165,7 @@ def _load(pairs: "list[tuple[lwip.socket, lwip.socket]]") -> int:
 def _load_drain_close() -> None:
     pairs = _open_all()
     try:
-        assert len(pairs) >= 2, f"the pcb pool admitted {len(pairs)} pair(s)"
+        assert len(pairs) > _ARENA_LOADERS, f"the pcb pool admitted {len(pairs)} pair(s), the arena needs {_ARENA_LOADERS} and one more"
         _drain_all(pairs, _load(pairs))
     finally:
         _close(pairs, reset=False)
@@ -291,7 +287,7 @@ def test_a_write_to_a_peer_that_stopped_reading_returns_within_the_bound() -> No
     pairs = _open_all()
     try:
         print(f"lwIP host pool: {len(pairs)} connection pairs admitted (MEMP_NUM_TCP_PCB {_LWIP['MEMP_NUM_TCP_PCB']}, two pcbs per pair)")
-        assert len(pairs) >= 2, f"the pcb pool admitted {len(pairs)} pair(s), the test needs two"
+        assert len(pairs) > _ARENA_LOADERS, f"the pcb pool admitted {len(pairs)} pair(s), the arena needs {_ARENA_LOADERS} and one more"
         _load(pairs[:-1])
         client, server = pairs[-1]
         assert _timed_write(client, _MSS_PIECE) is None, "the last connection's first write was not EAGAIN"
@@ -320,17 +316,18 @@ def test_the_queue_limit_edge() -> None:
 
 
 def test_the_segment_pool_edge() -> None:
-    # One-byte segments, round robin over three connections so that none reaches its own queue
-    # limit: the shared MEMP_NUM_TCP_SEG pool is what runs out, an arena far from full.
-    pairs = [_open_pair() for _ in range(3)]
+    # One-byte segments, round robin over _SEGMENT_WRITERS sockets (both ends of each pair) so that none reaches its
+    # own queue limit: the shared MEMP_NUM_TCP_SEG pool is what runs out, an arena far from full.
+    pairs = [_open_pair() for _ in range((_SEGMENT_WRITERS + 1) // 2)]
     opened = [pair for pair in pairs if pair is not None]
     try:
-        assert len(opened) == 3, f"only {len(opened)} of 3 connections opened"
-        for client, _ in opened:
+        assert len(opened) == len(pairs), f"only {len(opened)} of {len(pairs)} connections opened"
+        writers = [sock for pair in opened for sock in pair][:_SEGMENT_WRITERS]
+        for client in writers:
             client.setsockopt(lwip.IPPROTO_TCP, lwip.TCP_NODELAY, 1)
         segments = 0
-        for turn in range(_SEGMENT_POOL + 3):
-            client = opened[turn % 3][0]
+        for turn in range(_SEGMENT_POOL + _SEGMENT_WRITERS):
+            client = writers[turn % _SEGMENT_WRITERS]
             written = _timed_write(client, _SEGMENT_PIECE)
             assert written != _REFUSED, f"ENOMEM after {segments} segments: the arena ran out before the segment pool"
             if written is None:
@@ -344,45 +341,51 @@ def test_the_segment_pool_edge() -> None:
 
 
 def test_a_reading_peer_receives_every_byte_intact() -> None:
-    # The writer sends a known pattern in phases: while the reader holds off, its window closes and the
-    # arena fills to the edge; then the reader drains everything, and gets every byte write() took, in order.
-    pair = _open_pair()
-    assert pair is not None
-    writer, reader = pair
+    # The writer sends a known pattern in phases, each until its EAGAIN, then the reader drains everything; halfway,
+    # peers that never read fill the arena, so the next write meets the patched edge, and once they close the rest
+    # follows. The reader gets every byte write() took, in order; tcp_sndbuf() may cut a write short (modlwip.c).
+    pairs = [_open_pair() for _ in range(_ARENA_LOADERS + 1)]
+    opened = [pair for pair in pairs if pair is not None]
     try:
+        assert len(opened) == len(pairs), f"only {len(opened)} of {len(pairs)} connections opened"
+        (writer, reader), loaders = opened[0], opened[1:]
         sent = received = eagains = 0
         deadline = time.ticks_add(time.ticks_ms(), _RECOVERY_S * 1000)
-        while received < _PATTERN_BYTES:
-            while sent < _PATTERN_BYTES:
-                offset = sent % _PATTERN_PERIOD
-                piece = memoryview(_PATTERN)[offset : offset + min(_PATTERN_PIECE, _PATTERN_BYTES - sent)]
-                written = _timed_write(writer, piece)
-                assert written != _REFUSED, f"a writing phase ended in ENOMEM after {sent} B, not at the zero-window EAGAIN"
-                if written is None:
-                    if eagains == 0:
-                        _assert_patched_edge(writer, "arena")
-                    eagains += 1
-                    break
-                assert written == len(piece), f"write() took {written} of {len(piece)} B"
-                sent += written
-                _pump()
-            while received < sent:
-                assert time.ticks_diff(deadline, time.ticks_ms()) > 0, f"{received} of {sent} B arrived within {_RECOVERY_S} s"
-                _pump()
-                while True:
-                    try:
-                        chunk = reader.recv(_RECV_CHUNK)
-                    except OSError as e:
-                        assert e.errno == errno.EAGAIN, f"recv() raised {e!r}"
+        for end in (_PATTERN_BYTES // 2, _PATTERN_BYTES):
+            while received < end:
+                while sent < end:
+                    offset = sent % _PATTERN_PERIOD
+                    piece = memoryview(_PATTERN)[offset : offset + min(_PATTERN_PIECE, end - sent)]
+                    written = _timed_write(writer, piece)
+                    assert written != _REFUSED, f"a writing phase ended in ENOMEM after {sent} B, not at an EAGAIN"
+                    if written is None:
+                        eagains += 1
                         break
-                    offset = received % _PATTERN_PERIOD
-                    assert chunk == _PATTERN[offset : offset + len(chunk)], f"the bytes at offset {received} differ from what was written"
-                    received += len(chunk)
-        print(f"intact-data run: {eagains} writing phases, each ended in EAGAIN, over {_PATTERN_BYTES} B")
+                    assert 0 < written <= len(piece), f"write() took {written} of {len(piece)} B"
+                    sent += written
+                    _pump()
+                while received < sent:
+                    assert time.ticks_diff(deadline, time.ticks_ms()) > 0, f"{received} of {sent} B arrived within {_RECOVERY_S} s"
+                    _pump()
+                    while True:
+                        try:
+                            chunk = reader.recv(_RECV_CHUNK)
+                        except OSError as e:
+                            assert e.errno == errno.EAGAIN, f"recv() raised {e!r}"
+                            break
+                        offset = received % _PATTERN_PERIOD
+                        assert chunk == _PATTERN[offset : offset + len(chunk)], f"the bytes at offset {received} differ from what was written"
+                        received += len(chunk)
+            if end < _PATTERN_BYTES:
+                _load(loaders)
+                assert _timed_write(writer, memoryview(_PATTERN)[sent % _PATTERN_PERIOD :][:_MSS]) is None, "a write into the full arena was not EAGAIN"
+                _assert_patched_edge(writer, "arena")
+                _close(loaders, reset=True)
+        print(f"intact-data run: {eagains} writing phases, each ended in EAGAIN, and one write at the patched edge, over {_PATTERN_BYTES} B")
         assert received == sent == _PATTERN_BYTES
-        assert eagains > 0, "no writing phase ended at the patched EAGAIN edge"
+        assert eagains > 0, "no writing phase ended in EAGAIN"
     finally:
-        _close([pair], reset=True)
+        _close(opened, reset=True)
 
 
 def test_capacity_returns_after_the_peers_close() -> None:

@@ -5,34 +5,39 @@ by the L0 scan and the 2**30 fake (Part F.1)."""
 import asyncio
 import os
 import select
+import sys
 import time
 
+sys.path.append("digital_twin")  # the twin's flash stall; appended and dropped again, so tests/machine.py stays the one
+import _flash_stall  # type: ignore[import-not-found, unused-ignore]  # unresolved only in CI's narrowed mypy pass
+
+sys.path.pop()
+
+from _async_harness import run
+from _fake_time import ManualTick
+from _src_const import src_int
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
-from machine import I2C as FakeI2C
 from machine import UART as FakeUART
 from machine import LinkPoller, Pin
 from rp2 import DMA
 
 import asy_base_classes
-import asy_bmp3xx_driver
 import asy_i2c_driver
 import asy_mqtt_client
-import asy_neopixel_driver
 import asy_notification_service
 import asy_system_service
 import asy_uart_comm
 import asy_uart_driver
+import asy_udp_socket
 from asy_base_classes import TickSeconds
-from asy_bmp3xx_driver import BMP3XX_I2C
-from asy_i2c_driver import I2C
 from asy_mqtt_client import MQTTClient, MqttConfig
-from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService
 from asy_print_log import LogConfig
 from asy_system_service import SystemService
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, TransferLimits, UARTComm
 from asy_uart_driver import UART
+from asy_udp_socket import UDPSocket
 
 try:
     from typing import TYPE_CHECKING
@@ -47,26 +52,59 @@ _TWIN_DIR = "digital_twin"
 # Every committed module that reads ticks, as a repo path: this file and tests_scripts/test_ticks_wrap_scan.py (which
 # also reads the generated device modules) both check it, so a module that starts or stops using ticks shows up.
 _KNOWN_TICKS_USERS = (
+    "digital_twin/_bmp3xx_chip.py",
+    "digital_twin/_driven_clock.py",
+    "digital_twin/_flash_stall.py",
+    "digital_twin/_sgp40_chip.py",
     "digital_twin/machine.py",
+    "digital_twin/run_generic_integration.py",
     "src/asy_base_classes.py",
-    "src/asy_bmp3xx_driver.py",
     "src/asy_i2c_driver.py",
     "src/asy_isl29125_driver.py",
     "src/asy_mqtt_client.py",
-    "src/asy_neopixel_driver.py",
     "src/asy_notification_service.py",
     "src/asy_system_service.py",
     "src/asy_uart_comm.py",
     "src/asy_uart_driver.py",
+    "src/asy_udp_socket.py",
 )
 _REFERENCE_NOW = 10_000  # a start far from any wrap: each crossing case must match the same call made here
 _SCL_PIN = 1
-_BMP_ADDR = 0x77
-_BMP_STATUS = 0x03  # the STATUS register; bit 4 is cmd_rdy (bst-bmp388-ds001 sec 4.3.3)
-_BMP_CMD_RDY = 0x10
 _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended by the world, so a lost bound fails, not hangs
 
 _scratch = TmpScratch("ticks_rollover")
+# The MQTT client's timings for its two deadlines below: a 250 ms PINGRESP deadline, a 200 ms QoS 1 retry, 5 ms ticks.
+_MQTT_CFG = MqttConfig("t", 250, 500, 100, 400, 600, 200, 300, 5, 1000, 200, 100)
+_MQTT_PING: int = src_int("src/asy_mqtt_client.py", "_R_PING")
+_MQTT_CONNECTED: int = src_int("src/asy_mqtt_client.py", "_ST_CONNECTED")
+
+
+class _FlushClock(Ticks30Time):
+    # Every ticks_us() read moves the clock 1 ms on: a flash stall's busy-wait ends after as many reads as it has ms.
+    def ticks_us(self) -> int:
+        value = super().ticks_us()
+        self.now += 1
+        return value
+
+
+class _MqttStream:
+    # A connected stream that takes every write and never has output pending: no socket, so no poller (CLAUDE.md).
+    def __init__(self) -> None:
+        self.out_buf = b""
+        self.writes = 0
+
+    async def drain(self) -> None:
+        pass
+
+    async def readinto(self, _buf: memoryview) -> int:
+        await asyncio.sleep_ms(60_000)
+        return 0
+
+    async def wait_closed(self) -> None:
+        pass
+
+    def write(self, _buf: "bytes | bytearray | memoryview") -> None:
+        self.writes += 1
 
 
 class _PauseFlag:
@@ -96,6 +134,22 @@ class _SteppingTime(Ticks30Time):
         return value
 
 
+class _UdpLink:
+    # A UDPSocket's socket and poller as ready() reads them, no real socket or select.poll(): ipoll(0) is empty until
+    # `ready`, then one POLLIN; close() and unregister() serve the teardown.
+    def __init__(self) -> None:
+        self.ready = False
+
+    def close(self) -> None:
+        pass
+
+    def ipoll(self, _timeout_ms: int) -> "list[tuple[object, int]]":
+        return [(self, select.POLLIN)] if self.ready else []
+
+    def unregister(self, *_args: object) -> None:
+        pass
+
+
 # This Unix-port test rig's own ticks period, confirmed empirically (see the module docstring) - NOT the
 # real RP2040 target's 2**30. Derived by bisection rather than hardcoded, so a future MicroPython or
 # toolchain change that alters it fails loudly instead of silently testing the wrong boundary.
@@ -119,42 +173,12 @@ def _discover_this_rigs_ticks_period() -> int:
 _THIS_RIGS_TICKS_PERIOD = _discover_this_rigs_ticks_period()
 
 
-def _bmp3xx_status_wait(start: int, ready_at: "int | None") -> "tuple[bool, int]":
-    # BMP3XX_I2C._wait_status_bits() for cmd_rdy, 50 ms bound, 1 ms per clock read from uptime `start`; STATUS turns
-    # ready at read `ready_at` (None: at _LET_GO_READS). Returns (ready in time, clock reads).
-    FakeI2C.reset_id(0)
-    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    bus: FakeI2C = i2c._i2c  # type: ignore[assignment]
-    bus.register_device(_BMP_ADDR)
-    bus.registers[(_BMP_ADDR, _BMP_STATUS)] = bytearray(1)
-    bmp = BMP3XX_I2C(i2c, address=_BMP_ADDR)
-
-    def on_read(reads: int) -> None:
-        if reads == (ready_at or _LET_GO_READS):
-            bus.registers[(_BMP_ADDR, _BMP_STATUS)] = bytearray([_BMP_CMD_RDY])
-
-    clock = _install_stepping(asy_bmp3xx_driver, start, 1, on_read)
-
-    async def wait() -> bool:
-        async with bmp._i2c_bmp3xx as session:
-            try:
-                await bmp._wait_status_bits(session, _BMP_CMD_RDY, 50)
-            except OSError:
-                return False
-        return True
-
-    try:
-        return asyncio.run(wait()), clock.reads
-    finally:
-        _restore(asy_bmp3xx_driver)
-
-
 def _drain_outcome(start: int, fed_reads: int) -> "tuple[int, bool, int]":
     # UARTComm._drain() (100 ms timeout: a 600 ms bound) from uptime `start`, 50 ms per clock read, a frame's worth
     # of bytes arriving at each of the first `fed_reads` reads. Returns (bytes drained, bound hit, clock reads).
     driver = _uart_driver()
     comm = UARTComm(driver, ROLE_INITIATOR, limits=TransferLimits(8, 100, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes))
-    assert asyncio.run(comm.setup()) is True
+    assert run(comm.setup()) is True
     size = len(comm._rx.get_buf() or b"")
     fake: FakeUART = driver._uart  # type: ignore[assignment]
 
@@ -169,20 +193,40 @@ def _drain_outcome(start: int, fed_reads: int) -> "tuple[int, bool, int]":
             return await comm._drain(device)
 
     try:
-        return asyncio.run(drain()), comm._drain_bound_hit, clock.reads
+        return run(drain()), comm._drain_bound_hit, clock.reads
     finally:
         _restore(asy_uart_comm)
 
 
 def _files_reading_ticks(directory: str) -> "list[str]":
-    # Repo paths of the directory's modules naming ticks_ms() or ticks_us(); L1 has no ast, the L0 scan judges each site.
+    # Repo paths of the directory's modules naming ticks_ms(), ticks_us() or a module's .ticks_diff() (the L0 scan's
+    # readers; the dot skips prose); L1 has no ast, the L0 scan judges each site.
     found = []
     for filename in sorted(f for f in os.listdir(directory) if f.endswith(".py")):
         with open(directory + "/" + filename) as handle:
             text = handle.read()
-        if "ticks_ms()" in text or "ticks_us()" in text:
+        if "ticks_ms()" in text or "ticks_us()" in text or ".ticks_diff(" in text:
             found.append(directory + "/" + filename)
     return found
+
+
+def _flash_stall_outcome(since_epoch_ms: int) -> "tuple[bool, bool, bool, bool]":
+    # One flush begun `since_epoch_ms` after the stalls' epoch, then whether a byte due 10 ms, 200 ms and 300 ms into it
+    # (past its end), and 10 ms in one whole 2**30 us period on, met interrupts off, asked as machine.UARTLink asks:
+    # plain microseconds on the stalls' clock, whose zero is the clock's start at 1000 ms.
+    clock = _FlushClock(1000)
+    saved = _swap_stall_clock(clock)
+    try:
+        _flash_stall.reset_test_state()
+        _flash_stall.restart(1000 * 1000, 1000)
+        clock.now = 1000 + since_epoch_ms
+        _flash_stall.stall(0)  # a small file's typical flush: about 240 ms, so about 240 clock reads
+        met = [bool(_flash_stall.irqs_were_off(since_epoch_ms * 1000 + due)) for due in (10_000, 200_000, 300_000, 10_000 + TICKS_PERIOD)]
+        return met[0], met[1], met[2], met[3]
+    finally:
+        _swap_stall_clock(saved)
+        _flash_stall.restart(time.ticks_us(), time.ticks_ms())
+        _flash_stall.reset_test_state()
 
 
 def _install(module: object, start: int) -> Ticks30Time:
@@ -199,113 +243,8 @@ def _install_stepping(module: object, start: int, step_ms: int, on_read: "Callab
     return clock
 
 
-def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int | None") -> "tuple[bool, bool, bool]":
-    # request_signal() behind a queued signal, its deadline armed at `start`: (still pending one ms before the deadline
-    # or after the release, finished at the deadline, returned True); release_after_ms clears the signal that far in.
-    driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
-    driver.neopixel_freq = 100  # the driver's own fixed state, set from outside: 10 ms polls
-    driver.neopixel_dt = 0.01
-    asyncio.run(driver.setup())
-    fake = _install(asy_neopixel_driver, start)
-
-    async def scenario() -> "tuple[bool, bool, bool]":
-        driver._start_signal_event.set()  # a signal is queued and no signal task runs
-        waiter = asyncio.create_task(driver.request_signal(0, 10, 0, 0.1))
-        await asyncio.sleep(0)  # one yield: the waiter takes its deadline at `start`
-        if release_after_ms is not None:
-            fake.now = start + release_after_ms
-            driver._start_signal_event.clear()
-        else:
-            fake.now = start + wait_ms - 1
-        await asyncio.sleep_ms(50)  # several of the driver's 10 ms polls
-        pending = not waiter.done()
-        fake.now = start + wait_ms
-        for _ in range(200):
-            if waiter.done():
-                break
-            await asyncio.sleep_ms(5)
-        finished = waiter.done()
-        if not finished:
-            waiter.cancel()
-        try:
-            result = await waiter
-        except asyncio.CancelledError:
-            result = None
-        return pending, finished, result is True
-
-    try:
-        return asyncio.run(scenario())
-    finally:
-        _restore(asy_neopixel_driver)
-
-
-def _next_sleep_after(start: int, elapsed_ms: int, interv: float) -> float:
-    # _next_sleep_s(interv, t0) with t0 taken at `start` and the clock `elapsed_ms` later.
-    coordinator = NotificationService(_no_signal, _no_local_time, (), cfg_path=_scratch.dir(), log=LogConfig(None, 10, None))
-    fake = _install(asy_notification_service, start)
-    try:
-        t0 = fake.ticks_ms()
-        fake.advance(elapsed_ms)
-        return coordinator._next_sleep_s(interv, t0)  # type: ignore[arg-type]  # a ticks value from the fake
-    finally:
-        _restore(asy_notification_service)
-
-
-async def _no_local_time() -> None:
-    return None
-
-
-async def _no_signal(_r: int, _g: int, _b: int, _t: float) -> bool:
-    return True
-
-
-# The MQTT client's timings for its two deadlines below: a 250 ms PINGRESP deadline, a 200 ms QoS 1 retry, 5 ms ticks.
-_MQTT_CFG = MqttConfig("t", 250, 500, 100, 400, 600, 200, 300, 5, 1000, 200, 100, 1)
-_MQTT_PING = 3  # asy_mqtt_client.py's const()-folded _R_PING - mirrored, not importable
-
-
-class _MqttStream:
-    # A connected stream that takes every write and never has output pending: no socket, so no poller (CLAUDE.md).
-    def __init__(self) -> None:
-        self.out_buf = b""
-        self.writes = 0
-
-    def write(self, _buf: "bytes | bytearray | memoryview") -> None:
-        self.writes += 1
-
-    async def drain(self) -> None:
-        pass
-
-    async def readinto(self, _buf: memoryview) -> int:
-        await asyncio.sleep_ms(60_000)
-        return 0
-
-    async def wait_closed(self) -> None:
-        pass
-
-
 def _mqtt_client() -> MQTTClient:
     return MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _MQTT_CFG, cfg_path=_scratch.dir(), log=LogConfig(None, 10, None))
-
-
-def _mqtt_retry_outcome(start: int) -> "tuple[int, int]":
-    # A QoS 1 message first sent at uptime `start`: (resends 1 ms before its retry is due, resends at it).
-    client = _mqtt_client()
-    fake = _install(asy_mqtt_client, start)
-    try:
-        client._state = 3  # connected, so the publish queues
-        assert client.publish("t", b"x", qos=1)
-        stream = _MqttStream()
-        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]  # a ticks value from the fake
-        sent = stream.writes
-        fake.advance(_MQTT_CFG.qos1_retry_ms - 1)
-        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
-        before = stream.writes - sent
-        fake.advance(1)
-        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
-        return before, stream.writes - sent - before
-    finally:
-        _restore(asy_mqtt_client)
 
 
 def _mqtt_ping_outcome(start: int) -> "tuple[bool, int]":
@@ -333,17 +272,57 @@ def _mqtt_ping_outcome(start: int) -> "tuple[bool, int]":
         return serving, await task
 
     try:
-        return asyncio.run(scenario())
+        return run(scenario())
     finally:
         _restore(asy_mqtt_client)
 
 
-def _restore(module: object) -> None:
-    module.time = time  # type: ignore[attr-defined]
+def _mqtt_retry_outcome(start: int) -> "tuple[int, int]":
+    # A QoS 1 message first sent at uptime `start`: (resends 1 ms before its retry is due, resends at it).
+    client = _mqtt_client()
+    fake = _install(asy_mqtt_client, start)
+    try:
+        client._state = _MQTT_CONNECTED  # connected, so the publish queues
+        assert client.publish("t", b"x", qos=1)
+        stream = _MqttStream()
+        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]  # a ticks value from the fake
+        sent = stream.writes
+        fake.advance(_MQTT_CFG.qos1_retry_ms - 1)
+        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
+        before = stream.writes - sent
+        fake.advance(1)
+        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
+        return before, stream.writes - sent - before
+    finally:
+        _restore(asy_mqtt_client)
+
+
+def _next_sleep_after(start: int, elapsed_ms: int, interv: float) -> int:
+    # _next_sleep_ms(interv, t0) with t0 taken at `start` and the clock `elapsed_ms` later.
+    coordinator = NotificationService(_no_signal, _no_local_time, (), cfg_path=_scratch.dir(), log=LogConfig(None, 10, None))
+    fake = _install(asy_notification_service, start)
+    try:
+        t0 = fake.ticks_ms()
+        fake.advance(elapsed_ms)
+        return coordinator._next_sleep_ms(interv, t0)  # type: ignore[arg-type]  # a ticks value from the fake
+    finally:
+        _restore(asy_notification_service)
+
+
+async def _no_local_time() -> None:
+    return None
+
+
+async def _no_signal(_r: int, _g: int, _b: int, _t: float) -> bool:
+    return True
 
 
 async def _not_synced() -> bool:
     return False
+
+
+def _restore(module: object) -> None:
+    module.time = time  # type: ignore[attr-defined]
 
 
 def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | None") -> "tuple[bool, int]":
@@ -361,7 +340,7 @@ def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | Non
     Pin.set_external_level(_SCL_PIN, scl_level)
     scl = Pin(_SCL_PIN, Pin.IN, pull=Pin.PULL_UP)
     try:
-        released = asy_i2c_driver._scl_released_sync(scl, timeout_us) if sync else asyncio.run(asy_i2c_driver._scl_released(scl, timeout_us))
+        released = run(asy_i2c_driver._scl_released(scl, timeout_us, awaited=not sync))
         return released, reads[0]
     finally:
         _restore(asy_i2c_driver)
@@ -370,11 +349,12 @@ def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | Non
 
 def _sequencer_outcome(start: int, delays: "tuple[int, ...]") -> "tuple[list[int], list[int]]":
     # start_timers() over one trigger per delay from uptime `start`, trigger k's starter taking delays[k] ms; each
-    # stagger arm fires once the clock has moved its period on. Returns (armed periods, start order).
+    # stagger sleep moves the clock its length on. Returns (slept periods, start order).
     clock = _install(asy_system_service, start)
     svc = SystemService(_not_synced)
-    timer = svc._sequencer_timer
     started: list[int] = []
+    periods: list[int] = []
+    real_sleep_ms = asyncio.sleep_ms
 
     def starter(k: int) -> "Callable[[], None]":
         def start_trigger() -> None:
@@ -383,34 +363,18 @@ def _sequencer_outcome(start: int, delays: "tuple[int, ...]") -> "tuple[list[int
 
         return start_trigger
 
-    async def scenario() -> "list[int]":
-        task = asyncio.create_task(svc.start_timers([starter(k) for k in range(len(delays))], []))
-        periods: list[int] = []
-        for _ in range(4 * len(delays)):  # a bounded number of rounds, each one stagger at most
-            for _ in range(5):
-                await asyncio.sleep(0)
-            if task.done():
-                break
-            if timer.callback is not None:  # armed and not yet fired
-                periods.append(timer.period)
-                clock.advance(timer.period)
-                timer.trigger()
-        assert task.done(), (periods, started)
-        return periods
+    async def sleep_ms(ms: int) -> None:
+        periods.append(ms)
+        clock.advance(ms)
+        await real_sleep_ms(0)
 
+    asyncio.sleep_ms = sleep_ms  # type: ignore[assignment]  # a module-attribute swap, restored below
     try:
-        return asyncio.run(scenario()), started
+        run(svc.start_timers([starter(k) for k in range(len(delays))], []))
+        return periods, started
     finally:
+        asyncio.sleep_ms = real_sleep_ms
         _restore(asy_system_service)
-
-
-def _src_const(path: str, name: str) -> int:
-    # The shipped value, read from the source: a const() named with a leading underscore is not a module attribute.
-    with open(path) as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return int(line.split("const(", 1)[1].split(")", 1)[0])
-    raise AssertionError(name + " not found in " + path)
 
 
 def _storage_pause_outcome(start: int) -> "tuple[bool, bool, bool, bool]":
@@ -420,10 +384,11 @@ def _storage_pause_outcome(start: int) -> "tuple[bool, bool, bool, bool]":
     asy_base_classes.time = clock  # type: ignore[assignment]  # the uptime the pass reads, on the same clock
     storage = _PauseFlag()
     svc = SystemService(_not_synced, storage=storage)  # type: ignore[arg-type]  # set_pause() is all a pause uses
+    svc._tick = grid = ManualTick()  # the uptime pass, stepped by hand
 
     async def one_pass(step_ms: int) -> None:
         clock.advance(step_ms)
-        svc._uptime_event.set()
+        grid.set()
         for _ in range(5):
             await asyncio.sleep(0)
 
@@ -443,10 +408,18 @@ def _storage_pause_outcome(start: int) -> "tuple[bool, bool, bool, bool]":
         return before[0], before[1], storage.paused, svc._unpause_at is not None
 
     try:
-        return asyncio.run(scenario())
+        return run(scenario())
     finally:
         _restore(asy_system_service)
         _restore(asy_base_classes)
+
+
+def _swap_stall_clock(clock: object) -> object:
+    # Puts `clock` in as the flash stall's own `time` and returns the one it replaced.
+    stall: object = _flash_stall
+    saved = stall._time  # type: ignore[attr-defined]
+    stall._time = clock  # type: ignore[attr-defined]  # a module attribute swap, restored in the caller's finally
+    return saved
 
 
 def _tickseconds_reads(start: int, *, count_down: bool) -> "list[int]":
@@ -468,30 +441,9 @@ def _tickseconds_reads(start: int, *, count_down: bool) -> "list[int]":
         _restore(asy_base_classes)
 
 
-def _uart_cancel_wait(start: int, ack_at: "int | None") -> "tuple[bool, int, int]":
-    # UART.cancel_read_timeout(50) against a held session, 1 ms per clock read from uptime `start`; the read path
-    # acknowledges at read `ack_at` (None: at _LET_GO_READS). Returns (cancel outstanding, unacknowledged count, clock reads).
-    driver = _uart_driver()
-
-    def on_read(reads: int) -> None:
-        if reads == (ack_at or _LET_GO_READS):
-            driver._ack_cancel()
-
-    clock = _install_stepping(asy_uart_driver, start, 1, on_read)
-
-    async def cancel() -> bool:
-        async with driver.session_lock:
-            return await driver.cancel_read_timeout(50)
-
-    try:
-        return asyncio.run(cancel()), driver.cancel_unacknowledged, clock.reads
-    finally:
-        _restore(asy_uart_driver)
-
-
 def _uart_driver() -> UART:
     # A UART whose fed bytes land at once, its receive ring armed; transmit polls through the bounded LinkPoller.
-    DMA.reset_registry()  # each armed ring holds two of the twelve channels, and no per-test reset exists
+    DMA.reset_registry()  # each armed ring holds two of the twelve channels; the per-test reset runs only between tests
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, poll_idle_ms=1)
     fake: FakeUART = driver._uart  # type: ignore[assignment]
     fake.rx_rate = float("inf")
@@ -512,9 +464,27 @@ def _uart_ready_wait(start: int, arrive_at: "int | None") -> "tuple[bool, int]":
 
     clock = _install_stepping(asy_uart_driver, start, 1, on_read)
     try:
-        return asyncio.run(driver.ready(select.POLLIN, 50)), clock.reads
+        return run(driver.ready(select.POLLIN, 50)), clock.reads
     finally:
         _restore(asy_uart_driver)
+
+
+def _udp_ready_wait(start: int, arrive_at: "int | None") -> "tuple[bool, int]":
+    # UDPSocket.ready(POLLIN, 50) from uptime `start`, 10 ms per clock read; a datagram is ready from read `arrive_at`
+    # (None: at _LET_GO_READS). Returns (ready, clock reads).
+    sock = UDPSocket(("127.0.0.1", 9), mode="client")
+    link = _UdpLink()
+    sock._sock, sock.poller, sock.connected = link, link, True  # type: ignore[assignment]  # as _connect() leaves them
+
+    def on_read(reads: int) -> None:
+        if reads == (arrive_at or _LET_GO_READS):
+            link.ready = True
+
+    clock = _install_stepping(asy_udp_socket, start, 10, on_read)
+    try:
+        return run(sock.ready(select.POLLIN, 50)), clock.reads
+    finally:
+        _restore(asy_udp_socket)
 
 
 def test_this_rigs_ticks_period_is_self_consistent() -> None:
@@ -671,41 +641,13 @@ def test_tickseconds_counts_up_to_the_horizon_its_readers_keep() -> None:
             _restore(asy_base_classes)
 
 
-def test_next_sleep_s_crosses_the_ticks_wrap() -> None:
+def test_next_sleep_ms_crosses_the_ticks_wrap() -> None:
     # t0 1 s before the wrap; 5 s and 70 s later (past a 60 s interval: the floor).
     for elapsed_ms in (5000, 70_000):
         wrapped = _next_sleep_after(TICKS_PERIOD - 1000, elapsed_ms, 60.0)
         assert wrapped == _next_sleep_after(_REFERENCE_NOW, elapsed_ms, 60.0), (elapsed_ms, wrapped)
-    assert abs(_next_sleep_after(TICKS_PERIOD - 1000, 5000, 60.0) - 55.0) < 1e-6
-    assert _next_sleep_after(TICKS_PERIOD - 1000, 70_000, 60.0) == 0.1
-
-
-def test_neopixel_signal_deadline_crosses_the_ticks_wrap() -> None:
-    # Armed half a wait before the wrap, the deadline lands past it: held one ms before, dropped at it.
-    wait_ms = _src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
-    start = TICKS_PERIOD - wait_ms // 2
-    assert start + wait_ms > TICKS_PERIOD
-    wrapped = _neopixel_wait_outcome(start, wait_ms, release_after_ms=None)
-    assert wrapped == _neopixel_wait_outcome(_REFERENCE_NOW, wait_ms, release_after_ms=None)
-    assert wrapped == (True, True, False)
-
-
-def test_neopixel_signal_released_past_the_wrap_is_taken() -> None:
-    # The queued signal ends after the wrap, before the deadline: the waiting request is queued, not dropped.
-    wait_ms = _src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
-    start = TICKS_PERIOD - wait_ms // 2
-    release = wait_ms // 2 + 1000
-    wrapped = _neopixel_wait_outcome(start, wait_ms, release_after_ms=release)
-    assert wrapped == _neopixel_wait_outcome(_REFERENCE_NOW, wait_ms, release_after_ms=release)
-    assert wrapped == (False, True, True)
-
-
-def test_the_bmp3xx_status_wait_crosses_the_ticks_wrap() -> None:
-    # Started 20 ms before the wrap: STATUS never ready ends at the 50 ms bound, STATUS ready after the wrap is taken.
-    for ready_at, expected in ((None, (False, 51)), (40, (True, 40)), (50, (True, 50))):
-        wrapped = _bmp3xx_status_wait(TICKS_PERIOD - 20, ready_at)
-        assert wrapped == _bmp3xx_status_wait(_REFERENCE_NOW, ready_at), (ready_at, wrapped)
-        assert wrapped == expected, (ready_at, wrapped)
+    assert _next_sleep_after(TICKS_PERIOD - 1000, 5000, 60.0) == 55000
+    assert _next_sleep_after(TICKS_PERIOD - 1000, 70_000, 60.0) == 100
 
 
 def test_the_uart_drain_bound_crosses_the_ticks_wrap() -> None:
@@ -724,12 +666,13 @@ def test_the_uart_ready_wait_crosses_the_ticks_wrap() -> None:
         assert wrapped == expected, (arrive_at, wrapped)
 
 
-def test_the_uart_cancel_ack_wait_crosses_the_ticks_wrap() -> None:
-    # Started 20 ms before the wrap: no acknowledgement ends at the 50 ms bound and counts it, one after the wrap ends it.
-    for ack_at, expected in ((None, (True, 1, 52)), (40, (True, 0, 40))):
-        wrapped = _uart_cancel_wait(TICKS_PERIOD - 20, ack_at)
-        assert wrapped == _uart_cancel_wait(_REFERENCE_NOW, ack_at), (ack_at, wrapped)
-        assert wrapped == expected, (ack_at, wrapped)
+def test_the_udp_ready_deadline_crosses_the_ticks_wrap() -> None:
+    # Started 20 ms before the wrap: no datagram ends the wait at the first poll past its 50 ms bound, and one ready after
+    # the wrap is reported, as away from it.
+    for arrive_at, expected in ((None, (False, 7)), (3, (True, 3)), (5, (True, 5))):
+        wrapped = _udp_ready_wait(TICKS_PERIOD - 20, arrive_at)
+        assert wrapped == _udp_ready_wait(_REFERENCE_NOW, arrive_at), (arrive_at, wrapped)
+        assert wrapped == expected, (arrive_at, wrapped)
 
 
 def test_the_i2c_scl_release_waits_cross_the_ticks_us_wrap() -> None:
@@ -772,6 +715,15 @@ def test_the_storage_pause_deadline_crosses_the_ticks_wrap() -> None:
     wrapped = _storage_pause_outcome(TICKS_PERIOD - 30_000)
     assert wrapped == _storage_pause_outcome(_REFERENCE_NOW), wrapped
     assert wrapped == (True, True, False, False), wrapped
+
+
+def test_a_flash_stall_window_holds_across_2_29_us_and_misses_one_whole_period_on() -> None:
+    # On rp2's 2**30 us period, a flush begun 100 ms before or after 2**29 us (about 537 s) still holds the bytes due
+    # inside it, as one far from both does, and a byte one whole period (about 1074 s) on meets no stall.
+    for since_epoch_ms in (TICKS_PERIOD // 2 // 1000 - 100, TICKS_PERIOD // 2 // 1000 + 100):
+        wrapped = _flash_stall_outcome(since_epoch_ms)
+        assert wrapped == _flash_stall_outcome(_REFERENCE_NOW), (since_epoch_ms, wrapped)
+        assert wrapped == (True, True, False, False), (since_epoch_ms, wrapped)
 
 
 if __name__ == "__main__":

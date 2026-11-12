@@ -1,0 +1,44 @@
+.F...................................................................... [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 45%]
+........................................................................ [ 54%]
+........................................................................ [ 63%]
+........................................................................ [ 72%]
+........................................................................ [ 81%]
+........................................................................ [ 90%]
+........................................................................ [ 99%]
+....                                                                     [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+E       assert not [('scripts/cross_browser_smoke.mjs', 'eslint-disable-next-line no-await-in-loop -- deliberate sequential polling')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+============================= slowest 15 durations =============================
+17.10s call     tests_scripts/test_digital_twin_generated_boot.py::test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalation
+8.75s setup    tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+7.77s call     tests_scripts/test_digital_twin_generated_boot.py::test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_ends
+5.24s call     tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml]
+4.54s call     tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+4.53s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[dev]
+3.95s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi]
+3.63s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi]
+3.63s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi]
+3.59s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi]
+3.58s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi]
+3.31s call     tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+3.16s setup    tests_scripts/test_frozen_inputs_reproducible.py::test_two_hash_seeds_stage_byte_identical_inputs
+2.73s call     tests_scripts/test_host_annotations.py::test_no_host_file_imports_future_annotations_or_evaluates_an_unbound_name
+2.25s call     tests_scripts/test_exception_handler_contract.py::test_every_pc_entry_point_installs_the_pc_report_before_the_firmware_starts
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 795 passed in 129.63s (0:02:09)

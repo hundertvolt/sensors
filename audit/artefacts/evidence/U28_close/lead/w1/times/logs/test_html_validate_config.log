@@ -1,0 +1,32 @@
+.FF                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_an_attribute_the_element_does_not_know_fails_the_lint[frobnicate.html-frobnicate-attr] _
+
+lint = (1, {}), page = 'frobnicate.html', attribute = 'frobnicate-attr'
+
+    @pytest.mark.parametrize(("page", "attribute"), _PLANTED.items())
+    def test_an_attribute_the_element_does_not_know_fails_the_lint(lint: "tuple[int, dict[str, list[str]]]", page: str, attribute: str) -> None:
+        code, findings = lint
+>       assert any(attribute in finding for finding in findings.get(page, [])), f"html-validate passed <p {attribute}>, an attribute no element metadata defines"
+E       AssertionError: html-validate passed <p frobnicate-attr>, an attribute no element metadata defines
+E       assert False
+E        +  where False = any(<generator object test_an_attribute_the_element_does_not_know_fails_the_lint.<locals>.<genexpr> at 0x7f3d0eb9c900>)
+
+tests_scripts/test_html_validate_config.py:55: AssertionError
+_ test_an_attribute_the_element_does_not_know_fails_the_lint[calss.html-calss] _
+
+lint = (1, {}), page = 'calss.html', attribute = 'calss'
+
+    @pytest.mark.parametrize(("page", "attribute"), _PLANTED.items())
+    def test_an_attribute_the_element_does_not_know_fails_the_lint(lint: "tuple[int, dict[str, list[str]]]", page: str, attribute: str) -> None:
+        code, findings = lint
+>       assert any(attribute in finding for finding in findings.get(page, [])), f"html-validate passed <p {attribute}>, an attribute no element metadata defines"
+E       AssertionError: html-validate passed <p calss>, an attribute no element metadata defines
+E       assert False
+E        +  where False = any(<generator object test_an_attribute_the_element_does_not_know_fails_the_lint.<locals>.<genexpr> at 0x7f3d0eb9d0e0>)
+
+tests_scripts/test_html_validate_config.py:55: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_html_validate_config.py::test_an_attribute_the_element_does_not_know_fails_the_lint[frobnicate.html-frobnicate-attr]
+FAILED tests_scripts/test_html_validate_config.py::test_an_attribute_the_element_does_not_know_fails_the_lint[calss.html-calss]
+2 failed, 1 passed in 0.09s

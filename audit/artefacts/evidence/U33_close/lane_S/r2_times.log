@@ -1,0 +1,27 @@
+citations                                  15.11 ->   15.80   +4.6% OVER
+decision_vocabulary                        11.84 ->   11.93   +0.8% OVER
+import_placement                           11.13 ->   10.72   -3.7% OVER
+lock_order                                  6.64 ->    6.31   -5.0%
+comment_block_cap                           4.65 ->    5.18  +11.4% OVER
+memory_error_gate_agreement                 5.01 ->    5.05   +0.8%
+tunables_register                           3.59 ->    3.71   +3.3%
+setup_toolchain_env                         1.54 ->    3.55 +130.5% OVER
+suppression_form                            3.66 ->    3.35   -8.5%
+persistence_write_marker_completeness       2.25 ->    3.11  +38.2% OVER
+task_inventory                              3.06 ->    3.00   -2.0%
+host_annotations                            2.90 ->    2.72   -6.2%
+counter_steps                               2.31 ->    2.21   -4.3%
+config_schemas                              1.67 ->    2.02  +21.0%
+const_mirrors                               2.43 ->    1.91  -21.4%
+legacy_paths                                1.65 ->    1.70   +3.0%
+level_containment                           1.19 ->    1.44  +21.0%
+gc_collect_sites                            1.93 ->    1.36  -29.5%
+fatal_report_sites                          1.53 ->    1.26  -17.6%
+timing_budget                               0.95 ->    0.95   -0.0%
+device_script_bench_facts                   0.87 ->    0.83   -4.6%
+memory_catalog                              0.63 ->    0.57   -9.5%
+threat_model_statement                      0.11 ->    0.11   +0.0%
+harness_mpremote_retry                      0.18 ->    0.07  -61.1%
+lint_type_scopes                            0.06 ->    0.04  -33.3%
+toml_schema_contract                        0.01 ->    0.01   +0.0%
+bench_restores_serving                      0.01 ->    0.01   +0.0%

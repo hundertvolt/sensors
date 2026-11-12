@@ -17,9 +17,9 @@ def test_one_text_is_parsed_once() -> None:
     _parse.cache_clear()
     first = parse_source("X = 1\n", "a.py")
     assert parse_source("X = 1\n", "a.py") is first
-    assert parse_source("X = 1\n", "b.py") is not first  # the filename is part of the key: tracebacks name it
+    assert parse_source("X = 1\n", "b.py") is first  # the text alone is the key: a tree names no file
     info = _parse.cache_info()
-    assert (info.misses, info.hits) == (2, 1)
+    assert (info.misses, info.hits) == (1, 2)
 
 
 def test_the_default_filename_and_its_spelled_out_form_share_one_tree() -> None:
@@ -51,7 +51,7 @@ def test_a_whole_build_of_every_device_leaves_every_shared_tree_as_parsed(repo_r
     assert cached > 0
     checked = 0
     for path in sorted([*src_dir.glob("*.py"), *ext_dir.glob("*.py")]):
-        for source, filename in ((path.read_text(), str(path)), (path.read_text(encoding="utf-8"), "<unknown>")):
+        for source, filename in ((path.read_text(encoding="utf-8"), str(path)),):  # one lookup per text, the key
             hits = _parse.cache_info().hits
             shared = parse_source(source, filename)
             if _parse.cache_info().hits == hits:

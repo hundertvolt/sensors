@@ -1,0 +1,36 @@
+=== test_shell_conventions
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/build_website.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/test.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_website.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/lint.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_manual_hardware_tests.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/typecheck.sh]
+13 failed, 58 passed in 1.01s
+
+real	0m1.331s
+user	0m1.020s
+sys	0m0.251s
+=== test_require_python
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/build_website.sh]
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/typecheck.sh]
+FAILED tests_scripts/test_require_python.py::test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything
+4 failed, 22 passed in 0.22s
+
+real	0m0.480s
+user	0m0.406s
+sys	0m0.053s
+=== test_twin_never_needs_tests_on_its_path
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_launch_reads_the_layout_file
+1 failed, 53 passed in 0.92s
+
+real	0m1.168s
+user	0m1.031s
+sys	0m0.105s

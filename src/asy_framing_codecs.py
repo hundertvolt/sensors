@@ -9,6 +9,14 @@ import asyncio
 
 from micropython import const
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from asy_print_log import PrintLog
+
 COBS_DELIMITER = const(0x00)
 
 _COBS_MAX_RUN = const(0xFF)  # a code byte of 0xFF means "254 data bytes, no zero follows"
@@ -17,10 +25,10 @@ _COBS_RUN_LEN = const(254)
 
 class FramingBase:
     # Pass-through by construction: every method below is the identity, and a subclass overrides
-    # only what it actually changes. Mirrors asy_crc_checks.py's CRCBase/CRCPass split, so a caller
+    # only what it actually changes. Mirrors crc_checks.py's CRCBase/CRCPass split, so a caller
     # can hold either family behind one dispatch table.
     def __init__(self, max_frame: int = 0, run_length: int = 0, trailer: int = 0) -> None:
-        # Parameterized like asy_crc_checks.py's CRCBase, so a subclass supplies constants rather than
+        # Parameterized like crc_checks.py's CRCBase, so a subclass supplies constants rather than
         # arithmetic: run_length is the longest span one code byte can describe (0 = no code bytes
         # at all) and trailer the delimiter bytes appended after it.
         self.max_frame = max(max_frame, 0)
@@ -66,7 +74,7 @@ class FramingBase:
 
 class FramingPass(FramingBase):
     # The explicit no-op, named so a construction site states the choice rather than relying on a
-    # default - the same reason asy_crc_checks.py spells out CRCPass.
+    # default - the same reason crc_checks.py spells out CRCPass.
     def __init__(self) -> None:
         super().__init__(0, run_length=0, trailer=0)  # no code bytes, no delimiter, no overhead
 
@@ -74,14 +82,16 @@ class FramingPass(FramingBase):
 class FramingCOBS(FramingBase):
     # Consistent Overhead Byte Stuffing: the encoded form provably contains no 0x00, so a single
     # 0x00 delimiter frames it unambiguously whatever the payload, CRC or UID happen to be.
-    def __init__(self, max_frame: int) -> None:
+    def __init__(self, max_frame: int, logger: "PrintLog | None" = None) -> None:
         super().__init__(max_frame, run_length=_COBS_RUN_LEN, trailer=1)
         # One long-lived scratch, sized for the worst case from max_frame - never per frame.
         self._scratch: bytearray | None = None
         if max_frame > 0:
             try:
                 self._scratch = bytearray(self.max_encoded(self.max_frame))
-            except (MemoryError, OverflowError):
+            except (MemoryError, OverflowError) as e:
+                if logger is not None:  # its builder's, the UART driver's user's: silent without one
+                    logger.err("FramingCOBS: scratch allocation failed:", e)
                 self._scratch = None
 
     def _checked(self, buf: bytearray, size: int) -> bool:

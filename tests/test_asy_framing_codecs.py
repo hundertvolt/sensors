@@ -4,25 +4,12 @@ round-trips including every shape the protocol can emit, and each malformed-inpu
 
 import asyncio
 
+from _async_harness import run
+from _recording_print import record_prints
+
+import asy_framing_codecs
 from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass
-
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
-
-# @tunable l1.framing_codecs_run_bound_s = 5
-_RUN_BOUND_S = 5
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(asyncio.wait_for(coro, _RUN_BOUND_S))
+from asy_print_log import PrintLog
 
 
 def encoded(codec: "FramingPass | FramingCOBS", payload: bytes) -> bytes:
@@ -101,6 +88,38 @@ def test_cobs_round_trips_every_protocol_frame_shape() -> None:
         assert decoded(codec, frame[:-1]) == payload, f"round trip failed for {payload!r}"
 
 
+def test_cobs_decode_lets_another_task_run_after_every_code_block() -> None:
+    # The decode loop yields once per code block, so a long frame never holds the loop: a competing task gets at least
+    # one turn per block (one zero-delimited run each here).
+    codec = FramingCOBS(262)
+    payload = b"\x01\x00\x02\x03\x00\x00\x04\x05\x06\x00\x07"
+    frame = bytearray(encoded(codec, payload)[:-1])  # the read loop strips the delimiter
+    blocks = payload.count(b"\x00") + 1
+    passes = [0]
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> "tuple[int | None, int]":
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        before = passes[0]
+        size = await codec.decode_from(frame, len(frame))
+        during = passes[0] - before
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return size, during
+
+    size, during = run(scenario())
+    assert size is not None and bytes(frame[:size]) == payload
+    assert during >= blocks, f"{during} turns for another task across {blocks} code blocks"
+
+
 def test_cobs_overhead_matches_the_documented_bound() -> None:
     codec = FramingCOBS(600)
     for size in (0, 1, 48, 55, 253, 254, 255, 508, 600):
@@ -165,13 +184,13 @@ def test_a_returned_view_aliases_the_scratch_until_the_next_encode() -> None:
     assert bytes(first) == bytes(second)[0 : len(snapshot)]
 
 
+def test_cobs_rejects_a_code_byte_pointing_past_the_frame_end() -> None:
+    # The decoder must validate every offset before following it, not walk off the buffer.
 # ---------------------------------------------------------------------------
 # Malformed input and bounds
 # ---------------------------------------------------------------------------
 
 
-def test_cobs_rejects_a_code_byte_pointing_past_the_frame_end() -> None:
-    # The decoder must validate every offset before following it, not walk off the buffer.
     codec = FramingCOBS(64)
     assert decoded(codec, b"\x20\x01\x02") is None
 
@@ -217,10 +236,45 @@ def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
     # The other half of ready(). A negative bound never reaches the allocation at all, so the except
     # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
     # fragmented heap, rather than a caller typo - had no test of its own.
-    codec = FramingCOBS(1 << 40)  # well-formed, and far past what any heap here can serve
+    logger = PrintLog(1, name="UART")  # its builder's, the UART driver's user's: the lines print from level 1
+    with record_prints() as rec:  # recorded, never printed: the interpreter's own text would trip the memory gates
+        codec = FramingCOBS(1 << 40, logger)  # well-formed, and far past what any heap here can serve
+        huge = FramingCOBS(1 << 63, logger)  # past the machine word: bytearray() raises OverflowError instead
     assert codec._scratch is None
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
+    assert huge.ready() is False
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [
+        (("UART", "FramingCOBS: scratch allocation failed:"), MemoryError),
+        (("UART", "FramingCOBS: scratch allocation failed:"), OverflowError),
+    ]
+
+
+def test_a_failed_cobs_scratch_allocation_prints_its_own_text_once() -> None:
+    # A caught allocation failure prints one line with its own text through the logger its builder passes, from level 1
+    # up, so the memory gates read it; none, or level 0, prints nothing, nor does a bound that never allocates.
+    err = MemoryError("injected for the codec scratch")  # worded clear of the memory gates' markers
+
+    def failing(*_args: object) -> bytearray:
+        raise err
+
+    asy_framing_codecs.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            codec = FramingCOBS(64, PrintLog(1, name="UART"))
+        with record_prints() as silent:
+            quiet = [FramingCOBS(64), FramingCOBS(64, PrintLog(0, name="UART"))]
+    finally:
+        del asy_framing_codecs.bytearray  # type: ignore[attr-defined]
+    assert codec.ready() is False
+    assert rec.lines == [("UART", "FramingCOBS: scratch allocation failed:", err)]
+    assert rec.text() == "UART FramingCOBS: scratch allocation failed: injected for the codec scratch"
+    assert ([c.ready() for c in quiet], silent.lines) == ([False, False], [])
+    with record_prints() as rec:
+        guarded = [FramingCOBS(0, PrintLog(5, name="UART")), FramingCOBS(-1, PrintLog(5, name="UART"))]
+    assert [c.ready() for c in guarded] == [False, False]
+    assert rec.lines == []
+    assert FramingCOBS(64).ready() is True  # the module's own bytearray is back
 
 
 def test_cobs_reports_itself_as_delimited() -> None:

@@ -1,0 +1,6 @@
+FAIL test_every_contract_check_is_registered:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "<string>", line 38, in test_every_contract_check_is_registered
+AssertionError: 
+17/18 passed, 1 failed, 0 skipped

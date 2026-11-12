@@ -1,0 +1,4 @@
+E       AssertionError: Traceback (most recent call last):
+E         ModuleNotFoundError: No module named 'scripts'
+E        +  where 1 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-879...n <module>\n    from scripts._archive_evidence import new_run_dir\nModuleNotFoundError: No module named \'scripts\'\n').returncode
+tests_scripts/test_manual_runner_summary.py:248: AssertionError

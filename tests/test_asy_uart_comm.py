@@ -8,13 +8,20 @@ import select
 import struct
 import time
 
+from _async_harness import run
+from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
-from _fram_chip_fake import FakeMB85RS64V
+from _fast_sleep import check_sleep_ms
+from _fram_builders import make_fram_manager
+from _recording_print import record_prints
+from _src_const import src_int
+from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD, Ticks30Time
+from _twin_readiness import wait_for_value
 from _uart_comm_harness import (
+    ERROR_LEVEL,
     PAYLOAD_SIZE,
     POLL_WAIT_MS,
-    RUN_LIMIT_S,
     TIMEOUT_MS,
     Pair,
     PollRoundClock,
@@ -24,21 +31,17 @@ from _uart_comm_harness import (
     echo_get,
     fake_of,
     frames,
-    run,
     transfer_limits,
 )
 from machine import LinkPoller, UARTLink
 from rp2 import DMA
 
-import asy_print_log as print_log_module
-import asy_spi_driver
+import asy_base_classes
+import asy_print_log
 import asy_uart_comm
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
-from asy_crc_checks import CRC16
-from asy_fram_manager import FRAMManager
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_framing_codecs import FramingCOBS
-from asy_print_log import LogConfig, PrintLogHistoryStore, make_logger
-from asy_spi_driver import SPI
+from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported, make_logger
 from asy_uart_comm import (
     DEFAULT_LIMITS,
     ROLE_INITIATOR,
@@ -47,10 +50,10 @@ from asy_uart_comm import (
     ResponderCallbacks,
     TransferLimits,
     UARTComm,
+    _next_uid,
 )
-from asy_uart_driver import UART
-
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]  # one process per test file: the FRAM-backed log case
+from asy_uart_driver import UART, PieceBuffer
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -58,72 +61,63 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from typing import Any
+    from collections.abc import Awaitable, Callable, Coroutine
+    from typing import TypeVar
+
+    from _uart_comm_harness import CommCallback
+    from machine import UART as FakeUART
+    from typing_extensions import TypedDict, Unpack
+
+    from asy_print_log import PrintLogHistory
+    from asy_uart_comm import _PullCallback
+
+    class _CommKw(TypedDict, total=False):
+        # UARTComm's own keywords, which _make_comm() passes through.
+        name: str
+        log: LogConfig
+        logger: PrintLogHistory | None
+
+    T = TypeVar("T")
+    U = TypeVar("U")
 
 _SRC = "src/asy_uart_comm.py"
 
-_CMD_ACK = 0x01
-_CMD_GET = 0x02
-_CMD_SET = 0x04
-_UID = 0
-_CMD = 1
-_SIZE = 2
-_CHUNKS = 3
-_CUR = 4
-_PAYLOAD = 5
+# The wire layout of SPECIFICATION.md Part J.3 - the protocol's own copy, pinned to the module by tests_scripts/test_const_mirrors.py.
+_CMD_ACK = 0x01  # pins src/asy_uart_comm.py _CMD_ACK
+_CMD_GET = 0x02  # pins src/asy_uart_comm.py _CMD_GET
+_CMD_SET = 0x04  # pins src/asy_uart_comm.py CMD_SET
+_UID = 0  # pins src/asy_uart_comm.py _MSG_UID
+_CMD = 1  # pins src/asy_uart_comm.py _MSG_CMD
+_SIZE = 2  # pins src/asy_uart_comm.py _MSG_SIZE
+_CHUNKS = 3  # pins src/asy_uart_comm.py _MSG_CHUNKS
+_CUR = 4  # pins src/asy_uart_comm.py _MSG_CUR_CHUNK
+_PAYLOAD = 5  # pins src/asy_uart_comm.py _MSG_PAYLOAD
 _FRAME = 5 + PAYLOAD_SIZE
 
-# @tunable l1.asy_uart_comm_short_reply_timeout_ms = 30
 _SHORT_REPLY_TIMEOUT_MS = 30
-# @tunable l1.asy_uart_comm_step_bound_s = 10
-_STEP_BOUND_S = 10
-# @tunable l1.asy_uart_comm_loop_survival_wait_ms = 20
 _LOOP_SURVIVAL_WAIT_MS = 20
-# @tunable l1.asy_uart_comm_silent_bound_s = 15
-_SILENT_BOUND_S = 15
-# @tunable l1.asy_uart_comm_listener_run_bound_s = 25
-_LISTENER_RUN_BOUND_S = 25
-# @tunable l1.asy_uart_comm_short_bound_s = 5
-_SHORT_BOUND_S = 5
-# @tunable l1.asy_uart_comm_past_deadline_bound_s = 2
-_PAST_DEADLINE_BOUND_S = 2
-# @tunable l1.asy_uart_comm_flood_step_ms = 1
 _FLOOD_STEP_MS = 1
-# @tunable l1.asy_uart_comm_run_bound_s = 20
-_RUN_BOUND_S = 20
-# @tunable l1.asy_uart_comm_listener_park_ms = 10
 _LISTENER_PARK_MS = 10
-# @tunable l1.asy_uart_comm_inside_lock_ms = 5
-_INSIDE_LOCK_MS = 5
-# @tunable l1.asy_uart_comm_listener_short_bound_s = 8
-_LISTENER_SHORT_BOUND_S = 8
-# @tunable l1.asy_uart_comm_async_callback_yield_ms = 1
+_INSIDE_LOCK_LIMIT_MS = 1000  # the bound on the wait for a task to hold the bus
 _ASYNC_CALLBACK_YIELD_MS = 1
-# @tunable l1.asy_uart_comm_bsec_run_bound_s = 60
-_BSEC_RUN_BOUND_S = 60
-# @tunable l1.asy_uart_comm_prompt_hold_ms = 5
-_PROMPT_HOLD_MS = 5
-_PAST_CANCEL_ACK_HOLD_MS = 1300
-# @tunable l1.asy_uart_comm_cap_refusals = 50
+_RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
+_WRITE_GATE_HOLD_MS = 1500  # the write gate's longest hold-off under the bus lock: 1.5 x the 1,000 ms timeout
 _REFUSALS = 50
-# @tunable l1.asy_uart_comm_hammer_rounds = 200
 _HAMMER_ROUNDS = 200
-# @tunable l1.asy_uart_comm_hammer_run_bound_s = 120
-_HAMMER_RUN_BOUND_S = 120
-# @tunable l1.asy_uart_comm_flush_recovery_tries = 5
 _FLUSH_RECOVERY_TRIES = 5
-# @tunable l1.asy_uart_comm_hold_off_look_ms = 30
-_HOLD_OFF_LOOK_MS = 30
+
+
+def logged(comm: UARTComm) -> "tuple[int, list[str]]":
+    # (ErrCount, the ring's used slots): one entry per event, a repeat counts with no new slot. ErrNum holds errnos and
+    # wrnnos in one number space, so ErrType tells them apart; "N" is an unused slot. Indexed: MicroPython's zip() has
+    # no strict= for B905.
+    entry = run(comm.get_error_counter())[comm.name]
+    nums, kinds = entry["ErrNum"], entry["ErrType"]
+    return int(entry["ErrCount"]), [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
 
 
 def persisted(comm: UARTComm) -> "list[str]":
-    # ErrNum holds errnos and wrnnos in one ring and they share the number space, so ErrType is
-    # what tells them apart; "N" is an unused slot. Indexed rather than zip()ed - MicroPython's
-    # zip() has no strict= parameter to satisfy B905.
-    entry = run(comm.get_error_counter())[comm.name]
-    nums, kinds = entry["ErrNum"], entry["ErrType"]
-    return [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
+    return logged(comm)[1]
 
 
 def _e(name: str) -> str:  # persisted()'s form of a catalog errno
@@ -134,42 +128,36 @@ def _w(name: str) -> str:  # persisted()'s form of a catalog wrnno
     return f"W{code('W', name)}"
 
 
-def make_comm(**kwargs: "Any") -> UARTComm:
-    DMA.reset_registry()  # no per-test reset exists, and each link's ring holds two of the twelve channels
+def _make_comm(
+    *,
+    payload_size: int = PAYLOAD_SIZE,
+    timeout: int = TIMEOUT_MS,
+    chunk_bytes: int = DEFAULT_LIMITS.chunk_bytes,
+    max_transfer_bytes: int = DEFAULT_LIMITS.max_transfer_bytes,
+    role: str = ROLE_INITIATOR,
+    uart: "UART | None" = None,
+    get_callback: "CommCallback | None" = None,
+    set_callback: "CommCallback | None" = None,
+    **kwargs: "Unpack[_CommKw]",
+) -> UARTComm:
+    # transfer_limits()'s fields, the role, the bus (None: the link's own driver) and the callbacks, then UARTComm's own.
+    DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     driver._uart.rx_rate = float("inf")  # type: ignore[union-attr]  # fed bytes land at once, not on the fake clock
-    driver.poller = LinkPoller(driver._uart, mask=select.POLLOUT)  # type: ignore[assignment,arg-type]
-    params: dict[str, Any] = dict(kwargs)
-    fields = {n: params.pop(n) for n in ("payload_size", "timeout", "chunk_bytes", "max_transfer_bytes") if n in params}
-    if "limits" not in params:
-        params["limits"] = transfer_limits(**fields)
-    role = params.pop("role", ROLE_INITIATOR)
-    bus = params.pop("uart", driver)
-    names = ("get_callback", "set_callback", "message_callback")
-    if any(n in params for n in names):
-        params["callbacks"] = ResponderCallbacks(*(params.pop(n, None) for n in names))
-    return UARTComm(bus, role, **params)
+    driver.poller = LinkPoller(driver._uart, mask=select.POLLOUT)  # type: ignore[arg-type, assignment]
+    callbacks = None if get_callback is None and set_callback is None else ResponderCallbacks(get_callback, set_callback, None)
+    limits = transfer_limits(payload_size, timeout, chunk_bytes, max_transfer_bytes)
+    return UARTComm(driver if uart is None else uart, role, limits, callbacks, **kwargs)
 
 
-def _make_fram_manager(chip: "FakeMB85RS64V | None" = None) -> "tuple[FRAMManager, FakeMB85RS64V]":
-    # A fresh manager, over the given chip's memory when one is passed (a simulated reboot).
-    manager = FRAMManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
-    if chip is not None:
-        manager.fram._spidev.spi._spi = chip
-    own = manager.fram._spidev.spi._spi
-    assert isinstance(own, FakeMB85RS64V)
-    assert run(manager.setup()) is True
-    return manager, own
-
-
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Module foundation
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # C2 - constructor, parameter validation, readiness gate
 
 
 def test_valid_construction_sets_the_gate_only_after_setup() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert comm.initialized is False  # nothing is usable before setup()
     assert run(comm.setup()) is True
     assert comm.initialized is True
@@ -179,11 +167,11 @@ def test_payload_size_boundaries_are_accepted_and_refused() -> None:
     # SIZE/CHUNKS are single bytes and a zero-width payload cannot carry the command id.
     for good in (1, 255):
         roomy = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=2048, rx_ring=2048)
-        roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
-        comm = make_comm(payload_size=good, uart=roomy)
+        roomy.poller = LinkPoller(roomy._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
+        comm = _make_comm(payload_size=good, uart=roomy)
         assert comm._init_errno == 0, f"payload_size {good} should be legal"
     for bad in (0, 256, -1):
-        comm = make_comm(payload_size=bad)
+        comm = _make_comm(payload_size=bad)
         assert comm._init_errno != 0, f"payload_size {bad} should be refused"
         assert run(comm.setup()) is False
 
@@ -191,21 +179,21 @@ def test_payload_size_boundaries_are_accepted_and_refused() -> None:
 def test_payload_size_is_never_silently_clamped() -> None:
     # A clamp turns a loud configuration error into a link that desyncs intermittently in the
     # field - the one fault J.6 says the self-healing design cannot heal.
-    comm = make_comm(payload_size=500)
+    comm = _make_comm(payload_size=500)
     assert comm._payload_size == 500  # kept as given, and refused; not quietly rewritten to 255
     assert comm.initialized is False
 
 
 def test_non_positive_timeout_is_refused() -> None:
     for bad in (0, -1):
-        assert make_comm(timeout=bad)._init_errno != 0
+        assert _make_comm(timeout=bad)._init_errno != 0
 
 
 def test_timeout_below_the_gc_pause_floor_is_refused() -> None:
     # Below this a routine collection pause reads as a link fault, and the link resyncs
     # continuously under memory pressure for no reason.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=9, poll_idle_ms=9)  # floor 2 x 9 + 9 + 21 = 48
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(timeout=30))._init_errno == code("E", "UART_TIMEOUT_PARAM")
     assert UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(timeout=200))._init_errno == 0
 
@@ -216,7 +204,7 @@ def test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused() -> None:
     # within a 1s budget, so a perfectly sound link fails every request and looks dead.
     def bus(idle_ms: int) -> UART:
         driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=2, poll_idle_ms=idle_ms, rxbuf=1024)
-        driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+        driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
         return driver
 
     assert UARTComm(bus(5000), ROLE_INITIATOR, limits=transfer_limits(timeout=1000))._init_errno != 0
@@ -224,14 +212,14 @@ def test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused() -> None:
 
 
 def test_invalid_role_is_refused_and_has_no_default() -> None:
-    assert make_comm(role="listener")._init_errno != 0
-    assert make_comm(role=ROLE_INITIATOR)._init_errno == 0
-    assert make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())._init_errno == 0
+    assert _make_comm(role="listener")._init_errno != 0
+    assert _make_comm(role=ROLE_INITIATOR)._init_errno == 0
+    assert _make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())._init_errno == 0
 
 
 def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
     # Otherwise every call returns a sentinel with no explanation of which thing was wrong.
-    comm = make_comm(uart=None)
+    comm = UARTComm(None, ROLE_INITIATOR, transfer_limits())
     assert comm._init_errno != 0
     assert run(comm.setup()) is False
     assert run(comm.uart_set(1, b"x")) is False
@@ -242,10 +230,30 @@ def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
 def test_construction_performs_no_bus_call() -> None:
     # An allocate-only constructor, so construction can never hang outside any supervisor.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     before = len(driver._uart.log)  # type: ignore[union-attr]
     UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits())
     assert len(driver._uart.log) == before  # type: ignore[union-attr]
+
+
+def test_the_comm_hands_its_logger_to_its_bus_and_frame_buffers() -> None:
+    # The bus and the TX/RX RegionBuffers have no logger of their own: a caught MemoryError's line goes out through the
+    # comm's, which from level 1 prints the buffer's failure under the comm's name.
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+    comm = UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(), log=LogConfig(None, 10, 1))
+    assert driver.logger is comm.pr
+    err = MemoryError("injected for the frame buffer")  # worded clear of the memory gates' markers
+
+    def failing(*_args: object) -> bytearray:
+        raise err
+
+    asy_base_classes.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints(comm.pr) as rec:
+            comm._allocate()
+    finally:
+        del asy_base_classes.bytearray  # type: ignore[attr-defined]
+    assert rec.lines[:2] == [(comm.pr.name, "RegionBuffer: buffer allocation failed:", err)] * 2, rec.lines
 
 
 def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
@@ -253,11 +261,11 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
     # legal payload_size overruns it outright - a frame that never completes, indistinguishable
     # from a link fault unless it is caught at construction.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)  # rxbuf defaults to 256
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     refused = UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(payload_size=255))
     assert refused._init_errno != 0
     roomy = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, rx_ring=2048)  # the ring sized for a 260-byte frame at a 100 ms timeout
-    roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]
+    roomy.poller = LinkPoller(roomy._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(roomy, ROLE_INITIATOR, limits=transfer_limits(payload_size=255))._init_errno == 0
 
 
@@ -265,7 +273,7 @@ def test_a_ring_too_small_for_one_poll_interval_is_refused() -> None:
     # A 9ms poll interval plus the module's 5ms of scheduling slack admits ~161 bytes at 115200 baud,
     # so a 64-byte ring loses the tail of anything sustained even though a frame fits.
     driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=9, poll_idle_ms=9, rx_ring=64)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(timeout=TIMEOUT_MS))._init_errno == code("E", "UART_RXBUF")
 
 
@@ -274,7 +282,7 @@ def _ring_floor(payload_size: int, timeout: int, poll_ms: int) -> int:
     # stop-and-wait peer sends while one config flush holds the loop, rounded up to a power of two.
     wire = 5 + payload_size
     per_poll = (115200 // 10) * (poll_ms + 5) // 1000
-    flush = wire * (1 + _src_const("_FLASH_HOLD_MAX_MS") // (4 * timeout))
+    flush = wire * (1 + _const("_FLASH_HOLD_MAX_MS") // (4 * timeout))
     floor = max(wire, per_poll, flush)
     size = 1
     while size < floor:
@@ -290,7 +298,7 @@ def test_the_ring_floor_covers_a_config_flush() -> None:
         assert (floor > _ring_floor(48, 10**6, 2)) is rises, (timeout, floor)
         for ring, expected in ((floor, 0), (floor // 2, code("E", "UART_RXBUF"))):
             bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=2, poll_idle_ms=2, rx_ring=ring)
-            bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+            bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
             comm = UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits(payload_size=48, timeout=timeout))
             assert comm._init_errno == expected, (timeout, ring)
             assert comm._min_rx_ring() == floor
@@ -301,40 +309,18 @@ def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
     # A dead codec constructed cleanly, passed setup() and then failed every single write with
     # _ERR_UART_WRITE_FAILED - the link looking broken instead of the configuration being refused.
     dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(-1))
-    dead.poller = LinkPoller(dead._uart)  # type: ignore[assignment,arg-type]
+    dead.poller = LinkPoller(dead._uart)  # type: ignore[arg-type, assignment]
     assert dead.framing.ready() is False
     comm = UARTComm(dead, ROLE_INITIATOR, limits=transfer_limits())
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup()) is False
     live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(128))
-    live.poller = LinkPoller(live._uart)  # type: ignore[assignment,arg-type]
+    live.poller = LinkPoller(live._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(live, ROLE_INITIATOR, limits=transfer_limits())._init_errno == 0
 
 
-def _src_const(name: str, path: str = _SRC) -> int:
-    # The shipped value, read from the source: a const() is not a module attribute on MicroPython.
-    with open(path) as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return int(line.split("const(", 1)[1].split(")", 1)[0], 0)
-    raise AssertionError(name + " not found in " + path)
-
-
-class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, so every
-    # console line a logger emits is captured with its arguments; restore() removes the shadow.
-    def __init__(self) -> None:
-        self.lines: list[tuple[object, ...]] = []
-        print_log_module.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **_kwargs: object) -> None:
-        self.lines.append(args)
-
-    def restore(self) -> None:
-        del print_log_module.print  # type: ignore[attr-defined]
-
-    def text(self) -> str:
-        return "\n".join(" ".join(str(a) for a in line) for line in self.lines)
+def _const(name: str, path: str = _SRC) -> int:
+    return src_int(path, name)  # an int const() of the source (tests/_src_const.py)
 
 
 class _SleepRecorder:
@@ -343,6 +329,7 @@ class _SleepRecorder:
     def __init__(self, cap_ms: int) -> None:
         self.cap_ms = cap_ms
         self.delays: list[int] = []
+        self.callers: list[object] = []  # the task asking for each delay
         self._inner = asy_uart_comm.asyncio
         asy_uart_comm.asyncio = self  # type: ignore[assignment]
 
@@ -352,8 +339,10 @@ class _SleepRecorder:
     def restore(self) -> None:
         asy_uart_comm.asyncio = self._inner
 
-    def sleep_ms(self, ms: int) -> "Any":
+    def sleep_ms(self, ms: int) -> "Awaitable[None]":
+        check_sleep_ms(ms)
         self.delays.append(ms)
+        self.callers.append(asyncio.current_task())
         return self._inner.sleep_ms(min(ms, self.cap_ms))
 
 
@@ -369,7 +358,7 @@ def _on_poll_rounds(test: "Callable[[], None]") -> "Callable[[], None]":
 
 def _poll_bus(poll_ms: int) -> UART:
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=poll_ms, poll_idle_ms=poll_ms, rxbuf=2048)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
     return driver
 
 
@@ -389,22 +378,22 @@ def test_the_default_limits_are_the_source_defaults_and_refuse_no_train() -> Non
     # carried before the cap existed is refused at the defaults.
     default = DEFAULT_LIMITS
     assert default == TransferLimits(
-        _src_const("_DEFAULT_PAYLOAD_SIZE"),
-        _src_const("_DEFAULT_TIMEOUT_MS"),
-        _src_const("_DEFAULT_CHUNK_BYTES"),
-        _src_const("_DEFAULT_MAX_TRANSFER_BYTES"),
+        _const("_DEFAULT_PAYLOAD_SIZE"),
+        _const("_DEFAULT_TIMEOUT_MS"),
+        _const("_DEFAULT_CHUNK_BYTES"),
+        _const("_DEFAULT_MAX_TRANSFER_BYTES"),
     )
-    assert default.max_transfer_bytes == (_src_const("_CHUNKS_MAX") - 1) * default.payload_size
+    assert default.max_transfer_bytes == (_const("_CHUNKS_MAX") - 1) * default.payload_size
 
 
 def test_chunk_bytes_outside_its_range_is_refused() -> None:
     # chunk_bytes below one byte or a cap below one frame's payload cannot carry a train; the wire
     # parameters are checked first, so a refused payload_size still reports its own code.
-    assert make_comm(chunk_bytes=0)._init_errno == code("E", "BAD_ARG")
-    assert make_comm(max_transfer_bytes=PAYLOAD_SIZE - 1)._init_errno == code("E", "BAD_ARG")
-    assert make_comm(max_transfer_bytes=PAYLOAD_SIZE)._init_errno == 0
-    assert make_comm(chunk_bytes=1)._init_errno == 0
-    assert make_comm(payload_size=0, chunk_bytes=0)._init_errno == code("E", "UART_PAYLOAD_SIZE")
+    assert _make_comm(chunk_bytes=0)._init_errno == code("E", "BAD_ARG")
+    assert _make_comm(max_transfer_bytes=PAYLOAD_SIZE - 1)._init_errno == code("E", "BAD_ARG")
+    assert _make_comm(max_transfer_bytes=PAYLOAD_SIZE)._init_errno == 0
+    assert _make_comm(chunk_bytes=1)._init_errno == 0
+    assert _make_comm(payload_size=0, chunk_bytes=0)._init_errno == code("E", "UART_PAYLOAD_SIZE")
 
 
 def test_a_poll_rate_outside_one_to_nine_ms_is_refused() -> None:
@@ -421,11 +410,11 @@ def test_the_timeout_ceiling_keeps_every_deadline_a_valid_tick_delay() -> None:
     # The drain bound, 6 x timeout, is the longest deadline derived from timeout, and the backoff
     # cap 5 x timeout; both must stay below ticks_diff()'s 2**29 ms horizon (Part F.1).
     ceiling = 89_478_485
-    comm = make_comm(timeout=ceiling)
+    comm = _make_comm(timeout=ceiling)
     assert comm._init_errno == 0
     assert comm._resync_window_ms() * 4 < 2**29
     assert comm._backoff_max_ms < 2**29
-    assert make_comm(timeout=ceiling + 1)._init_errno == code("E", "UART_TIMEOUT_PARAM")
+    assert _make_comm(timeout=ceiling + 1)._init_errno == code("E", "UART_TIMEOUT_PARAM")
 
 
 def test_a_codec_below_one_frame_is_refused() -> None:
@@ -434,7 +423,7 @@ def test_a_codec_below_one_frame_is_refused() -> None:
     frame = 5 + PAYLOAD_SIZE + CRC16().length()
     for size, expected in ((frame - 1, code("E", "UART_CODEC_SIZE")), (frame, 0)):
         bus = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, crc=CRC16(), framing=FramingCOBS(size))
-        bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+        bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
         assert UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits())._init_errno == expected, size
 
 
@@ -460,12 +449,12 @@ def test_a_pair_on_exact_sized_codecs_completes_a_get_and_a_set() -> None:
             assert await initiator.setup() and await responder.setup()
             listener = asyncio.create_task(responder.uart_listen())
             answer = copied_out(await initiator.uart_get(1))
-            await asyncio.wait_for(listener, _STEP_BOUND_S)
+            await listener
             listener = asyncio.create_task(responder.uart_listen())
             sent = await initiator.uart_set(2, bytes(range(3 * PAYLOAD_SIZE)))
-            return answer, sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+            return answer, sent, await listener
 
-        answer, sent, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+        answer, sent, result = run(scenario())
         assert answer == b"answer", crc
         assert sent is True, crc
         assert copied_out(result.payload) == bytes(range(3 * PAYLOAD_SIZE)), crc
@@ -473,7 +462,7 @@ def test_a_pair_on_exact_sized_codecs_completes_a_get_and_a_set() -> None:
 
 def test_every_public_method_is_gated_before_setup() -> None:
     # Operating on unallocated state must return the method's own sentinel, never raise.
-    comm = make_comm()
+    comm = _make_comm()
     assert run(comm.uart_set(1, b"a")) is False
     assert run(comm.uart_set_into(1, bytearray(2), 2)) is False
     assert run(comm.uart_set_stream(1, 4, lambda chunk, buf: 0)) is False
@@ -487,21 +476,25 @@ def test_every_public_method_is_gated_before_setup() -> None:
 
 
 def test_logger_injection_uses_both_routes() -> None:
-    own = make_comm(name="UART_X")
+    own = _make_comm(name="UART_X")
     assert own.name == "UART_X"
     assert own.pr.name == own.name  # registration keys on one and the history on the other
-    shared = make_comm(logger=own.pr)
+    shared = _make_comm(logger=own.pr)
     assert shared.pr is own.pr  # the FRAMManager-style reach-through
 
 
 def test_a_fram_backed_log_reads_back_through_a_second_logger() -> None:
-    manager, chip = _make_fram_manager()
-    comm = make_comm(name="UART_X", log=LogConfig(manager, 10, None))
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    assert manager.initialized is True
+    comm = _make_comm(name="UART_X", log=LogConfig(manager, 10, None))
     assert isinstance(comm.pr, PrintLogHistoryStore)
     assert run(comm.setup()) is True
-    assert run(comm.uart_set(1, b"x"), limit=_RUN_BOUND_S) is False  # nothing is on the line: a silent peer
+    assert run(comm.uart_set(1, b"x")) is False  # nothing is on the line: a silent peer
     assert persisted(comm)[-1] == _e("UART_NO_ACK"), persisted(comm)
-    rebooted, _ = _make_fram_manager(chip)
+    rebooted, _ = make_fram_manager(chip=chip)  # a fresh manager over the same memory: a simulated reboot
+    run(rebooted.setup())
+    assert rebooted.initialized is True
     second = make_logger(LogConfig(rebooted, 10, None), "UART_X")
     run(second.setup())
     entry = run(second.get_log())["UART_X"]
@@ -510,7 +503,7 @@ def test_a_fram_backed_log_reads_back_through_a_second_logger() -> None:
 
 
 def test_get_error_counter_returns_the_shared_envelope() -> None:
-    comm = make_comm(name="UART_X")
+    comm = _make_comm(name="UART_X")
     log = run(comm.get_error_counter())
     assert "UART_X" in log
     entry = log["UART_X"]
@@ -521,7 +514,7 @@ def test_get_error_counter_returns_the_shared_envelope() -> None:
 
 def test_reset_clears_the_history_and_the_streak_state() -> None:
     # A reset the caller expects to be total must not leave the escalate-once state behind.
-    comm = make_comm(name="UART_X")
+    comm = _make_comm(name="UART_X")
     run(comm._err(code("E", "UART_FRAME_INVALID"), "synthetic"))
     comm._valid_frames = 5
     comm._blind_resyncs = 2
@@ -531,7 +524,7 @@ def test_reset_clears_the_history_and_the_streak_state() -> None:
     assert comm._blind_resyncs == 0
 
 
-_DIAG_RESYNC_STREAK = 2  # mirrors asy_uart_comm.py's const: blind resyncs before the link diagnostic fires
+_DIAG_RESYNC_STREAK: int = src_int("src/asy_uart_comm.py", "_DIAG_RESYNC_STREAK")
 
 
 def _noisy_resyncs(pair: Pair) -> None:
@@ -542,7 +535,7 @@ def _noisy_resyncs(pair: Pair) -> None:
                 pair.fake_a.feed_rx(b"xyz")
                 await pair.initiator._resync(device)
 
-    run(scenario(), limit=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_reset_errors_keeps_the_valid_frame_count() -> None:
@@ -555,17 +548,17 @@ def test_reset_errors_keeps_the_valid_frame_count() -> None:
     assert worked.initiator._valid_frames == 1
     assert worked.initiator._blind_resyncs == 0
     _noisy_resyncs(worked)
-    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(worked.initiator), persisted(worked.initiator)
+    assert logged(worked.initiator) == (0, []), logged(worked.initiator)
 
     fresh = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     _noisy_resyncs(fresh)
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(fresh.initiator), persisted(fresh.initiator)
+    assert logged(fresh.initiator) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(fresh.initiator)
 
 
 def test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time() -> None:
     # A link failing once a second must not bury every other module's entries under one repeated
     # code: the central newest-entry rule (C.7.1) keeps one slot while ErrCount counts each fault.
-    comm = make_comm(name="UART_X")
+    comm = _make_comm(name="UART_X")
     for _ in range(21):
         run(comm._err(code("E", "UART_FRAME_INVALID"), "again"))
     assert persisted(comm) == [_e("UART_FRAME_INVALID")], persisted(comm)
@@ -578,7 +571,7 @@ def test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time() -> N
 
 def test_a_single_transient_fault_leaves_one_entry_not_a_pair() -> None:
     # A lone transient followed by a recovery costs one slot, never a matched pair.
-    comm = make_comm(name="UART_X")
+    comm = _make_comm(name="UART_X")
     run(comm._err(code("E", "UART_FRAME_INVALID"), "one-off"))
     comm._note_valid_frame()
     assert run(comm.get_error_counter())["UART_X"]["ErrCount"] == 1
@@ -587,7 +580,7 @@ def test_a_single_transient_fault_leaves_one_entry_not_a_pair() -> None:
 def test_the_valid_frame_count_saturates() -> None:
     # Read only for its zero test (the blind-resync diagnostic), so it stops at the shared cap rather
     # than growing without bound; one more validated frame leaves it there.
-    comm = make_comm(name="UART_X")
+    comm = _make_comm(name="UART_X")
     comm._valid_frames = COUNTER_CAP
     comm._note_valid_frame()
     assert comm._valid_frames == COUNTER_CAP
@@ -606,9 +599,9 @@ def test_the_blind_resync_streak_saturates() -> None:
             pair.fake_a.feed_rx(b"\x01\x02\x03")  # bytes on the line, and no frame ever valid
             await comm._resync(device)
 
-    run(blind_resync(), limit=_RUN_BOUND_S)
+    run(blind_resync())
     assert comm._blind_resyncs == _DIAG_RESYNC_STREAK
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(comm), persisted(comm)
+    assert logged(comm) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(comm)
 
 
 @_on_poll_rounds
@@ -618,21 +611,22 @@ def test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic() ->
     pair = Pair(get_callback=echo_get(b""), set_callback=accept_set())
     pair.driver_a.discarded_bytes = 40  # dropped before setup: not this link's evidence
     assert run(pair.initiator.setup()) is True
+
     async def resyncs(dropped: int) -> None:
         async with pair.driver_a as device:
             for _ in range(_DIAG_RESYNC_STREAK):
                 pair.driver_a.discarded_bytes += dropped
                 await pair.initiator._resync(device)
 
-    run(resyncs(0), limit=_RUN_BOUND_S)
-    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(pair.initiator), persisted(pair.initiator)
-    run(resyncs(_FRAME - 1), limit=_RUN_BOUND_S)  # each a frame cut short and dropped inside the read
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(pair.initiator), persisted(pair.initiator)
+    run(resyncs(0))
+    assert logged(pair.initiator) == (0, []), logged(pair.initiator)
+    run(resyncs(_FRAME - 1))  # each a frame cut short and dropped inside the read
+    assert logged(pair.initiator) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(pair.initiator)
 
 
 def test_the_discard_count_is_read_across_its_wrap() -> None:
     # discarded_bytes is a masked sequence, so the rise is the modular difference, never a negative.
-    comm = make_comm()
+    comm = _make_comm()
     comm._discarded_seen = COUNTER_CAP - 3
     comm._uart.discarded_bytes = 5  # type: ignore[union-attr]  # 9 bytes later, across the wrap
     assert comm._take_discarded() == 9
@@ -643,7 +637,7 @@ def test_a_delimited_frame_of_the_wrong_length_counts_as_discarded() -> None:
     # A delimited codec hands back a frame that decoded cleanly but is not one frame long; the read
     # fails, and its bytes count toward the mismatch diagnostic like any other dropped frame (J.6).
     bus = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(64))
-    bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+    bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
     fake_of(bus).rx_rate = float("inf")  # fed bytes land at once, not on the fake clock
     comm = UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits())
     assert run(comm.setup()) is True
@@ -657,7 +651,7 @@ def test_a_delimited_frame_of_the_wrong_length_counts_as_discarded() -> None:
             got = await comm._read_frame(device, TIMEOUT_MS)
         return got, comm._take_discarded()
 
-    got, dropped = run(scenario(), limit=_RUN_BOUND_S)
+    got, dropped = run(scenario())
     assert got is False
     assert dropped >= 5
 
@@ -670,10 +664,10 @@ def test_a_repeatedly_declined_command_does_not_refill_the_history() -> None:
 
     pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=decline, set_callback=accept_set()))
     for _ in range(5):
-        assert run(pair.with_listener(pair.initiator.uart_get(0x42)), limit=_STEP_BOUND_S) is None
+        assert run(pair.with_listener(pair.initiator.uart_get(0x42))) is None
     assert persisted(pair.responder) == [_w("UART_CMD_DECLINED")], persisted(pair.responder)
     assert run(pair.responder.get_error_counter())[pair.responder.name]["ErrCount"] == 5
-    assert run(pair.with_listener(pair.initiator.uart_get(0x43)), limit=_STEP_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(0x43))) is None
     assert persisted(pair.responder) == [_w("UART_CMD_DECLINED")], persisted(pair.responder)
     assert run(pair.responder.get_error_counter())[pair.responder.name]["ErrCount"] == 6
 
@@ -683,7 +677,7 @@ def test_a_repeatedly_declined_command_does_not_refill_the_history() -> None:
 
 def test_tx_and_rx_buffers_are_separate() -> None:
     # One shared buffer means a received frame overwrites the frame being acknowledged.
-    comm = make_comm()
+    comm = _make_comm()
     tx = comm._tx.get_buf()
     rx = comm._rx.get_buf()
     assert tx is not None
@@ -697,7 +691,7 @@ def test_tx_and_rx_buffers_are_separate() -> None:
 def test_a_failed_buffer_allocation_degrades_every_entry_point() -> None:
     # RegionBuffer returns None rather than raising, and every consumer's first act is to
     # check for it.
-    comm = make_comm()
+    comm = _make_comm()
     run(comm.setup())
     comm._tx._buf = None
     comm._rx._buf = None
@@ -711,13 +705,13 @@ def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
     # gate: padding then shrank the TX buffer and the id write raised out of a never-raise module.
     real_allocate = UARTComm._allocate
 
-    def starved(self: UARTComm) -> "Any":
+    def starved(self: UARTComm) -> "tuple[RegionBuffer, RegionBuffer, bytearray, bytearray, bytearray]":
         tx, rx, _ack, _zero, _cmd = real_allocate(self)
         return tx, rx, bytearray(0), bytearray(0), bytearray(0)
 
     UARTComm._allocate = starved  # type: ignore[method-assign]
     try:
-        comm = make_comm()
+        comm = _make_comm()
     finally:
         UARTComm._allocate = real_allocate  # type: ignore[method-assign]
     assert comm._init_errno == code("E", "ALLOC")
@@ -728,7 +722,7 @@ def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
 def test_padding_is_zero_filled_from_the_preallocated_buffer() -> None:
     # Leaving the remainder unwritten transmits the previous frame's payload remnants - a
     # real data leak between unrelated messages.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._prepare_tx(1, _CMD_SET, 2, 2, b"\xaa" * PAYLOAD_SIZE, PAYLOAD_SIZE) is True
     assert comm._prepare_tx(2, _CMD_SET, 2, 2, b"\xbb", 1) is True
     buf = comm._tx.get_buf()
@@ -738,7 +732,7 @@ def test_padding_is_zero_filled_from_the_preallocated_buffer() -> None:
 
 
 def test_payload_size_is_immutable_after_construction() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert not hasattr(comm, "set_payload_size")  # no setter exists
 
 
@@ -748,8 +742,8 @@ def test_payload_size_is_immutable_after_construction() -> None:
 def test_starter_lists_match_the_role() -> None:
     # An initiator exposing a listen task would mean both ends initiate, and the protocol
     # has no arbitration for that.
-    initiator = make_comm(role=ROLE_INITIATOR)
-    responder = make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
+    initiator = _make_comm(role=ROLE_INITIATOR)
+    responder = _make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
     assert initiator.get_task_starters() == []
     assert responder.get_task_starters() == [responder.start_asy_listen]
     assert initiator.get_timer_starters() == []
@@ -780,28 +774,25 @@ def test_setup_drains_a_partial_frame_left_over_from_before() -> None:
 def test_a_ring_refused_at_setup_names_its_cause() -> None:
     # The driver says why it could not build the ring; setup() keeps the one code and puts the cause in
     # its message, so "no bus" and a refused DMA channel no longer read alike.
-    comm = make_comm()
+    comm = _make_comm()
     comm._uart.rx_ring = 100  # type: ignore[union-attr]  # not a power of two: the ring cannot wrap
     comm.pr.set_level(1)
-    recorder = _PrintRecorder()
-    try:
+    with record_prints() as recorder:
         assert run(comm.setup()) is False
-    finally:
-        recorder.restore()
     assert persisted(comm) == [_e("UART_NO_BUS")], persisted(comm)
     assert "ring size" in recorder.text(), recorder.text()
 
 
 def test_a_responder_without_callbacks_is_refused_at_construction() -> None:
     # Every GET and SET would be unanswerable, discovered only when the peer first asks.
-    assert make_comm(role=ROLE_RESPONDER)._init_errno != 0
-    assert make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""))._init_errno != 0
+    assert _make_comm(role=ROLE_RESPONDER)._init_errno != 0
+    assert _make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""))._init_errno != 0
 
 
 def test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success() -> None:
     # A zero-delay retry is asy_captive_dns.py's measured recovery storm; a backoff that
     # never resets leaves a recovered link throttled at the cap forever.
-    comm = make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
+    comm = _make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
     assert comm._backoff_initial_ms == TIMEOUT_MS // 2
     assert comm._backoff_max_ms == TIMEOUT_MS * 5
     assert comm._backoff_max_ms > comm._backoff_initial_ms
@@ -809,7 +800,7 @@ def test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success() -> 
 
 def test_the_listen_loop_survives_a_raising_callback() -> None:
     # uart_listen() is contracted never to raise, but a contract is not an enforcement.
-    def explode(cmd_id: int) -> "tuple[bool, Any]":
+    def explode(cmd_id: int) -> "tuple[bool, bytes]":
         raise ValueError("callback blew up")
 
     pair = Pair(get_callback=explode, set_callback=accept_set())
@@ -823,12 +814,12 @@ def test_the_listen_loop_survives_a_raising_callback() -> None:
         loop.cancel()
         return alive and got is None
 
-    assert run(scenario(), limit=_STEP_BOUND_S) is True
+    assert run(scenario()) is True
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Frame layer
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 @_on_poll_rounds
@@ -838,12 +829,14 @@ def test_a_declined_get_does_not_back_off_the_next_answer() -> None:
     def get_cb(cmd_id: int) -> "tuple[bool, bytes]":
         return cmd_id == 1, b"answer"
 
-    pair = run(build_pair(get_callback=get_cb, set_callback=accept_set()), RUN_LIMIT_S)
+    pair = run(build_pair(get_callback=get_cb, set_callback=accept_set()))
     recorder = _SleepRecorder(_FLOOD_STEP_MS)
     initial = pair.responder._backoff_initial_ms
+    listener: list[object] = []
 
     async def scenario() -> "tuple[list[PieceBuffer | None], PieceBuffer | None]":
         task = pair.responder.start_asy_listen()
+        listener.append(task)
         try:
             declined: list[PieceBuffer | None] = []
             while len(declined) < 4:  # no await inside a comprehension on MicroPython
@@ -853,18 +846,66 @@ def test_a_declined_get_does_not_back_off_the_next_answer() -> None:
             task.cancel()
 
     try:
-        declined, answer = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+        declined, answer = run(scenario())
     finally:
         recorder.restore()
     assert declined == [None, None, None, None]
     assert copied_out(answer) == b"answer"
-    assert [d for d in recorder.delays if d >= initial] == [], recorder.delays
+    # The listener's own sleeps: the initiator waits out each resync's hold-off in one sleep of its own.
+    assert [d for n, d in enumerate(recorder.delays) if recorder.callers[n] is listener[0] and d >= initial] == [], recorder.delays
+
+
+def _second_set_while_the_fram_bus_is_held(set_cb: "CommCallback") -> "tuple[bool, bool]":
+    # Two SETs, ids 1 and 2, while another FRAM user holds the bus the responder's log writes need (an SGP40 backup held
+    # it up to 5.8 s on the bench, 2026-11-07); the hold ends only once the second SET has its answer.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=set_cb))
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
+    pair.responder.pr = make_logger(LogConfig(manager, 10, None), pair.responder.name)
+    run(pair.responder.pr.setup())
+
+    async def scenario() -> "tuple[bool, bool]":
+        held, released = asyncio.Event(), asyncio.Event()
+
+        async def hold_the_bus() -> None:
+            held.set()
+            await released.wait()
+
+        holder = asyncio.create_task(hold_the_bus())
+        await held.wait()
+        listener = pair.responder.start_asy_listen()
+        try:
+            return await pair.initiator.uart_set(1, b"x"), await pair.initiator.uart_set(2, b"y")
+        finally:
+            released.set()
+            await holder
+            listener.cancel()
+
+    return run(scenario())
+
+
+def test_a_declined_set_resyncs_without_waiting_on_its_fram_log_write() -> None:
+    # The resync runs at once, so the initiator's next SET, one quiet window after its own recovery, is received, not drained.
+    def set_cb(cmd_id: int) -> "tuple[bool, None]":
+        return cmd_id == 2, None
+
+    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
+    assert outcome == (False, True), outcome
+
+
+def test_a_fault_resyncs_without_waiting_on_its_fram_log_write() -> None:
+    # The same through _fault(): an unusable callback result is a CALLBACK fault.
+    def set_cb(cmd_id: int) -> "tuple[bool, None] | None":
+        return (True, None) if cmd_id == 2 else None
+
+    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
+    assert outcome == (False, True), outcome
 
 
 @_on_poll_rounds
 def test_a_dead_link_still_doubles_its_backoff() -> None:
     # A listen that returns no command kind - noise that never validates - backs off, doubling to its cap.
-    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     recorder = _SleepRecorder(_FLOOD_STEP_MS)
     responder = pair.responder
 
@@ -882,7 +923,7 @@ def test_a_dead_link_still_doubles_its_backoff() -> None:
             task.cancel()
 
     try:
-        run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+        run(scenario())
     finally:
         recorder.restore()
     initial = responder._backoff_initial_ms
@@ -892,7 +933,7 @@ def test_a_dead_link_still_doubles_its_backoff() -> None:
 def test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling() -> None:
     # At the largest timeout construction accepts, the doubling backoff still never asks sleep_ms()
     # for a delay outside ticks_add()'s 2**29 ms range (Part F.1).
-    comm = make_comm(role=ROLE_RESPONDER, timeout=89_478_485, get_callback=echo_get(b""), set_callback=accept_set())
+    comm = _make_comm(role=ROLE_RESPONDER, timeout=89_478_485, get_callback=echo_get(b""), set_callback=accept_set())
     assert run(comm.setup()) is True
     recorder = _SleepRecorder(0)
 
@@ -902,12 +943,12 @@ def test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling() -> None:
     async def scenario() -> None:
         task = comm.start_asy_listen()
         while len(recorder.delays) < 8:
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_RECORDER_POLL_MS)
         task.cancel()
 
-    comm.uart_listen = no_command  # type: ignore[method-assign,assignment]
+    comm.uart_listen = no_command  # type: ignore[assignment, method-assign]
     try:
-        run(scenario(), limit=_STEP_BOUND_S)
+        run(scenario())
     finally:
         recorder.restore()
     expected = [min(comm._backoff_initial_ms * 2**i, comm._backoff_max_ms) for i in range(8)]
@@ -917,7 +958,7 @@ def test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling() -> None:
 
 
 def test_header_fields_land_at_their_documented_offsets() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._prepare_tx(0x2A, _CMD_SET, 3, 2, b"\x01\x02", 2) is True
     buf = comm._tx.get_buf()
     assert buf is not None
@@ -932,7 +973,7 @@ def test_header_fields_land_at_their_documented_offsets() -> None:
 def test_out_of_range_header_fields_are_rejected_not_truncated() -> None:
     # struct.pack() truncates silently on this platform, so an out-of-range CHUNKS would
     # become a plausible wrong value instead of an error.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._prepare_tx(0xFF, _CMD_SET, 2, 1, b"\x01", 1) is False  # UID 0xFF is never emitted
     assert comm._prepare_tx(1, 0x03, 2, 1, b"\x01", 1) is False  # not a real command
     assert comm._prepare_tx(1, _CMD_SET, 256, 1, b"\x01", 1) is False
@@ -940,21 +981,19 @@ def test_out_of_range_header_fields_are_rejected_not_truncated() -> None:
 
 
 def test_a_payload_longer_than_the_region_is_rejected() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._prepare_tx(1, _CMD_SET, 2, 2, b"x" * (PAYLOAD_SIZE + 1), PAYLOAD_SIZE + 1) is False
 
 
 def test_size_always_matches_the_bytes_actually_copied() -> None:
     # A SIZE passed independently of the copy lets the peer read padding as payload.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._prepare_tx(1, _CMD_SET, 2, 2, b"\x01\x02", 4) is False  # claims more than it has
 
 
 def test_the_uid_cycle_covers_every_legal_value_and_never_0xff() -> None:
     # The 0xFE -> 0 wrap is a deliberate off-by-one barrier and keeps the UID space exactly
     # as large as the longest train, so no UID repeats inside one transfer.
-    from asy_uart_comm import _next_uid
-
     seen = []
     uid = 0
     for _ in range(255):
@@ -967,8 +1006,6 @@ def test_the_uid_cycle_covers_every_legal_value_and_never_0xff() -> None:
 
 def test_the_next_uid_prediction_is_correct_at_the_wrap_boundary() -> None:
     # A bare +1 mispredicts precisely here, once every 255 frames.
-    from asy_uart_comm import _next_uid
-
     assert _next_uid(0xFD) == 0xFE
     assert _next_uid(0xFE) == 0
 
@@ -985,7 +1022,7 @@ def build_frame(uid: int = 1, cmd: int = _CMD_SET, size: int = 1, chunks: int = 
 
 
 def test_validation_accepts_every_legal_frame_shape() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(), _CMD_SET, 1, None, None) == 0
     assert comm._validate(build_frame(cmd=_CMD_GET, chunks=1), _CMD_GET, 1, None, None) == 0
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1), _CMD_ACK, 1, 1, 1) == 0
@@ -996,7 +1033,7 @@ def test_validation_accepts_every_legal_frame_shape() -> None:
 def test_a_multi_bit_command_is_rejected_rather_than_falling_through() -> None:
     # Today's bitmask test lets 0x03 and 0x06 pass validation and then match no dispatch
     # branch, so a malformed frame is silently mishandled instead of rejected.
-    comm = make_comm()
+    comm = _make_comm()
     for bad in (0x03, 0x06, 0x00, 0x07):
         assert comm._validate(build_frame(cmd=bad), _CMD_SET, 1, None, None) != 0
 
@@ -1005,7 +1042,7 @@ def test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one()
     # The exact-match membership test separates "not a command at all" from "a command, but not the
     # one due here" - only the second is the peer's contract violation, which gets its own
     # errno. A bitmask collapses the two, since 0x06 shares bits with both GET and SET.
-    comm = make_comm()
+    comm = _make_comm()
     undefined = comm._validate(build_frame(cmd=0x06), _CMD_ACK, 1, 1, 1)
     wrong_kind = comm._validate(build_frame(cmd=_CMD_SET), _CMD_ACK, 1, 1, 1)
     assert undefined != 0
@@ -1016,19 +1053,19 @@ def test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one()
 def test_a_changed_chunks_total_is_rejected() -> None:
     # Otherwise a peer truncates a transfer mid-train by re-declaring the total, and the
     # receiver reports success on partial data.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(size=PAYLOAD_SIZE, chunks=2, cur=2, uid=2), _CMD_SET, 2, 3, 2) != 0
 
 
 def test_a_stale_data_chunk_is_rejected_by_its_uid() -> None:
     # Invisible before - only ACKs were UID-checked.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(size=PAYLOAD_SIZE, chunks=3, cur=2, uid=9), _CMD_SET, 2, 3, 2) != 0
 
 
 def test_a_first_chunk_with_the_wrong_size_is_rejected() -> None:
     # Else the command id is silently read from a padding byte, usually 0.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(size=0), _CMD_SET, 1, None, None) != 0
     assert comm._validate(build_frame(size=2), _CMD_SET, 1, None, None) != 0
 
@@ -1036,32 +1073,32 @@ def test_a_first_chunk_with_the_wrong_size_is_rejected() -> None:
 def test_a_short_middle_chunk_is_rejected() -> None:
     # The payload is silently corrupted, and the length still adds up if a later chunk
     # compensates.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(size=PAYLOAD_SIZE - 1, chunks=4, cur=2, uid=2), _CMD_SET, 2, 4, 2) != 0
 
 
 def test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last() -> None:
     # An empty middle chunk must not be misread as a genuinely empty payload.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(size=0, chunks=2, cur=2, uid=2), _CMD_SET, 2, 2, 2) == 0
     assert comm._validate(build_frame(size=0, chunks=3, cur=3, uid=3), _CMD_SET, 3, 3, 3) != 0
 
 
 def test_a_set_declaring_a_single_chunk_is_rejected() -> None:
     # No data chunk exists to acknowledge, and a conforming sender floors at 2.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(chunks=1, cur=1), _CMD_SET, 1, None, None) != 0
 
 
 def test_a_zero_chunk_train_is_rejected() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(chunks=0, cur=1), _CMD_SET, 1, None, None) != 0
 
 
 def test_a_get_declaring_any_chunk_count_but_one_is_refused() -> None:
     # J.4 defines a GET as a one-chunk train; a GET declaring more chunks was answered as though it
     # were one. Refused like any invalid frame, so no ACK is emitted for it.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(cmd=_CMD_GET, chunks=1), _CMD_GET, 1, None, None) == 0
     for chunks in (0, 2, 3, 255):
         assert comm._validate(build_frame(cmd=_CMD_GET, chunks=chunks), _CMD_GET, 1, None, None) == code("E", "UART_FRAME_INVALID"), chunks
@@ -1069,7 +1106,7 @@ def test_a_get_declaring_any_chunk_count_but_one_is_refused() -> None:
 
 def test_a_malformed_ack_is_rejected() -> None:
     # A malformed ACK accepted as valid confirmation is worse than no ACK at all.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=1, chunks=1, cur=1), _CMD_ACK, 1, 1, 1) != 0
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=0, chunks=2, cur=1), _CMD_ACK, 1, 1, 1) != 0
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1, uid=9), _CMD_ACK, 1, 1, 1) != 0
@@ -1078,7 +1115,7 @@ def test_a_malformed_ack_is_rejected() -> None:
 def test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site() -> None:
     # A data frame where an ACK is due, or a GET arriving at an initiator, is the
     # peer's violation and must be visible as such.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(cmd=_CMD_SET), _CMD_ACK, 1, 1, 1) != 0
     assert comm._validate(build_frame(cmd=_CMD_GET, chunks=1), _CMD_ACK, 1, 1, 1) != 0
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=0, chunks=1), _CMD_SET, 1, None, None) != 0
@@ -1086,7 +1123,7 @@ def test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site() -> None:
 
 def test_validation_never_raises_on_a_short_or_missing_buffer() -> None:
     # An exception escaping a module contracted never to raise.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(None, _CMD_SET, 1, None, None) != 0
     assert comm._validate(bytearray(2), _CMD_SET, 1, None, None) != 0
     assert comm._validate(bytearray(0), _CMD_SET, 1, None, None) != 0
@@ -1094,7 +1131,7 @@ def test_validation_never_raises_on_a_short_or_missing_buffer() -> None:
 
 def test_a_received_uid_of_0xff_is_rejected() -> None:
     # Out of contract - a conforming peer never sends it.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._validate(build_frame(uid=0xFF), _CMD_SET, 1, None, None) != 0
 
 
@@ -1135,28 +1172,15 @@ def test_an_ack_is_sent_even_while_the_write_hold_off_is_active() -> None:
     assert len(pair.wire_from_responder()) == _FRAME
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Exchange layer
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 @_on_poll_rounds
 def test_a_clean_write_round_trip_is_acknowledged() -> None:
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"))) is True
-
-
-@_on_poll_rounds
-def test_a_responder_that_never_finishes_its_rounds_fails_the_exchange() -> None:
-    # A second listen round no frame will ever reach: the initiator's call succeeds, and the
-    # stalled responder must fail the test instead of being cancelled out of sight.
-    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    try:
-        run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2))
-    except AssertionError as exc:
-        assert "did not finish" in str(exc), exc
-    else:
-        raise AssertionError("a stalled responder was cancelled silently")
 
 
 @_on_poll_rounds
@@ -1170,7 +1194,7 @@ def test_a_missing_ack_bounds_the_wait_and_resyncs() -> None:
     # sides quiesce so the next transfer starts on a clean frame boundary.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True  # the responder's ACKs never arrive
-    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi")), limit=_SILENT_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"))) is False
     assert pair.initiator._holdoff_active is True  # the hold-off that follows a resync
 
 
@@ -1179,13 +1203,13 @@ def test_a_write_that_never_reaches_the_peer_fails_the_same_way() -> None:
     # Indistinguishable from a lost ACK at this layer, and the distinction is not invented.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_a).silent = True
-    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), listener_may_stall=True), limit=_SILENT_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), listener_may_stall=True)) is False
 
 
 def test_a_stale_ack_uid_is_rejected() -> None:
     # The UID space is exactly as large as the longest train, so no UID repeats inside one
     # transfer and a stale ACK can never be mistaken for the current one.
-    comm = make_comm()
+    comm = _make_comm()
     ack = build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1, uid=5)
     assert comm._validate(ack, _CMD_ACK, 1, 1, 5) == 0
     assert comm._validate(ack, _CMD_ACK, 1, 1, 6) != 0
@@ -1208,9 +1232,9 @@ def test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success() -
     async def scenario() -> "tuple[bool, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(3, b"abc")
-        return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+        return sent, await listener
 
-    sent, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    sent, result = run(scenario())
     assert sent is False  # the sender cannot know, so it reports failure
     assert result.cmd_id == 3  # the receiver genuinely has the data
     assert copied_out(result.payload) == b"abc"
@@ -1218,14 +1242,14 @@ def test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success() -
 
 def test_the_write_hold_off_uses_a_deadline_and_expires() -> None:
     # E3: a deadline cannot be dropped the way a soft one-shot Timer callback can.
-    comm = make_comm()
+    comm = _make_comm()
     run(comm.setup())
     # Sampled into locals and asserted together: asserting the same attribute's identity twice in
     # sequence narrows it to a literal and makes the rest of the test statically unreachable.
     before = comm._holdoff_active
     comm._hold_off_writes()
     during = comm._holdoff_active
-    run(asyncio.wait_for(comm._await_write_gate(), _SHORT_BOUND_S))
+    run(comm._await_write_gate())
     after = comm._holdoff_active
     assert (before, during, after) == (False, True, False)  # expired by time, not by a callback
 
@@ -1233,81 +1257,61 @@ def test_the_write_hold_off_uses_a_deadline_and_expires() -> None:
 def test_the_hold_off_window_derives_from_timeout() -> None:
     # Changelog A4: both constants are 1.5 x timeout and neither is hardcoded, because a peer
     # draining for less transmits into the other's drain window.
-    assert make_comm(timeout=100)._resync_window_ms() == 150
-    assert make_comm(timeout=400)._resync_window_ms() == 600
+    assert _make_comm(timeout=100)._resync_window_ms() == 150
+    assert _make_comm(timeout=400)._resync_window_ms() == 600
+
+
+def _gate_sleeps(comm: UARTComm, clock: Ticks30Time, idle_ms: int) -> "tuple[list[int], bool]":
+    # Arms the hold-off on the fake clock, lets idle_ms pass, then runs the gate: its sleeps (each advancing the clock) and
+    # whether the hold-off is still active after it.
+    slept: list[int] = []
+
+    class _Asyncio:  # the gate's one asyncio name
+        @staticmethod
+        async def sleep_ms(ms: int) -> None:
+            slept.append(ms)
+            clock.advance(ms)
+            await asyncio.sleep_ms(0)
+
+    asy_uart_comm.time = clock  # type: ignore[assignment]
+    asy_uart_comm.asyncio = _Asyncio()  # type: ignore[assignment]
+    try:
+        comm._hold_off_writes()
+        clock.advance(idle_ms)
+        run(comm._await_write_gate())
+    finally:
+        asy_uart_comm.time, asy_uart_comm.asyncio = time, asyncio
+    return slept, comm._holdoff_active
 
 
 def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
-    # Armed 5 ms before rp2's 2**30 ms wrap, the deadline lands past it: still held one ms before it, released one
-    # ms after. A raw subtraction misreads exactly this, once per uptime period, and waiting never reaches it.
-    comm = make_comm()
+    # Armed 5 ms before rp2's 2**30 ms wrap, the deadline lands past it and the gate waits the whole window: a raw
+    # subtraction misreads exactly this, once per uptime period.
+    comm = _make_comm()
+    window = comm._resync_window_ms()
     clock = Ticks30Time(TICKS_PERIOD - 5)
-    asy_uart_comm.time = clock  # type: ignore[assignment]
-
-    async def scenario() -> "tuple[bool, bool, bool]":
-        comm._hold_off_writes()
-        window = comm._resync_window_ms()
-        assert clock.now + window > TICKS_PERIOD
-        gate = asyncio.create_task(comm._await_write_gate())
-        await asyncio.sleep_ms(5)  # the gate's first look, still before the wrap
-        held_before_the_wrap = not gate.done()
-        clock.advance(window - 1)
-        await asyncio.sleep_ms(5)  # several of the gate's rounds, each sleeping the 1 ms left
-        held_past_it = not gate.done()
-        clock.advance(2)
-        await asyncio.wait_for(gate, _PAST_DEADLINE_BOUND_S)
-        return held_before_the_wrap, held_past_it, comm._holdoff_active
-
-    try:
-        assert run(scenario()) == (True, True, False)
-    finally:
-        asy_uart_comm.time = time
-
-
-def _hold_off_after(comm: UARTComm, clock: Ticks30Time, steps: "list[int]") -> "list[bool]":
-    # Arms the hold-off, then for each step advances the fake clock and reports whether the gate is
-    # still held once it has had time for a few of its own rounds (each sleeps at most 20 ms).
-    async def scenario() -> "list[bool]":
-        comm._hold_off_writes()
-        gate = asyncio.create_task(comm._await_write_gate())
-        held = []
-        for step in steps:
-            clock.advance(step)
-            await asyncio.sleep_ms(_HOLD_OFF_LOOK_MS)
-            held.append(not gate.done())
-        gate.cancel()
-        return held
-
-    asy_uart_comm.time = clock  # type: ignore[assignment]
-    try:
-        return run(scenario())
-    finally:
-        asy_uart_comm.time = time
+    assert _gate_sleeps(comm, clock, 0) == ([window], False)
+    assert clock.now > TICKS_PERIOD
 
 
 def test_a_hold_off_aged_past_the_tick_horizon_expires() -> None:
     # Idle for more than 2**29 ms, the stored deadline reads as days ahead; one more than a window
     # away cannot be a deadline this side set, so it has expired.
-    comm = make_comm()
-    clock = Ticks30Time(1000)
-    assert _hold_off_after(comm, clock, [2**29 + 1000]) == [False]
-    assert comm._holdoff_active is False
+    assert _gate_sleeps(_make_comm(), Ticks30Time(1000), 2**29 + 1000) == ([], False)
 
 
 def test_the_aliased_band_holds_at_most_one_window() -> None:
     # A guard: in the last window of the 2**30 period the aged deadline reads as one inside the window,
     # so it holds, but never longer than the one window a normal hold-off costs.
-    comm = make_comm()
+    comm = _make_comm()
     window = comm._resync_window_ms()
-    clock = Ticks30Time(1000)
-    assert _hold_off_after(comm, clock, [TICKS_PERIOD + window // 2, window // 2 - 1, 2]) == [True, True, False]
+    assert _gate_sleeps(comm, Ticks30Time(1000), TICKS_PERIOD + window // 2) == ([window - window // 2], False)
 
 
-def test_an_unaged_hold_off_releases_at_its_window() -> None:
-    # A guard: the ordinary hold-off is unchanged, held one ms short of its window and released after it.
-    comm = make_comm()
-    window = comm._resync_window_ms()
-    assert _hold_off_after(comm, Ticks30Time(1000), [window - 1, 2]) == [True, False]
+def test_an_unaged_hold_off_waits_its_deadline_once() -> None:
+    # The gate sleeps until its deadline in one wait, never in steps that would wake it every few ms of the window.
+    comm = _make_comm()
+    assert _gate_sleeps(comm, Ticks30Time(1000), 0) == ([comm._resync_window_ms()], False)
 
 
 @_on_poll_rounds
@@ -1321,23 +1325,43 @@ def test_listening_clears_the_hold_off() -> None:
 
 
 @_on_poll_rounds
-def test_a_frame_read_failing_on_a_receive_error_persists_the_overrun_warning() -> None:
-    # The frame fails under its own code, and the overrun that caused it is named beside it, so a
-    # silent peer and a receive overrun no longer read alike.
+def test_a_frame_read_failing_on_a_receive_error_fails_under_its_own_code_alone() -> None:
+    # The overrun fails the frame like any lost frame: one entry, the frame's own code; the driver counts the overrun.
     pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set()))
     pair.fake_a.plant_rx_error(0x08)  # UARTRSR OE: the ACK this side waits for is lost to an overrun
-    assert run(pair.initiator.uart_set(1, b"x"), limit=_STEP_BOUND_S) is False
-    assert persisted(pair.initiator) == [_w("UART_RX_OVERRUN"), _e("UART_NO_ACK")], persisted(pair.initiator)
+    assert run(pair.initiator.uart_set(1, b"x")) is False
+    assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
+    assert pair.driver_a.rx_overruns == 1
 
 
 @_on_poll_rounds
-def test_a_transmit_that_never_drains_fails_within_the_link_timeout() -> None:
-    # A stalled transmitter used to hold the write forever; the write now gives up at the link's
-    # reply timeout and fails like any other write, so the link resyncs and recovers.
-    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set()))
-    pair.fake_a.tx_pending_rounds = 1 << 30  # txdone() never answers True
-    assert run(pair.initiator.uart_set(1, b"x"), limit=_STEP_BOUND_S) is False
-    assert persisted(pair.initiator)[0] == _e("UART_WRITE_FAILED"), persisted(pair.initiator)
+def test_a_get_left_unanswered_keeps_its_silent_message() -> None:
+    # The GET's ACK arrives and its answer never does: the reply wait names a silence, never a dropped frame (J.6).
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
+    pair.link.direction_from(pair.fake_b).truncate_after = _FRAME  # the GET's ACK only
+    with record_prints() as recorder:
+        assert run(pair.with_listener(pair.initiator.uart_get(1))) is None
+    assert persisted(pair.initiator)[:1] == [_e("TIMEOUT")], persisted(pair.initiator)
+    assert "UART_A UART error: no answer to GET 1" in recorder.text(), recorder.text()
+    assert "answer read dropped" not in recorder.text(), recorder.text()
+
+
+@_on_poll_rounds
+def test_a_listen_cleared_before_any_frame_keeps_its_silent_message() -> None:
+    # A cancelled listen read no frame reached: its history entry reads as a silence, never as a dropped frame (J.6).
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
+
+    async def scenario() -> None:
+        listener = asyncio.create_task(pair.responder.uart_listen())
+        await asyncio.sleep_ms(_LISTENER_PARK_MS)  # let it park in the unbounded read
+        await pair.responder.clear()
+        await listener
+
+    with record_prints() as recorder:
+        run(scenario())
+    assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
+    assert "UART_B UART error: listen read failed or was cancelled" in recorder.text(), recorder.text()
+    assert "listen read dropped" not in recorder.text(), recorder.text()
 
 
 def test_the_drain_ends_once_the_line_is_quiet() -> None:
@@ -1348,7 +1372,7 @@ def test_the_drain_ends_once_the_line_is_quiet() -> None:
         async with pair.driver_a as device:
             return await pair.initiator._drain(device)
 
-    assert run(scenario(), limit=_STEP_BOUND_S) == len(b"garbage bytes")
+    assert run(scenario()) == len(b"garbage bytes")
 
 
 def test_the_drain_is_bounded_against_a_peer_that_never_stops() -> None:
@@ -1364,12 +1388,12 @@ def test_the_drain_is_bounded_against_a_peer_that_never_stops() -> None:
         flooder = asyncio.create_task(flood())
         try:
             async with pair.driver_a as device:
-                await asyncio.wait_for(pair.initiator._drain(device), _STEP_BOUND_S)
+                await pair.initiator._drain(device)
         finally:
             flooder.cancel()
         return True
 
-    assert run(scenario(), limit=_RUN_BOUND_S) is True  # terminates at the bound instead of looping forever
+    assert run(scenario()) is True  # terminates at the bound instead of looping forever
 
 
 def test_a_drain_that_hits_its_bound_persists_the_drain_warning() -> None:
@@ -1385,12 +1409,12 @@ def test_a_drain_that_hits_its_bound_persists_the_drain_warning() -> None:
         flooder = asyncio.create_task(flood())
         try:
             async with pair.driver_a as device:
-                await asyncio.wait_for(pair.initiator._resync(device), _STEP_BOUND_S)
+                await pair.initiator._resync(device)
         finally:
             flooder.cancel()
         return True
 
-    assert run(scenario(), limit=_RUN_BOUND_S) is True
+    assert run(scenario()) is True
     assert persisted(pair.initiator) == [_w("UART_DRAIN_BOUND")], persisted(pair.initiator)
 
 
@@ -1402,16 +1426,30 @@ def test_a_quiet_resync_persists_nothing() -> None:
         async with pair.driver_a as device:
             await pair.initiator._resync(device)
 
-    run(scenario(), limit=_STEP_BOUND_S)
+    run(scenario())
     assert persisted(pair.initiator) == [], persisted(pair.initiator)
     assert pair.initiator._holdoff_active is True  # the resync itself still ran
+
+
+def test_a_routine_resync_prints_the_bytes_it_drained() -> None:
+    # A frame the drain swallowed shows on the console without a trace image.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
+    pair.fake_a.feed_rx(b"xyz")
+
+    async def scenario() -> None:
+        async with pair.driver_a as device:
+            await pair.initiator._resync(device)
+
+    with record_prints(pair.initiator.pr) as rec:
+        run(scenario())
+    assert rec.lines == [("UART_A", "Resyncing the link, drained", 3, "bytes")], rec.lines
 
 
 def test_one_fault_on_a_quiet_line_adds_one_entry() -> None:
     # The fault persists its errno; the resync it performs prints only.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True
-    assert run(pair.initiator.uart_set(1, b"x"), limit=_RUN_BOUND_S) is False
+    assert run(pair.initiator.uart_set(1, b"x")) is False
     assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
     assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 1
     assert pair.initiator._holdoff_active is True  # the resync ran
@@ -1430,11 +1468,11 @@ def test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54() -> None:
         flooder = asyncio.create_task(flood())
         try:
             async with pair.driver_a as device:
-                await asyncio.wait_for(pair.initiator._fault(device, code("E", "UART_NO_ACK"), "synthetic"), _STEP_BOUND_S)
+                await pair.initiator._fault(device, code("E", "UART_NO_ACK"), "synthetic")
         finally:
             flooder.cancel()
 
-    run(scenario(), limit=_RUN_BOUND_S)
+    run(scenario())
     assert persisted(pair.initiator) == [_e("UART_NO_ACK"), _w("UART_DRAIN_BOUND")], persisted(pair.initiator)
     assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 2
 
@@ -1442,7 +1480,7 @@ def test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54() -> None:
 def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
     # setup()'s drain is deliberately not a fault and not counted, but it shares _drain() - and while
     # the bound logged itself, a babbling peer put an entry in FRAM on every single boot.
-    comm = make_comm()
+    comm = _make_comm()
 
     async def flood() -> None:
         while True:
@@ -1452,12 +1490,12 @@ def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
     async def scenario() -> bool:
         flooder = asyncio.create_task(flood())
         try:
-            await asyncio.wait_for(comm.setup(), _STEP_BOUND_S)
+            await comm.setup()
         finally:
             flooder.cancel()
         return True
 
-    assert run(scenario(), limit=_RUN_BOUND_S) is True
+    assert run(scenario()) is True
     assert comm._drain_bound_hit is True  # the bound really was reached, so the check is not vacuous
     assert persisted(comm) == [], persisted(comm)
 
@@ -1465,7 +1503,7 @@ def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
 def test_a_flood_that_laps_the_ring_drains_to_its_bound_not_as_quiet() -> None:
     # A peer sending faster than the drain reads laps the receive ring, and the read reports that overrun as a
     # failure: the drain must keep going (the line is anything but quiet) until its bound, then log W54.
-    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
 
     async def flood() -> None:
         while True:
@@ -1476,11 +1514,11 @@ def test_a_flood_that_laps_the_ring_drains_to_its_bound_not_as_quiet() -> None:
         flooder = asyncio.create_task(flood())
         try:
             async with pair.driver_a as device:
-                await asyncio.wait_for(pair.initiator._resync(device), _STEP_BOUND_S)
+                await pair.initiator._resync(device)
         finally:
             flooder.cancel()
 
-    run(scenario(), limit=_RUN_BOUND_S)
+    run(scenario())
     assert pair.driver_a.rx_overruns > 0  # the case under test really happened
     assert pair.initiator._drain_bound_hit is True
     assert persisted(pair.initiator) == [_w("UART_DRAIN_BOUND")], persisted(pair.initiator)
@@ -1510,7 +1548,7 @@ def test_the_drain_reads_into_the_scratch_buffer() -> None:
         async with driver as device:
             return await pair.initiator._drain(device)
 
-    assert run(scenario(), limit=_STEP_BOUND_S) == 3
+    assert run(scenario()) == 3
     assert "read" not in calls
     assert "readinto" in calls
 
@@ -1524,7 +1562,7 @@ def test_a_resync_is_not_re_entrant() -> None:
         async with pair.driver_a as device:
             await pair.initiator._resync(device)
 
-    run(scenario(), limit=_STEP_BOUND_S)
+    run(scenario())
     assert pair.initiator._holdoff_active is False  # the nested call did nothing at all
 
 
@@ -1532,10 +1570,10 @@ def test_every_public_entry_point_converges_on_its_own_sentinel() -> None:
     # A caller must never believe a failed transfer succeeded.
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True  # nothing ever answers
-    assert run(pair.initiator.uart_set(1, b"x"), limit=_SILENT_BOUND_S) is False
-    assert run(pair.initiator.uart_get(1), limit=_SILENT_BOUND_S) is None
-    assert run(pair.initiator.uart_get_into(1, bytearray(16)), limit=_SILENT_BOUND_S) is None
-    assert run(pair.initiator.uart_set_into(1, bytearray(4), 4), limit=_SILENT_BOUND_S) is False
+    assert run(pair.initiator.uart_set(1, b"x")) is False
+    assert run(pair.initiator.uart_get(1)) is None
+    assert run(pair.initiator.uart_get_into(1, bytearray(16))) is None
+    assert run(pair.initiator.uart_set_into(1, bytearray(4), 4)) is False
 
 
 def test_clear_cancels_first_and_drains_exactly_once() -> None:
@@ -1554,50 +1592,47 @@ def test_clear_cancels_first_and_drains_exactly_once() -> None:
     async def scenario() -> None:
         listener = asyncio.create_task(pair.responder.uart_listen())
         await asyncio.sleep_ms(_LISTENER_PARK_MS)  # let it park in the unbounded read, holding the bus lock
-        await asyncio.wait_for(pair.responder.clear(), _STEP_BOUND_S)
+        await pair.responder.clear()
         listener.cancel()
 
-    run(scenario(), limit=_RUN_BOUND_S)
+    run(scenario())
     assert len(drains) == 1
 
 
 def test_clear_with_nothing_in_flight_takes_the_lock_and_drains() -> None:
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.fake_a.feed_rx(b"leftovers")
-    run(pair.initiator.clear(), limit=_STEP_BOUND_S)
+    run(pair.initiator.clear())
     assert pair.fake_a.rx_queue == bytearray()
 
 
-def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
-    # cancel_unacknowledged is cumulative, and clear() read it as a flag: once any holder had ever
-    # wedged, every later cancel - healthy ones included - persisted W55 again, which is the
-    # bounded-history churn Part C.7.1 exists to prevent, on a link that had already recovered.
+def test_clear_waits_out_a_healthy_holder_and_reports_nothing() -> None:
+    # A holder in the write gate's longest hold-off (1.5 x the 1,000 ms timeout, under the bus lock) acknowledges only
+    # when it leaves the locked region: clear() waits for that, with no deadline, and persists nothing.
     pair = Pair()
     run(pair.setup())
     bus = pair.initiator._uart
     assert bus is not None
 
-    async def hold(ms: int) -> None:
-        async with bus:  # the cancel is acknowledged on leaving the locked region, never before
-            await asyncio.sleep_ms(ms)
+    async def hold() -> None:
+        async with bus:
+            await asyncio.sleep_ms(_WRITE_GATE_HOLD_MS)
 
-    async def scenario(hold_ms: int) -> None:
-        holder = asyncio.create_task(hold(hold_ms))
-        await asyncio.sleep_ms(_INSIDE_LOCK_MS)
+    async def scenario() -> None:
+        holder = asyncio.create_task(hold())
+        await asyncio.sleep_ms(0)  # one turn: the holder takes the bus
+        assert bus.session_lock.locked()
         await pair.initiator.clear()
+        assert not bus.session_lock.locked()  # returned once the holder acknowledged on its way out
         await holder
 
-    run(scenario(_PAST_CANCEL_ACK_HOLD_MS), limit=_RUN_BOUND_S)  # past the driver's own 1000ms acknowledgement bound
-    assert bus.cancel_unacknowledged == 1
-    assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
-    run(scenario(_PROMPT_HOLD_MS), limit=_RUN_BOUND_S)  # a holder that acknowledges promptly: nothing new to report
-    assert bus.cancel_unacknowledged == 1
-    assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
+    run(scenario())
+    assert persisted(pair.initiator) == []
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Transaction layer
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 @_on_poll_rounds
@@ -1631,7 +1666,7 @@ def test_the_wire_log_of_a_multi_chunk_set_is_byte_exact() -> None:
 
 
 def test_chunk_counts_at_the_payload_size_boundaries() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._chunk_count(0) == 2
     assert comm._chunk_count(PAYLOAD_SIZE - 1) == 2
     assert comm._chunk_count(PAYLOAD_SIZE) == 2
@@ -1644,7 +1679,7 @@ def test_an_oversize_payload_is_rejected_before_the_first_frame() -> None:
     # Never partially sent - a half-delivered train is worse than a refused one.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     too_big = bytes(254 * PAYLOAD_SIZE + 1)
-    assert run(pair.initiator.uart_set(1, too_big), limit=_SILENT_BOUND_S) is False
+    assert run(pair.initiator.uart_set(1, too_big)) is False
     assert pair.wire_from_initiator() == b""
 
 
@@ -1655,14 +1690,14 @@ def test_a_missing_ack_at_each_train_position_aborts_and_resyncs() -> None:
     for kept_acks in (0, 1, 2):
         pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
         pair.link.direction_from(pair.fake_b).truncate_after = kept_acks * _FRAME
-        result = run(pair.with_listener(pair.initiator.uart_set(1, bytes(PAYLOAD_SIZE + 1))), limit=_LISTENER_RUN_BOUND_S)
+        result = run(pair.with_listener(pair.initiator.uart_set(1, bytes(PAYLOAD_SIZE + 1))))
         assert result is False, f"a train losing the ACK after {kept_acks} should fail"
         assert pair.initiator._holdoff_active is True, "every abort quiesces the link"
 
 
 @_on_poll_rounds
 def test_a_multi_chunk_payload_arrives_byte_identical() -> None:
-    got: list[Any] = []
+    got: list[bool] = []
 
     def remember(cmd_id: int) -> "tuple[bool, int | None]":
         return True, None
@@ -1674,11 +1709,11 @@ def test_a_multi_chunk_payload_arrives_byte_identical() -> None:
     async def scenario() -> ListenResult:
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(0x21, payload)
-        result = await asyncio.wait_for(listener, _SHORT_BOUND_S)
+        result = await listener
         got.append(sent)
         return result
 
-    result = run(scenario(), limit=_RUN_BOUND_S)
+    result = run(scenario())
     assert got == [True]
     assert result.cmd_id == 0x21
     assert copied_out(result.payload) == payload
@@ -1694,10 +1729,10 @@ def test_all_three_expected_size_modes() -> None:
         async def scenario(data: bytes = payload, link: Pair = pair) -> bool:
             listener = asyncio.create_task(link.responder.uart_listen())
             sent = await link.initiator.uart_set(1, data)
-            await asyncio.wait_for(listener, _LISTENER_SHORT_BOUND_S)
+            await listener
             return sent
 
-        assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) is ok, f"exp_size={exp} payload={payload!r}"
+        assert run(scenario()) is ok, f"exp_size={exp} payload={payload!r}"
 
 
 @_on_poll_rounds
@@ -1713,7 +1748,7 @@ def test_an_empty_payload_is_a_distinct_outcome_from_failure() -> None:
 def test_an_expected_size_the_train_could_never_deliver_is_rejected_early() -> None:
     # The transfer is doomed the moment CHUNKS is known, so it does not run to completion
     # first.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._dest_size(2, PAYLOAD_SIZE) == PAYLOAD_SIZE
     assert comm._dest_size(2, PAYLOAD_SIZE + 1) is None
     assert comm._dest_size(3, -1) == 2 * PAYLOAD_SIZE
@@ -1741,7 +1776,7 @@ def test_the_get_answer_echoes_the_requested_command_id() -> None:
 def test_a_rejected_get_callback_reports_a_distinct_outcome() -> None:
     # Withhold the answer, resync, and tell the responder's own caller which command was
     # refused - not silently nothing.
-    def refuse(cmd_id: int) -> "tuple[bool, Any]":
+    def refuse(cmd_id: int) -> "tuple[bool, None]":
         return False, None
 
     pair = Pair(get_callback=refuse, set_callback=accept_set())
@@ -1750,9 +1785,9 @@ def test_a_rejected_get_callback_reports_a_distinct_outcome() -> None:
     async def scenario() -> "tuple[PieceBuffer | None, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         answer = await pair.initiator.uart_get(0x55)
-        return answer, await asyncio.wait_for(listener, _STEP_BOUND_S)
+        return answer, await listener
 
-    answer, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    answer, result = run(scenario())
     assert answer is None
     assert result.cmd_id is None
     assert result.cmd == _CMD_GET  # which kind was refused is still reported
@@ -1782,7 +1817,7 @@ def test_both_sync_and_async_callbacks_work() -> None:
 
 def test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise() -> None:
     # A TypeError on unpacking is the same escape by another route.
-    comm = make_comm()
+    comm = _make_comm()
     assert comm._pair(None) is None
     assert comm._pair(42) is None
     assert comm._pair((True,)) is None
@@ -1794,7 +1829,7 @@ def test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise() -> None:
 def test_a_callback_returning_a_non_buffer_payload_is_rejected() -> None:
     # The callback-return guard again: the payload's type is part of the return shape, so a str here must not reach
     # the frame builder.
-    def wrong_type(cmd_id: int) -> "tuple[bool, Any]":
+    def wrong_type(cmd_id: int) -> "tuple[bool, str]":
         return True, "not a buffer"
 
     pair = Pair(get_callback=wrong_type, set_callback=accept_set())
@@ -1803,10 +1838,10 @@ def test_a_callback_returning_a_non_buffer_payload_is_rejected() -> None:
     async def scenario() -> "PieceBuffer | None":
         listener = asyncio.create_task(pair.responder.uart_listen())
         answer = await pair.initiator.uart_get(1)
-        await asyncio.wait_for(listener, _STEP_BOUND_S)
+        await listener
         return answer
 
-    assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) is None
+    assert run(scenario()) is None
 
 
 def test_a_callback_asking_for_an_impossible_size_is_rejected() -> None:
@@ -1818,10 +1853,10 @@ def test_a_callback_asking_for_an_impossible_size_is_rejected() -> None:
         async def scenario(link: Pair = pair) -> bool:
             listener = asyncio.create_task(link.responder.uart_listen())
             sent = await link.initiator.uart_set(1, b"ab")
-            await asyncio.wait_for(listener, _STEP_BOUND_S)
+            await listener
             return sent
 
-        assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) is False, f"exp_size {bad} should be refused"
+        assert run(scenario()) is False, f"exp_size {bad} should be refused"
 
 
 def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
@@ -1830,7 +1865,7 @@ def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
     # nothing is waiting on the wire. The bounded run() here is what proves it is not merely slow.
     pair = Pair(get_callback=echo_get(b""), set_callback=accept_set())
     assert run(pair.setup()) is True
-    outcome: list[Any] = []
+    outcome: list[bool] = []
 
     async def reentrant(cmd_id: int) -> "tuple[bool, bytes]":
         outcome.append(await pair.responder.uart_set(9, b"nested"))
@@ -1841,10 +1876,10 @@ def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
     async def scenario() -> "PieceBuffer | None":
         listener = asyncio.create_task(pair.responder.uart_listen())
         answer = await pair.initiator.uart_get(1)
-        await asyncio.wait_for(listener, _STEP_BOUND_S)
+        await listener
         return answer
 
-    run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    run(scenario())
     assert outcome == [False]  # refused with a sentinel, never awaited into a deadlock
 
 
@@ -1870,7 +1905,7 @@ def test_a_responder_still_answers_a_get_while_the_role_gate_is_active() -> None
 
 
 def test_the_role_is_immutable_after_construction() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert not hasattr(comm, "set_role")
 
 
@@ -1899,13 +1934,13 @@ def test_an_into_destination_that_is_too_small_is_refused() -> None:
     # Checked before the first data ACK, so nothing is overrun and nothing is reported
     # as success.
     pair = run(build_pair(get_callback=echo_get(bytes(PAYLOAD_SIZE * 2)), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(2))), limit=_RUN_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(2)))) is None
 
 
 def test_an_into_destination_of_none_returns_the_sentinel() -> None:
     # A failed RegionBuffer hands its owner None; an AttributeError here would be the
     # worst possible moment for one.
-    comm = make_comm()
+    comm = _make_comm()
     run(comm.setup())
     assert run(comm.uart_get_into(1, None)) is None
 
@@ -1915,7 +1950,7 @@ def test_a_payload_can_be_streamed_from_a_pull_callback() -> None:
     # F7: what makes "large payloads over little buffers" true rather than half-true - the whole
     # payload never exists in RAM at either end.
     source = bytes((i * 3) & 0xFF for i in range(PAYLOAD_SIZE * 2 + 3))
-    got: list[Any] = []
+    got: list[bool] = []
 
     def pull(chunk: int, buf: memoryview) -> int:
         start = (chunk - 2) * PAYLOAD_SIZE
@@ -1932,9 +1967,9 @@ def test_a_payload_can_be_streamed_from_a_pull_callback() -> None:
     async def scenario() -> ListenResult:
         listener = asyncio.create_task(pair.responder.uart_listen())
         got.append(await pair.initiator.uart_set_stream(0x60, len(source), pull))
-        return await asyncio.wait_for(listener, _STEP_BOUND_S)
+        return await listener
 
-    result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    result = run(scenario())
     assert got == [True]
     assert copied_out(result.payload) == source
 
@@ -1961,7 +1996,7 @@ def test_a_pull_callback_short_filling_a_non_final_chunk_aborts_locally() -> Non
         return 1  # always one byte, however much the chunk needs
 
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_set_stream(1, PAYLOAD_SIZE * 2, stingy)), limit=_RUN_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set_stream(1, PAYLOAD_SIZE * 2, stingy))) is False
 
 
 def test_a_pull_callback_returning_a_wrong_shape_is_guarded() -> None:
@@ -1970,7 +2005,7 @@ def test_a_pull_callback_returning_a_wrong_shape_is_guarded() -> None:
         return "lots"
 
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_set_stream(1, 4, wrong)), limit=_RUN_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set_stream(1, 4, wrong))) is False
 
 
 def test_a_push_callback_failing_mid_train_aborts() -> None:
@@ -1979,7 +2014,7 @@ def test_a_push_callback_failing_mid_train_aborts() -> None:
         return chunk < 3
 
     pair = run(build_pair(get_callback=echo_get(bytes(PAYLOAD_SIZE * 3)), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_get_stream(1, refuse_second)), limit=_RUN_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get_stream(1, refuse_second))) is None
 
 
 def test_a_streamed_total_size_must_be_declared() -> None:
@@ -1999,7 +2034,7 @@ def test_a_streamed_total_size_must_be_declared() -> None:
 def test_every_initiator_entry_point_answers_not_initialised_before_setup() -> None:
     # The readiness gate comes before every argument check, so an unready instance says so whatever it
     # was handed (J.9's one order).
-    comm = make_comm(name="UART_X")
+    comm = _make_comm(name="UART_X")
     assert run(comm.uart_get_into(1, None)) is None
     assert run(comm.uart_get_stream(1, None)) is None
     assert run(comm.uart_set_stream(1, 4, None)) is False
@@ -2009,7 +2044,7 @@ def test_every_initiator_entry_point_answers_not_initialised_before_setup() -> N
 
 
 def test_a_responder_refuses_the_role_before_any_argument() -> None:
-    comm = make_comm(name="UART_X", role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
+    comm = _make_comm(name="UART_X", role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
     assert run(comm.setup()) is True
     assert run(comm.uart_set(256, 5)) is False  # type: ignore[arg-type]
     assert run(comm.uart_set_into(256, "x", -1)) is False  # type: ignore[arg-type]
@@ -2022,15 +2057,12 @@ def test_a_responder_refuses_the_role_before_any_argument() -> None:
 
 
 def test_the_command_id_is_checked_first_on_an_initiator() -> None:
-    comm = make_comm()
+    comm = _make_comm()
     assert run(comm.setup()) is True
     comm.pr.set_level(1)
-    recorder = _PrintRecorder()
-    try:
+    with record_prints() as recorder:
         assert run(comm.uart_set_stream(256, -1, None)) is False
         assert run(comm.uart_get_into(256, None)) is None
-    finally:
-        recorder.restore()
     assert persisted(comm) == [_e("BAD_ARG")], persisted(comm)
     assert [line for line in recorder.text().split("\n") if "UART error" in line] == ["UART UART error: command id 256 is not a byte value"] * 2, recorder.text()
 
@@ -2040,20 +2072,20 @@ def test_an_empty_answer_into_a_buffer_is_zero_not_none() -> None:
     # J.9: zero bytes is an outcome distinct from failure, and the destination is left as it was.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     dest = bytearray(b"\xaa" * PAYLOAD_SIZE)  # room for the train's upper bound, checked before its first ACK
-    assert run(pair.with_listener(pair.initiator.uart_get_into(1, dest)), limit=_RUN_BOUND_S) == 0
+    assert run(pair.with_listener(pair.initiator.uart_get_into(1, dest))) == 0
     assert dest == bytearray(b"\xaa" * PAYLOAD_SIZE)
-    assert run(pair.with_listener(pair.initiator.uart_get_stream(1, lambda chunk, buf: True)), limit=_RUN_BOUND_S) == 0
+    assert run(pair.with_listener(pair.initiator.uart_get_stream(1, lambda chunk, buf: True))) == 0
 
 
 @_on_poll_rounds
 def test_an_answer_that_misses_its_expected_size_is_refused_before_its_final_ack() -> None:
     pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b"four"), set_callback=accept_set()))
-    got = run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(8), exp_size=5), listener_may_stall=True), limit=_LISTENER_RUN_BOUND_S)
+    got = run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(8), exp_size=5), listener_may_stall=True))
     assert got is None
     acks = [f for f in frames(pair.wire_from_initiator(), _FRAME) if f[_CMD] == _CMD_ACK]
     assert len(acks) == 1, acks  # the answer header's ACK only: the last chunk is never acknowledged
     empty = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    assert run(empty.with_listener(empty.initiator.uart_get_into(1, bytearray(4), exp_size=0)), limit=_RUN_BOUND_S) == 0
+    assert run(empty.with_listener(empty.initiator.uart_get_into(1, bytearray(4), exp_size=0))) == 0
 
 
 @_on_poll_rounds
@@ -2061,12 +2093,12 @@ def test_an_empty_set_is_delivered_as_a_distinct_outcome() -> None:
     for args in ((None,), (bytearray(4), 0)):
         pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
 
-        async def scenario(pair: Pair = pair, args: "tuple[Any, ...]" = args) -> "tuple[bool, ListenResult]":
+        async def scenario(pair: Pair = pair, args: "tuple[None] | tuple[bytearray, int]" = args) -> "tuple[bool, ListenResult]":
             listener = asyncio.create_task(pair.responder.uart_listen())
             sent = await pair.initiator.uart_set_into(0x31, *args)
-            return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+            return sent, await listener
 
-        sent, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+        sent, result = run(scenario())
         assert sent is True, args
         assert result == ListenResult(0x31, _CMD_SET, None), result
 
@@ -2080,7 +2112,7 @@ def test_a_zero_size_stream_sends_one_empty_data_chunk() -> None:
         return 0
 
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_set_stream(1, 0, pull)), limit=_RUN_BOUND_S) is True
+    assert run(pair.with_listener(pair.initiator.uart_set_stream(1, 0, pull))) is True
     sent = frames(pair.wire_from_initiator(), _FRAME)
     assert [(f[_CHUNKS], f[_CUR], f[_SIZE]) for f in sent] == [(2, 1, 1), (2, 2, 0)]
     assert regions == [0]
@@ -2096,12 +2128,12 @@ def test_a_stream_of_the_largest_declarable_size_completes_and_one_more_byte_is_
         buf[0 : len(buf)] = source[start : start + len(buf)]
         return len(buf)
 
-    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
     sent, result = _stream_with_listener(pair, total, pull)
     assert sent is True
     assert copied_out(result.payload) == source
     assert len(frames(pair.wire_from_initiator(), _FRAME)) == 255
-    refused = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    refused = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
     assert run(refused.initiator.uart_set_stream(1, total + 1, pull)) is False
     assert refused.wire_from_initiator() == b""
 
@@ -2111,27 +2143,27 @@ def test_a_buffer_is_borrowed_only_for_the_call() -> None:
     # J.9: neither a destination nor a source is held past the call that was handed it.
     pair = run(build_pair(get_callback=echo_get(b"first"), set_callback=accept_set()))
     dest = bytearray(8)
-    assert run(pair.with_listener(pair.initiator.uart_get_into(1, dest)), limit=_RUN_BOUND_S) == 5
+    assert run(pair.with_listener(pair.initiator.uart_get_into(1, dest))) == 5
     kept = bytes(dest)
     pair.responder._get_callback = echo_get(b"second")
-    assert run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(8))), limit=_RUN_BOUND_S) == 6
+    assert run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(8)))) == 6
     assert bytes(dest) == kept
     src = bytearray(b"source")
-    assert run(pair.with_listener(pair.initiator.uart_set_into(2, src, 6)), limit=_RUN_BOUND_S) is True
+    assert run(pair.with_listener(pair.initiator.uart_set_into(2, src, 6))) is True
     before = pair.wire_from_initiator()
     src[0:6] = b"XXXXXX"
-    assert run(pair.with_listener(pair.initiator.uart_set(3, None)), limit=_RUN_BOUND_S) is True
+    assert run(pair.with_listener(pair.initiator.uart_set(3, None))) is True
     assert pair.wire_from_initiator()[: len(before)] == before
     assert b"XXXXXX" not in pair.wire_from_initiator()
 
 
-def _stream_with_listener(pair: Pair, total: int, pull: "Any") -> "tuple[bool, ListenResult]":
+def _stream_with_listener(pair: Pair, total: int, pull: "_PullCallback | None") -> "tuple[bool, ListenResult]":
     async def scenario() -> "tuple[bool, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set_stream(0x32, total, pull)
-        return sent, await asyncio.wait_for(listener, _LISTENER_SHORT_BOUND_S)
+        return sent, await listener
 
-    return run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    return run(scenario())
 
 
 @_on_poll_rounds
@@ -2140,7 +2172,7 @@ def test_an_out_of_range_command_id_is_refused_not_truncated() -> None:
     # different, valid command the peer executed while the call reported success. The header
     # fields were already guarded against exactly this (_prepare_tx); the command id was not.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x"), listener_may_stall=True), limit=_RUN_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x"), listener_may_stall=True)) is False
     assert pair.wire_from_initiator() == b"", "a refused command id must not put a frame on the wire"
     assert run(pair.initiator.uart_set(-1, b"x")) is False
     assert run(pair.initiator.uart_get(0x100)) is None
@@ -2166,33 +2198,15 @@ def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
     # land on it, silently turning an exact-size GET into an unchecked one.
     pair = run(build_pair(get_callback=echo_get(b"hello"), set_callback=accept_set()))
     # Refused before anything is sent, so the responder's listen round never completes.
-    assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True), limit=_RUN_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True)) is None
     # The contrast case: None really does mean don't care, and still works.
-    assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)), limit=_RUN_BOUND_S)) == b"hello"
-
-
-def test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising() -> None:
-    # len(5) and "abc"[0:n] both raise TypeError; the responder's own get_callback payload was
-    # already type-checked, the initiator's was not.
-    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
-    assert run(pair.initiator.uart_set(1, 5)) is False  # type: ignore[arg-type]
-    assert run(pair.initiator.uart_set(1, "abc")) is False  # type: ignore[arg-type]
-
-
-def test_an_immutable_destination_is_refused_before_the_train_starts() -> None:
-    # bytes has no slice assignment, so this failed mid-train with a TypeError after the peer had
-    # already been acknowledged - the worst possible moment to discover it.
-    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
-    assert run(pair.initiator.uart_get_into(1, b"\x00\x00")) is None  # type: ignore[arg-type]
-    assert pair.wire_from_initiator() == b""
+    assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)))) == b"hello"
 
 
 def test_a_refused_argument_is_logged_with_its_own_errno() -> None:
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
     assert run(pair.initiator.uart_set(0x101, b"x")) is False
-    log = run(pair.initiator.get_error_counter())["UART_A"]
-    assert "E" in log["ErrType"], log
-    assert code("E", "BAD_ARG") in log["ErrNum"], log
+    assert logged(pair.initiator) == (1, [_e("BAD_ARG")]), logged(pair.initiator)
 
 
 # ---- caller-supplied arguments, second pass -------------------------------------------------------
@@ -2205,7 +2219,7 @@ def test_a_non_integer_payload_size_is_refused_instead_of_raising() -> None:
     # first, so `5 + "48"` raised TypeError out of __init__ itself. The constructor is the one
     # entry point that cannot answer with a sentinel: there is no object yet to ask.
     for bad in ("48", None, 1.5):
-        comm = make_comm(payload_size=bad)
+        comm = _make_comm(payload_size=bad)  # type: ignore[arg-type]  # not an int, on purpose
         assert comm._init_errno != 0, bad
         assert comm._payload_size == bad, "the caller's own value stays on self, for the log to name"
         assert run(comm.setup()) is False
@@ -2214,7 +2228,7 @@ def test_a_non_integer_payload_size_is_refused_instead_of_raising() -> None:
 def test_a_non_integer_timeout_is_refused_instead_of_raising() -> None:
     # The backoff was computed before validation ran, so `"1000" // 2` raised first.
     for bad in ("1000", None):
-        comm = make_comm(timeout=bad)
+        comm = _make_comm(timeout=bad)  # type: ignore[arg-type]  # not an int, on purpose
         assert comm._init_errno != 0, bad
         assert run(comm.setup()) is False
 
@@ -2228,7 +2242,7 @@ def test_a_read_only_destination_is_refused_before_the_train_starts() -> None:
     assert pair.wire_from_initiator() == b""
     # The contrast case: a writable memoryview is still a perfectly good destination.
     dest = bytearray(64)
-    assert run(pair.with_listener(pair.initiator.uart_get_into(1, memoryview(dest), 5)), limit=_RUN_BOUND_S) == 5
+    assert run(pair.with_listener(pair.initiator.uart_get_into(1, memoryview(dest), 5))) == 5
     assert dest[0:5] == bytearray(b"hello")
 
 
@@ -2258,7 +2272,7 @@ def test_a_repeating_fault_spends_one_slot() -> None:
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True  # the peer never answers
     for _ in range(5):
-        run(pair.initiator.uart_set(1, b"x"), limit=_RUN_BOUND_S)
+        run(pair.initiator.uart_set(1, b"x"))
     log = run(pair.initiator.get_error_counter())["UART_A"]
     # Index-based, not zip(strict=...): MicroPython's builtin zip() does not accept it, which is
     # the same reason test_bus_hazard_multi_device.py pairs its own lists this way.
@@ -2274,14 +2288,14 @@ def test_a_recovered_link_counts_every_later_fault() -> None:
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
     direction = pair.link.direction_from(pair.fake_b)
     direction.silent = True
-    run(pair.initiator.uart_set(1, b"x"), limit=_RUN_BOUND_S)
-    run(pair.initiator.uart_set(1, b"x"), limit=_RUN_BOUND_S)
+    run(pair.initiator.uart_set(1, b"x"))
+    run(pair.initiator.uart_set(1, b"x"))
     direction.silent = False
     run(pair.responder.clear())
     run(pair.initiator.clear())
-    assert run(pair.with_listener(pair.initiator.uart_set(1, b"x")), limit=_RUN_BOUND_S) is True
+    assert run(pair.with_listener(pair.initiator.uart_set(1, b"x"))) is True
     direction.silent = True
-    run(pair.initiator.uart_set(1, b"x"), limit=_RUN_BOUND_S)
+    run(pair.initiator.uart_set(1, b"x"))
     log = run(pair.initiator.get_error_counter())["UART_A"]
     # Index-based, not zip(strict=...): MicroPython's builtin zip() does not accept it, which is
     # the same reason test_bus_hazard_multi_device.py pairs its own lists this way.
@@ -2297,7 +2311,7 @@ def test_a_rejected_command_is_distinguishable_from_a_link_fault() -> None:
         return (cmd_id == 1), None
 
     pair = run(build_pair(get_callback=only_one, set_callback=accept_set()))
-    run(pair.with_listener(pair.initiator.uart_get(2)), limit=_RUN_BOUND_S)
+    run(pair.with_listener(pair.initiator.uart_get(2)))
     log = run(pair.responder.get_error_counter())["UART_B"]
     # Index-based, not zip(strict=...): MicroPython's builtin zip() does not accept it, which is
     # the same reason test_bus_hazard_multi_device.py pairs its own lists this way.
@@ -2312,7 +2326,7 @@ def test_a_rejected_command_is_distinguishable_from_a_link_fault() -> None:
 def test_the_owned_listen_loop_delivers_a_received_payload() -> None:
     # Without this the loop consumed the ListenResult and dropped it: a responder wired the
     # documented way (get_task_starters()) could never see a SET's data at all.
-    seen: list[Any] = []
+    seen: list[tuple[int, int, bytes | None]] = []
 
     def record(cmd_id: int, cmd: int, payload: "PieceBuffer | None") -> None:
         seen.append((cmd_id, cmd, copied_out(payload)))
@@ -2330,7 +2344,7 @@ def test_the_owned_listen_loop_delivers_a_received_payload() -> None:
             except asyncio.CancelledError:  # expected; anything else is a real failure
                 pass
 
-    assert run(exchange(), limit=_RUN_BOUND_S) is True
+    assert run(exchange()) is True
     assert seen == [(7, _CMD_SET, b"payload")], seen
 
 
@@ -2356,7 +2370,7 @@ def test_a_raising_message_callback_does_not_kill_the_listen_loop() -> None:
             except asyncio.CancelledError:
                 pass
 
-    assert run(exchange(), limit=_RUN_BOUND_S) == (True, True), "the loop must survive its owner's raise"
+    assert run(exchange()) == (True, True), "the loop must survive its owner's raise"
 
 
 def test_a_responder_without_a_message_callback_is_still_constructible() -> None:
@@ -2367,9 +2381,9 @@ def test_a_responder_without_a_message_callback_is_still_constructible() -> None
     assert pair.responder.initialized is True
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Receive limits - pieces of at most chunk_bytes, and the transfer cap
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def _largest_piece(pb: "PieceBuffer") -> int:
@@ -2383,16 +2397,16 @@ def _set_with_listener(pair: Pair, set_id: int, payload: bytes) -> "tuple[bool, 
     async def scenario() -> "tuple[bool, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(set_id, payload)
-        return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+        return sent, await listener
 
-    return run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    return run(scenario())
 
 
 @_on_poll_rounds
 def test_a_dont_care_get_arrives_in_pieces_no_larger_than_chunk_bytes() -> None:
     payload = bytes(range(5 * PAYLOAD_SIZE + 3))
     pair = run(build_pair(limits=transfer_limits(chunk_bytes=5), get_callback=echo_get(payload), set_callback=accept_set()))
-    answer = run(pair.with_listener(pair.initiator.uart_get(0x21)), limit=_RUN_BOUND_S)
+    answer = run(pair.with_listener(pair.initiator.uart_get(0x21)))
     assert isinstance(answer, PieceBuffer)
     assert len(answer) == len(payload)  # the bytes received, not the train's upper bound
     assert _largest_piece(answer) <= 5
@@ -2429,6 +2443,12 @@ def _real_pieces() -> None:
     asy_uart_comm.PieceBuffer = PieceBuffer  # type: ignore[misc]
 
 
+class _UnbuildablePieceBuffer(PieceBuffer):
+    # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        raise MemoryError("simulated allocation failure")
+
+
 def _scrub(pair: Pair) -> None:
     # The fakes' call and wire logs are scaffolding a test reads back, not something the protocol retains.
     for direction in (pair.link.a_to_b, pair.link.b_to_a):
@@ -2437,18 +2457,110 @@ def _scrub(pair: Pair) -> None:
     pair.fake_b.log.clear()
 
 
-def _cap_pair(cap_side: str, answer: bytes = b"") -> Pair:
+def _cap_pair(cap_side: str, answer: bytes = b"", *, debug: int | None = None) -> Pair:
     # The default cap on one end, a two-frame cap on the other: the refusing end is the receiver.
-    pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set())
+    pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set(), debug=debug)
     assert run(pair.setup()) is True
     (pair.responder if cap_side == "responder" else pair.initiator)._max_transfer_bytes = 2 * PAYLOAD_SIZE
     return pair
 
 
+@_on_poll_rounds
+def test_a_refused_piece_at_a_received_set_faults_as_alloc_and_the_responder_re_listens_at_once() -> None:
+    # The pieces are built after the command frame's ACK: a heap too short for them is J.8's fault like any other, one
+    # ALLOC entry printing the caught text and a resync that drains the stray data chunk, then an immediate re-listen
+    # (A15). The peer sees one ACK, then none for its data chunk.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL))
+
+    async def exchange() -> "tuple[bool, list[bytes], bool, bool]":
+        task = pair.responder.start_asy_listen()
+        try:
+            asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+            try:
+                refused = await pair.initiator.uart_set(0x22, b"payload")
+            finally:
+                _real_pieces()
+            answered = frames(pair.wire_from_responder(), _FRAME)
+            alive = not task.done()
+            return refused, answered, alive, await pair.initiator.uart_set(0x22, b"payload")
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+
+    with record_prints() as rec:
+        refused, answered, alive, recovered = run(exchange())
+    assert refused is False
+    assert [frame[1] for frame in answered] == [_CMD_ACK], answered
+    assert alive is True
+    assert recovered is True
+    assert persisted(pair.responder) == [_e("ALLOC")], persisted(pair.responder)
+    assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
+    assert "bytes for the incoming train: simulated allocation failure" in rec.text(), rec.text()
+
+
+@_on_poll_rounds
+def test_a_refused_piece_at_a_dont_care_get_faults_as_alloc_and_uart_get_answers_none() -> None:
+    # The answer's pieces are built after its header validated and before the header's ACK: J.8's fault like any other,
+    # one ALLOC entry printing the caught text, a resync and the hold-off; uart_get() answers None and the bus is free.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b"banner"), set_callback=accept_set(), debug=ERROR_LEVEL))
+
+    async def exchange() -> "tuple[PieceBuffer | None, list[bytes], tuple[bool, bool], ListenResult, bytes | None]":
+        listener = asyncio.create_task(pair.responder.uart_listen())
+        asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+        try:
+            answer = await pair.initiator.uart_get(0x21)
+        finally:
+            _real_pieces()
+        sent = frames(pair.wire_from_initiator(), _FRAME)
+        state = (pair.initiator._busy, pair.initiator._holdoff_active)
+        listened = await listener
+        again = await pair.with_listener(pair.initiator.uart_get(0x21))
+        return answer, sent, state, listened, copied_out(again)
+
+    with record_prints() as rec:
+        answer, sent, state, listened, again = run(exchange())
+    assert answer is None
+    assert [frame[1] for frame in sent] == [_CMD_GET], sent
+    assert state == (False, True)
+    assert persisted(pair.initiator) == [_e("ALLOC")], persisted(pair.initiator)
+    assert (listened.cmd_id, listened.cmd) == (None, _CMD_GET), listened
+    assert persisted(pair.responder) == [_e("UART_NO_ACK")], persisted(pair.responder)
+    assert again == b"banner"
+    assert "bytes for the answer: simulated allocation failure" in rec.text(), rec.text()
+
+
+@_on_poll_rounds
+def test_a_get_answered_with_a_piece_buffer_is_sent_from_its_pieces() -> None:
+    # A responder may answer with a PieceBuffer: each chunk is copied by index from the pieces, whose ends fall inside
+    # chunks, into the TX region, so the answer arrives whole and the comm allocates no bytearray to send it (J.8).
+    payload = bytes((i * 7) & 0xFF for i in range(1000))
+    answer = PieceBuffer(len(payload), 256)
+    assert answer.write_at(0, payload)
+    pair = run(build_pair(get_callback=lambda _cmd_id: (True, answer), set_callback=accept_set()))
+    sizes: list[int] = []
+
+    def recording(*args: object) -> bytearray:
+        made = bytearray(*args)
+        sizes.append(len(made))
+        return made
+
+    asy_uart_comm.bytearray = recording  # type: ignore[attr-defined]
+    try:
+        received = run(pair.with_listener(pair.initiator.uart_get(0x21)))
+    finally:
+        del asy_uart_comm.bytearray  # type: ignore[attr-defined]
+    assert copied_out(received) == payload
+    assert sizes == [], sizes
+    assert persisted(pair.responder) == [] and persisted(pair.initiator) == []
+
+
 def test_the_default_chunk_bytes_is_the_reasoned_one() -> None:
     # The webserver's piece size (Part I.3): one bound for the largest single receive allocation device-wide.
-    assert _src_const("_DEFAULT_CHUNK_BYTES") == _src_const("_DEFAULT_CHUNK_BYTES", "src/asy_webserver_service.py")
-    assert DEFAULT_LIMITS.chunk_bytes == _src_const("_DEFAULT_CHUNK_BYTES")
+    assert _const("_DEFAULT_CHUNK_BYTES") == _const("_DEFAULT_CHUNK_BYTES", "src/asy_webserver_service.py")
+    assert DEFAULT_LIMITS.chunk_bytes == _const("_DEFAULT_CHUNK_BYTES")
 
 
 @_on_poll_rounds
@@ -2459,7 +2571,7 @@ def test_a_caller_supplied_destination_is_still_filled_in_place() -> None:
     dest = bytearray(4 * PAYLOAD_SIZE)
     _counting_pieces()
     try:
-        assert run(pair.with_listener(pair.initiator.uart_get_into(1, dest)), limit=_RUN_BOUND_S) == len(payload)
+        assert run(pair.with_listener(pair.initiator.uart_get_into(1, dest))) == len(payload)
     finally:
         _real_pieces()
     assert _CountingPieceBuffer.built == 0
@@ -2509,7 +2621,7 @@ def test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocatio
 
     # The collector scans the C stack conservatively, so one window can keep or free a few stale blocks: a
     # per-refusal leak shows in all three windows (one block each is 800 B), so the least must be 0.
-    nets = run(measured(), limit=_LISTENER_RUN_BOUND_S)
+    nets = run(measured())
     assert min(nets) <= 0, f"{nets} bytes grown over {_REFUSALS} refusals, in each of three windows"
 
 
@@ -2518,7 +2630,7 @@ def test_an_expected_size_over_the_cap_is_refused_before_any_allocation() -> Non
     pair = _cap_pair("initiator", bytes(2 * PAYLOAD_SIZE + 1))
     _counting_pieces()
     try:
-        answer = run(pair.with_listener(pair.initiator.uart_get(0x25), listener_may_stall=True), limit=_LISTENER_RUN_BOUND_S)
+        answer = run(pair.with_listener(pair.initiator.uart_get(0x25), listener_may_stall=True))
     finally:
         _real_pieces()
     assert answer is None
@@ -2529,30 +2641,30 @@ def test_an_expected_size_over_the_cap_is_refused_before_any_allocation() -> Non
 
 @_on_poll_rounds
 def test_a_train_at_the_cap_is_accepted() -> None:
-    pair = _cap_pair("responder")
+    pair = _cap_pair("responder", debug=ERROR_LEVEL)
     sent, result = _set_with_listener(pair, 0x24, bytes(range(2 * PAYLOAD_SIZE)))
     assert sent is True
     assert copied_out(result.payload) == bytes(range(2 * PAYLOAD_SIZE))
-    pair = _cap_pair("initiator", bytes(range(2 * PAYLOAD_SIZE)))
-    assert copied_out(run(pair.with_listener(pair.initiator.uart_get(0x26)), limit=_RUN_BOUND_S)) == bytes(range(2 * PAYLOAD_SIZE))
+    pair = _cap_pair("initiator", bytes(range(2 * PAYLOAD_SIZE)), debug=ERROR_LEVEL)
+    assert copied_out(run(pair.with_listener(pair.initiator.uart_get(0x26)))) == bytes(range(2 * PAYLOAD_SIZE))
 
 
 @_on_poll_rounds
-def test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent() -> None:
-    # The sender knows its own cap, so a train its peer would refuse is refused at the argument
-    # checks; the declared size is the same (CHUNKS - 1) x payload_size the receiver compares.
-    cap = 2 * PAYLOAD_SIZE
+def test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks() -> None:
+    # A cap above 254 payloads holds sizes no CHUNKS byte can declare: those stay the train's own refusal.
+    cap = 300 * PAYLOAD_SIZE
+    total = 254 * PAYLOAD_SIZE + 1
     pair = run(build_pair(limits=transfer_limits(max_transfer_bytes=cap), get_callback=echo_get(b""), set_callback=accept_set()))
-    over = cap + 1
-    assert run(pair.initiator.uart_set(1, bytes(over))) is False
-    assert run(pair.initiator.uart_set_into(1, bytearray(over), over)) is False
-    assert run(pair.initiator.uart_set_stream(1, over, lambda chunk, buf: len(buf))) is False
-    assert run(pair.initiator.uart_get(1, exp_size=over)) is None
-    assert run(pair.initiator.uart_get_into(1, bytearray(over), exp_size=over)) is None
-    assert run(pair.initiator.uart_get_stream(1, lambda chunk, buf: True, exp_size=over)) is None
-    assert pair.wire_from_initiator() == b""
-    assert persisted(pair.initiator) == [_e("UART_TRANSFER_CAP")], persisted(pair.initiator)
-    assert run(pair.with_listener(pair.initiator.uart_set(2, bytes(cap))), limit=_RUN_BOUND_S) is True
+    for name, work in (
+        ("uart_set", pair.initiator.uart_set(1, bytes(total))),
+        ("uart_set_into", pair.initiator.uart_set_into(1, bytearray(total), total)),
+        ("uart_set_stream", pair.initiator.uart_set_stream(1, total, lambda chunk, buf: len(buf))),
+    ):
+        before = run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"]
+        assert run(work) is False, name
+        assert persisted(pair.initiator) == [_e("UART_PAYLOAD_TOO_LARGE")], f"{name}: {persisted(pair.initiator)}"
+        assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == before + 1, name
+        assert pair.wire_from_initiator() == b"", f"{name} sent bytes"
 
 
 @_on_poll_rounds
@@ -2562,7 +2674,7 @@ def test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat() -> None:
     cap = 2 * PAYLOAD_SIZE
     at_cap = bytes(range(cap))
     limits = transfer_limits(timeout=_SHORT_REPLY_TIMEOUT_MS, chunk_bytes=PAYLOAD_SIZE, max_transfer_bytes=cap)
-    pair = run(build_pair(limits=limits, get_callback=echo_get(at_cap), set_callback=accept_set()))
+    pair = run(build_pair(limits=limits, get_callback=echo_get(at_cap), set_callback=accept_set(), debug=ERROR_LEVEL))
     intact = refused = 0
 
     async def one_round(i: int) -> None:
@@ -2581,31 +2693,26 @@ def test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat() -> None:
             refused += 0 if ok else 1
         else:
             intact += 1 if ok else 0
-        try:
-            await asyncio.wait_for(listener, _STEP_BOUND_S)
-        except asyncio.TimeoutError:
-            listener.cancel()
+        await listener
         _scrub(pair)
 
-    async def scenario() -> "list[int]":
-        # The first half takes every path and lets the one-time fills settle (160 B within the first 100 trains
-        # on the settrace build, then flat to 1,200, measured); three windows of the second half are sampled.
-        for i in range(_HAMMER_ROUNDS // 2):
+    async def rounds(start: int, stop: int) -> None:
+        for i in range(start, stop):
             await one_round(i)
-        grew = [0, 0, 0]
-        window = _HAMMER_ROUNDS // 8
-        for k in range(3):
-            gc.collect()
-            first = gc.mem_alloc()
-            for i in range(_HAMMER_ROUNDS // 2 + k * window, _HAMMER_ROUNDS // 2 + (k + 1) * window):
-                await one_round(i)
-            gc.collect()
-            grew[k] = gc.mem_alloc() - first
-        for i in range(_HAMMER_ROUNDS // 2 + 3 * window, _HAMMER_ROUNDS):
-            await one_round(i)
-        return grew
 
-    grew = run(scenario(), limit=_HAMMER_RUN_BOUND_S)
+    # The first half takes every path and lets the one-time fills settle (160 B within the first 100 trains on the
+    # settrace build, then flat to 1,200, measured); three windows of the second half are sampled, each its own run,
+    # so the harness's record of a run's tasks is gone before the heap is read.
+    run(rounds(0, _HAMMER_ROUNDS // 2))
+    grew = [0, 0, 0]
+    window = _HAMMER_ROUNDS // 8
+    for k in range(3):
+        gc.collect()
+        first = gc.mem_alloc()
+        run(rounds(_HAMMER_ROUNDS // 2 + k * window, _HAMMER_ROUNDS // 2 + (k + 1) * window))
+        gc.collect()
+        grew[k] = gc.mem_alloc() - first
+    run(rounds(_HAMMER_ROUNDS // 2 + 3 * window, _HAMMER_ROUNDS))
     assert (intact, refused) == (_HAMMER_ROUNDS // 2, _HAMMER_ROUNDS // 2), (intact, refused)
     # The collector scans the C stack conservatively, so one window can keep a stale block: a per-train leak
     # shows in all three windows, so the least must be 0.
@@ -2615,7 +2722,7 @@ def test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat() -> None:
 @_on_poll_rounds
 def test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs() -> None:
     # More arrives than the ring holds while the responder's consumer is held: the read reports the lap as
-    # J.7's receive overrun, named once by its code, and no lapped byte reaches a callback.
+    # J.7's receive overrun, the listen fails under its own code alone, and no lapped byte reaches a callback.
     asked: list[int] = []
 
     def counting_set(cmd_id: int) -> "tuple[bool, None]":
@@ -2628,18 +2735,17 @@ def test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs() -> None:
         pair.fake_b.feed_rx(b"\x04" * (pair.driver_b.rx_ring + _FRAME))
         return await pair.responder.uart_listen()
 
-    assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) == ListenResult(None, None, None)
+    assert run(scenario()) == ListenResult(None, None, None)
     assert pair.driver_b.rx_overruns > 0
-    assert persisted(pair.responder)[0] == _w("UART_RX_OVERRUN"), persisted(pair.responder)
-    assert persisted(pair.responder).count(_w("UART_RX_OVERRUN")) == 1
+    assert persisted(pair.responder) == [_e("TIMEOUT")], persisted(pair.responder)
     assert asked == []
-    assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)), limit=_RUN_BOUND_S)) == b"ok"
+    assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)))) == b"ok"
 
 
 def test_a_ring_below_its_floor_is_refused() -> None:
     floor = _ring_floor(PAYLOAD_SIZE, TIMEOUT_MS, POLL_WAIT_MS)
     bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rx_ring=floor // 2)
-    bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+    bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
     assert UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits())._init_errno == code("E", "UART_RXBUF")
 
 
@@ -2650,7 +2756,7 @@ def test_a_ring_at_its_floor_holds_a_config_flush() -> None:
     pair = Pair(get_callback=echo_get(b"ok"), set_callback=accept_set())
     pair.driver_b.rx_ring = pair.responder._min_rx_ring()
     assert run(pair.setup()) is True
-    hold_ms = _src_const("_FLASH_HOLD_MAX_MS")
+    hold_ms = _const("_FLASH_HOLD_MAX_MS")
 
     async def scenario() -> "tuple[int, PieceBuffer | None]":
         clock = asy_uart_comm.time  # the poll-round clock: the hold is measured in the modules' own time
@@ -2668,11 +2774,10 @@ def test_a_ring_at_its_floor_holds_a_config_flush() -> None:
         finally:
             listener.cancel()
 
-    failed, got = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    failed, got = run(scenario())
     assert failed >= 1
     assert copied_out(got) == b"ok"
     assert pair.driver_b.rx_overruns == 0  # no lap
-    assert _w("UART_RX_OVERRUN") not in persisted(pair.responder), persisted(pair.responder)
 
 
 async def _listen_forever(pair: Pair) -> None:
@@ -2680,14 +2785,14 @@ async def _listen_forever(pair: Pair) -> None:
         await pair.responder.uart_listen()
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Coverage close-out - the sentinel paths a healthy exchange never reaches
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
-def returns(value: "Any") -> "Any":
+def returns(value: object) -> "CommCallback":
     # A callback whose return shape is the thing under test, so it is supplied rather than computed.
-    def callback(cmd_id: int) -> "Any":
+    def callback(cmd_id: int) -> object:
         return value
 
     return callback
@@ -2719,7 +2824,7 @@ def test_a_bus_cleared_after_construction_is_refused_at_every_entry_point() -> N
 def test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train() -> None:
     # size is the caller's own declaration and the buffer is what actually backs it. A declaration
     # the buffer cannot honour would put padding on the wire that the peer counts as payload.
-    comm = make_comm()
+    comm = _make_comm()
     run(comm.setup())
     assert run(comm.uart_set_into(1, b"abc", 4)) is False
     assert run(comm.uart_set_into(1, None, 3)) is False  # nothing to take the bytes from at all
@@ -2732,8 +2837,8 @@ def test_an_answer_the_train_could_never_carry_is_refused_at_its_header() -> Non
     # frame, so an expected size the train cannot deliver is refused right there - before a single
     # data chunk is acknowledged, not after the whole transfer has run to completion.
     pair = run(build_pair(get_callback=echo_get(b"ab"), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_get(1, exp_size=PAYLOAD_SIZE + 1)), limit=_RUN_BOUND_S) is None
-    assert _e("UART_SIZE_MISMATCH") in persisted(pair.initiator), persisted(pair.initiator)
+    assert run(pair.with_listener(pair.initiator.uart_get(1, exp_size=PAYLOAD_SIZE + 1))) is None
+    assert logged(pair.initiator) == (1, [_e("UART_SIZE_MISMATCH")]), logged(pair.initiator)
     # "Early" is the whole claim, and the wire is what proves it: the GET request went out and
     # nothing else did. Refused later, the initiator would have acknowledged the answer header
     # first and only then discovered the train it had just committed to could not satisfy it.
@@ -2745,7 +2850,7 @@ def test_an_answer_that_exactly_fills_its_train_arrives_intact() -> None:
     # A payload that exactly fills the chunks it needed fills its destination with no trimming left to do.
     payload = bytes(range(PAYLOAD_SIZE))  # exactly one data chunk, fully used
     pair = run(build_pair(get_callback=echo_get(payload), set_callback=accept_set()))
-    answer = run(pair.with_listener(pair.initiator.uart_get(2)), limit=_RUN_BOUND_S)
+    answer = run(pair.with_listener(pair.initiator.uart_get(2)))
     assert copied_out(answer) == payload, answer
 
 
@@ -2759,9 +2864,9 @@ def test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise() -
         async def scenario(link: Pair = pair) -> "tuple[bool, ListenResult]":
             listener = asyncio.create_task(link.responder.uart_listen())
             sent = await link.initiator.uart_set(1, b"ab")
-            return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+            return sent, await listener
 
-        sent, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+        sent, result = run(scenario())
         assert sent is False, f"{bad!r} should not have been accepted"
         assert result.cmd_id is None
 
@@ -2775,9 +2880,9 @@ def test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get() -> None
     async def scenario() -> "tuple[bool, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(0x61, b"data")
-        return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+        return sent, await listener
 
-    sent, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    sent, result = run(scenario())
     assert sent is False
     assert result.cmd_id is None
     assert result.cmd == _CMD_SET  # which kind was refused is still reported
@@ -2794,10 +2899,10 @@ def test_a_set_callback_asking_for_more_than_this_train_carries_is_refused() -> 
     async def scenario() -> bool:
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(1, b"ab")  # one data chunk, so PAYLOAD_SIZE at most
-        await asyncio.wait_for(listener, _STEP_BOUND_S)
+        await listener
         return sent
 
-    assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) is False
+    assert run(scenario()) is False
     # Refused at the header, so the train's own frames were never accepted: one validated frame -
     # the SET header itself. Refused only at the end, the responder would have taken the data
     # chunk in and then discovered it could not have satisfied the size it had already asked for.
@@ -2812,7 +2917,8 @@ def test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching(
     assert run(pair.responder.uart_listen()).cmd_id is None
     assert persisted(pair.responder) == [_e("BAD_ARG")], persisted(pair.responder)
 
-def fail_write_after(fake: "Any", successes: int) -> None:
+
+def fail_write_after(fake: "FakeUART", successes: int) -> None:
     # machine.py's own write_limit is a fixed per-call cap; these paths need the Nth write of an
     # exchange to fail instead, which is what a TX path dying mid-transaction actually looks like.
     # None is the real rp2 return: its internal per-byte timeout hit before anything was sent.
@@ -2823,9 +2929,9 @@ def fail_write_after(fake: "Any", successes: int) -> None:
         if left[0] <= 0:
             return None
         left[0] -= 1
-        return real(buf)  # type: ignore[no-any-return]
+        return real(buf)
 
-    fake.write = counted
+    fake.write = counted  # type: ignore[method-assign]
 
 
 @_on_poll_rounds
@@ -2833,15 +2939,15 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
     # Every writefrom() in the module is checked, and one GET passes through six: the request, its ACK, the
     # answer's header frame, the initiator's ACK for that, a mid-train ACK and the final one. All six report
     # UART_WRITE_FAILED and resync - a silent no-op write is what desynchronises the two sides.
-    def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[PieceBuffer | None, list[str], bool]":
+    def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[PieceBuffer | None, tuple[int, list[str]], bool]":
         pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set())
         assert run(pair.setup()) is True
         initiating = side == "initiator"
         fail_write_after(pair.fake_a if initiating else pair.fake_b, successes)
         # A write cut at any point can leave the responder's round unfinished; that is the case under test.
-        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True), limit=_LISTENER_RUN_BOUND_S)
+        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True))
         failing = pair.initiator if initiating else pair.responder
-        return got, persisted(failing), failing._holdoff_active
+        return got, logged(failing), failing._holdoff_active
 
     long_answer = bytes(PAYLOAD_SIZE + 1)  # three chunks, so there is a mid-train ACK to lose
     cases = (
@@ -2855,7 +2961,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
     for side, successes, answer, what in cases:
         got, log, resynced = get_with_a_failed_write(side, successes, answer)
         assert got is None, what
-        assert _e("UART_WRITE_FAILED") in log, (what, log)
+        assert log == (1, [_e("UART_WRITE_FAILED")]), (what, log)  # the failing side's one entry
         assert resynced is True, what  # every fault also resyncs, without exception
 
 
@@ -2869,9 +2975,9 @@ def test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs() -> None
     async def scenario() -> "tuple[bool, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(1, b"ab")
-        return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
+        return sent, await listener
 
-    sent, result = run(scenario(), limit=_LISTENER_RUN_BOUND_S)
+    sent, result = run(scenario())
     assert sent is False
     assert result.cmd is None  # _LISTEN_FAILED, not a refusal: nothing was ever asked
     assert persisted(pair.responder) == [_e("UART_WRITE_FAILED")], persisted(pair.responder)
@@ -2887,35 +2993,33 @@ def test_a_peer_answering_a_different_question_is_refused() -> None:
     real_send_train = pair.responder._send_train
 
     async def answers_the_wrong_question(
-        device: "Any", cmd_id: int, payload: "Any", total: int, pull: "Any",
+        device: UART, cmd_id: int, payload: "bytes | bytearray | memoryview | PieceBuffer | None", total: int, pull: "_PullCallback | None",
     ) -> bool:
         return await real_send_train(device, (cmd_id + 1) & 0xFF, payload, total, pull)
 
     pair.responder._send_train = answers_the_wrong_question  # type: ignore[method-assign]
-    assert run(pair.with_listener(pair.initiator.uart_get(0x40)), limit=_LISTENER_RUN_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(0x40))) is None
     assert persisted(pair.initiator) == [_e("UART_GET_ID_MISMATCH")], persisted(pair.initiator)
+
 
 class _StarvedAlloc:
     # Shadows asy_uart_comm.py's module-global `bytearray` - tests/'s usual reassign-a-module-name
     # mocking pointed at an allocation (SPECIFICATION.md Part E.4). Armed and one-shot, since every
     # degraded path allocates too; `skip` names the allocation to starve by position, not by count.
-    def __init__(self) -> None:
+    def __init__(self, err: Exception | None = None) -> None:
+        self.err = MemoryError("starved") if err is None else err
         self.skip = 0
         self.armed = False
         self.fired = 0
 
-    def arm(self, skip: int = 0) -> None:
-        self.skip = skip
-        self.armed = True
-
-    def __call__(self, *args: "Any") -> bytearray:
+    def __call__(self, *args: int) -> bytearray:
         if self.armed:
             if self.skip:
                 self.skip -= 1
             else:
                 self.armed = False
                 self.fired += 1
-                raise MemoryError("starved")
+                raise self.err
         return bytearray(*args)
 
     def __enter__(self) -> "_StarvedAlloc":
@@ -2925,6 +3029,10 @@ class _StarvedAlloc:
     def __exit__(self, *exc: object) -> None:
         asy_uart_comm.bytearray = bytearray  # type: ignore[attr-defined]
 
+    def arm(self, skip: int = 0) -> None:
+        self.skip = skip
+        self.armed = True
+
 
 def test_a_scratch_allocation_that_fails_during_construction_refuses_the_object() -> None:
     # The real MemoryError behind the hand-starved refusal above, which substitutes _allocate()
@@ -2932,10 +3040,21 @@ def test_a_scratch_allocation_that_fails_during_construction_refuses_the_object(
     # one group, and a heap that gives out between them leaves zero-length ones behind.
     with _StarvedAlloc() as starved:
         starved.arm()
-        comm = make_comm()
+        comm = _make_comm()
     assert starved.fired == 1
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup()) is False
+
+
+def test_a_failed_scratch_allocation_logs_its_own_text() -> None:
+    # The logger carries the caught error's text, not only the construction errno, so the memory gates read it at
+    # the error level the load tests log at.
+    err = MemoryError("injected for the comm scratch")  # worded clear of the memory gates' markers
+    with _StarvedAlloc(err) as starved, record_prints() as rec:
+        starved.arm()
+        comm = _make_comm(log=LogConfig(None, 4, ERROR_LEVEL))
+    assert comm._init_errno == code("E", "ALLOC")
+    assert rec.lines == [("UART", "Scratch buffer allocation failed:", err), ("UART", "Construction failed, errno", code("E", "ALLOC"))]
 
 
 def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None:
@@ -2953,7 +3072,7 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     comm._rx._buf = None
     comm._ack = bytearray(0)
 
-    async def internals() -> "tuple[Any, Any, Any, Any]":
+    async def internals() -> "tuple[bool, bool, int, int | None]":
         async with bus as device:
             return (
                 await comm._read_frame(device, 10),
@@ -2962,7 +3081,7 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
                 await comm._pull_chunk(device, pull, 2, 4, is_last=False),
             )
 
-    frame, ack, drained, pulled = run(internals(), limit=_RUN_BOUND_S)
+    frame, ack, drained, pulled = run(internals())
     assert frame is False
     assert ack is False
     assert drained == 0
@@ -2970,6 +3089,7 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     # _pull_chunk aborts mid-train, so it resyncs like any other fault - the drain reads through
     # the same missing buffer and returns 0 rather than raising, which is the point.
     assert persisted(comm) == [_e("ALLOC")], persisted(comm)
+
 
 def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
     # _busy is cleared in a finally rather than on the return path, so a task cancelled while holding the
@@ -2984,12 +3104,11 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
     assert bus is not None
     pair.link.direction_from(pair.fake_b).silent = True  # nothing answers, so every call parks
 
-    async def cancel_midway(work: "Any") -> None:
+    async def cancel_midway(work: "Coroutine[object, object, object]") -> None:
         task = asyncio.create_task(work)
-        await asyncio.sleep_ms(_INSIDE_LOCK_MS)  # long enough to be inside the transaction, not before it
-        # Asserted rather than assumed: cancelling a task that had not started yet would leave
+        # Waited for rather than assumed: cancelling a task that had not started yet would leave
         # _busy False for the trivial reason and read as a pass without testing anything.
-        assert bus.session_lock.locked() is True, "the transaction was not in flight when cancelled"
+        assert await wait_for_value(bus.session_lock.locked, True, _INSIDE_LOCK_LIMIT_MS), "the transaction was not in flight when cancelled"
         task.cancel()
         try:
             await task
@@ -3002,25 +3121,83 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
         initiator.uart_get(1),
         initiator.uart_get_into(1, bytearray(16)),
     ):
-        run(cancel_midway(work), limit=_SILENT_BOUND_S)
+        run(cancel_midway(work))
         assert initiator._busy is False, work
         # The lock is the more serious of the two: a leaked one is a permanently dead link, and it
         # would otherwise show only as the next iteration timing out rather than as a named failure.
         assert bus.session_lock.locked() is False, work
+
+
+def test_cancelling_at_each_await_leaves_no_lock_or_busy_flag() -> None:
+    # Each path cancelled after 0, 1, 2, ... turns on a fresh pair, every sleep a bare yield so a turn is one await: both
+    # ends come back free. A count that cancelled with a session lock held proves the sweep reached the transaction.
+    current: list[Pair] = []
+    inside = [False]
+    held = [0]
+
+    async def build() -> Pair:
+        current[:] = [await build_pair(get_callback=echo_get(b"v"), set_callback=accept_set())]
+        inside[0] = False
+        return current[0]
+
+    async def turn() -> None:
+        await asyncio.sleep(0)
+        inside[0] = current[0].driver_a.session_lock.locked() or current[0].driver_b.session_lock.locked()
+
+    def invariants(pair: Pair) -> None:
+        held[0] += inside[0]
+        for comm in (pair.initiator, pair.responder):
+            assert comm._busy is False, comm.name + " is still marked busy"
+            assert comm._in_resync is False, comm.name + " is still inside a resync"
+        assert_unlocked(initiator=pair.driver_a.session_lock, responder=pair.driver_b.session_lock)
+
+    async def paired(own: "Coroutine[object, object, T]", other: "Coroutine[object, object, U]") -> "tuple[T, U]":
+        # The other end's call is a task cancelled at the same turn, never drained: an idle listener has no deadline.
+        peer = asyncio.create_task(other)
+        try:
+            mine = await own
+        except asyncio.CancelledError:
+            peer.cancel()
+            try:
+                await peer
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+            raise
+        return mine, await peer
+
+    async def set_path(pair: Pair) -> None:
+        sent, _ = await paired(pair.initiator.uart_set(1, bytes(range(1, PAYLOAD_SIZE + 5))), pair.responder.uart_listen())
+        assert sent is True
+
+    async def get_path(pair: Pair) -> None:
+        got, _ = await paired(pair.initiator.uart_get(1), pair.responder.uart_listen())
+        assert copied_out(got) == b"v"
+
+    async def listen_path(pair: Pair) -> None:
+        heard, got = await paired(pair.responder.uart_listen(), pair.initiator.uart_get(1))
+        assert (heard.cmd_id, copied_out(got)) == (1, b"v")
+
+    with PollRoundClock() as clock:
+        clock.pace(real=False)
+        for name, path in (("uart_set", set_path), ("uart_get", get_path), ("uart_listen", listen_path)):
+            held[0] = 0
+            turns = cancel_at_each_await(build, path, invariants, turn=turn)
+            assert held[0] > 0, f"{name}: no cancel in its {turns} turns landed with a session lock held"
+
 
 def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None:
     # Alternating declined ids are one code, W56: one slot, every refusal counted (C.7.1).
     pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=returns((False, None)), set_callback=accept_set()))
     for _ in range(6):
         for cmd_id in (0x42, 0x43):
-            assert run(pair.with_listener(pair.initiator.uart_get(cmd_id)), limit=_STEP_BOUND_S) is None
+            assert run(pair.with_listener(pair.initiator.uart_get(cmd_id))) is None
     assert persisted(pair.responder) == [_w("UART_CMD_DECLINED")], persisted(pair.responder)
     assert run(pair.responder.get_error_counter())[pair.responder.name]["ErrCount"] == 12
 
-    assert run(pair.with_listener(pair.initiator.uart_get(0x44)), limit=_STEP_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(0x44))) is None
     assert persisted(pair.responder) == [_w("UART_CMD_DECLINED")], persisted(pair.responder)
     run(pair.responder.reset_error_counter())
-    assert run(pair.with_listener(pair.initiator.uart_get(0x42)), limit=_STEP_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(0x42))) is None
     assert persisted(pair.responder) == [_w("UART_CMD_DECLINED")], persisted(pair.responder)
 
 
@@ -3029,8 +3206,8 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
     # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for anything, so
     # every abort here leaves the peer mid-train: it drains for 1.5 x timeout while this side, without a
     # hold-off, is free to transmit into that window, where the drain swallows a real payload as a fault.
-    def aborting_pull(kind: str) -> "Any":
-        def pull(chunk: int, buf: memoryview) -> "Any":
+    def aborting_pull(kind: str) -> "_PullCallback":
+        def pull(chunk: int, buf: memoryview) -> int:
             if chunk != 2:
                 return len(buf)
             if kind == "short":
@@ -3056,16 +3233,17 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
                 except asyncio.CancelledError:  # expected; anything else is a real failure
                     pass
 
-        assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) is False, kind
+        assert run(scenario()) is False, kind
         assert persisted(pair.initiator) == [errno], (kind, persisted(pair.initiator))
         assert pair.initiator._holdoff_active is True, kind
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Conformance with the legacy BSEC use case (legacy/dev_drivers/asy_bsec_driver.py)
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # A demonstration, deliberately not a constraint - the module is standalone and this use case
 # constrains nothing about its design (SPECIFICATION.md Part J.1). Sizes and command ids are the
 # ones legacy/dev_drivers/sensortask-dev.py actually deployed.
+
 
 _BSEC_GET_MEASUREMENTS = 0x20
 _BSEC_GET_STATE = 0x21
@@ -3116,13 +3294,13 @@ def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
             if result.cmd_id is not None and got is not None:
                 received[result.cmd_id] = got
 
-    async def system_status() -> "tuple[Any, ...] | None":
+    async def system_status() -> "tuple[int, ...] | None":
         res = copied_out(await bme.uart_get(_BSEC_GET_SYSTEM_STATE, exp_size=len(_BSEC_SYSTEM_STATE)))
         return None if res is None else struct.unpack("<bbbbL", res)
 
-    async def scenario() -> "dict[str, Any]":
+    async def scenario() -> "dict[str, object]":
         listener = asyncio.create_task(peer())
-        out: dict[str, Any] = {}
+        out: dict[str, object] = {}
         try:
             out["status"] = await system_status()
             out["start"] = await bme.uart_set(_BSEC_SET_START, None)  # a command with no payload
@@ -3146,7 +3324,7 @@ def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
                 pass
         return out
 
-    out = run(scenario(), limit=_BSEC_RUN_BOUND_S)
+    out = run(scenario())
     assert out["status"] == (0, 0, 0, 0, 12345), out["status"]
     assert out["start"] is True
     assert out["measurements"] == tuple(_BSEC_FIELD_VALUES), out["measurements"]
@@ -3169,29 +3347,29 @@ def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
     # the BSEC driver does not: a GET declaring an expected size of exactly zero - an answer that must be
     # empty, a different claim from "don't care" - and a SET whose payload is an empty bytearray, not None.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(0)))
-    empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)), limit=_RUN_BOUND_S)
+    empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)))
     assert empty is not None and len(empty) == 0, empty  # empty, not None (J.9)
 
     async def scenario() -> bool:
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set(0x30, bytearray())
-        await asyncio.wait_for(listener, _LISTENER_SHORT_BOUND_S)
+        await listener
         return sent
 
-    assert run(scenario(), limit=_LISTENER_RUN_BOUND_S) is True, "an empty bytearray is as good a payload as None"
+    assert run(scenario()) is True, "an empty bytearray is as good a payload as None"
 
     # And the rejection half: a peer answering a zero-size GET with data is refused, not delivered.
     loud = run(build_pair(get_callback=echo_get(b"data"), set_callback=accept_set()))
-    assert run(loud.with_listener(loud.initiator.uart_get(0x3C, exp_size=0)), limit=_RUN_BOUND_S) is None
+    assert run(loud.with_listener(loud.initiator.uart_get(0x3C, exp_size=0))) is None
 
 
 def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
-    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's
-    # 27-byte whole-frame floor but not its 80-byte per-poll floor. Kept rather than relaxed (agent, 2026-09-13), a
-    # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
+    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's 27-byte whole-frame floor
+    # but not its 80-byte per-poll floor. Kept rather than relaxed (agent, 2026-09-13), a drain
+    # must survive a peer that does not stop (SPECIFICATION.md Part J.1).
     def deployed(rxbuf: int) -> UARTComm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())
-        bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]
+        bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]
         return UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits(payload_size=_BSEC_PAYLOAD_SIZE, timeout=1000))
 
     assert deployed(256)._min_rxbuf() == 80
@@ -3207,12 +3385,85 @@ def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
     # _drain()'s verdict outlives the call - the resync that called it reads it afterwards - so it is
     # cleared before the early return, not after. A construction whose RX buffer failed is the only
     # way to reach that return, and it must not hand the next resync the last drain's answer.
-    comm = make_comm()
+    comm = _make_comm()
     comm._drain_bound_hit = True
     comm._rx = RegionBuffer(-1)  # a failed allocation, which is what hands its owner None
     assert comm._rx.get_buf() is None  # the early return really is the path taken
     assert run(comm._drain(comm._uart)) == 0  # type: ignore[arg-type]
     assert comm._drain_bound_hit is False
+
+
+def test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind() -> None:
+    # A listener expects a GET or a SET; any other legal command is a frame of the wrong kind, not a malformed one.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    bus = pair.responder._uart
+    assert bus is not None
+
+    async def scenario() -> ListenResult:
+        ack = build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1)
+        encoded = await bus.framing.encode_into(ack, len(ack))
+        assert encoded is not None
+        pair.fake_b.feed_rx(bytes(encoded))
+        return await pair.responder.uart_listen()
+
+    assert run(scenario()).cmd_id is None
+    assert persisted(pair.responder) == [_e("UART_WRONG_KIND")], persisted(pair.responder)
+
+
+def test_a_raising_uart_listen_is_logged_and_the_loop_backs_off_and_keeps_listening() -> None:
+    # uart_listen() breaking its never-raise contract: logged as E UNEXPECTED, the loop backs off and listens once more; a
+    # C-stack overflow is also recorded for the supervisor, a routine error not.
+    for error, fatal in ((OSError(5), False), (stack_overflow(), True)):
+        comm = _make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
+        assert run(comm.setup()) is True
+        calls = [0]
+
+        async def raising(error: BaseException = error, calls: "list[int]" = calls) -> ListenResult:
+            calls[0] += 1
+            raise error
+
+        comm.uart_listen = raising  # type: ignore[assignment, method-assign]
+        recorder = _SleepRecorder(0)
+
+        async def scenario(comm: UARTComm = comm, recorder: _SleepRecorder = recorder) -> bool:
+            task = comm.start_asy_listen()
+            while len(recorder.delays) < 2:
+                await asyncio.sleep_ms(_RECORDER_POLL_MS)
+            alive = not task.done()
+            task.cancel()
+            return alive
+
+        try:
+            assert run(scenario()) is True, error
+        finally:
+            recorder.restore()
+        assert calls[0] >= 2, (error, calls)
+        assert recorder.delays[:2] == [comm._backoff_initial_ms, comm._backoff_initial_ms * 2], recorder.delays
+        assert run(comm.get_error_counter())[comm.name]["ErrNum"][-1] == code("E", "UNEXPECTED"), error
+        assert fatal_reported() is fatal, error
+        asy_print_log._fatal = False  # microtest fails a test that leaves it set
+
+
+class _RefusingPieceBuffer(PieceBuffer):
+    # Rebound as the module's PieceBuffer: a receive destination whose write_at() refuses every piece.
+    def write_at(self, offset: int, data: "bytes | bytearray | memoryview") -> bool:
+        return False
+
+
+@_on_poll_rounds
+def test_a_received_piece_its_destination_refuses_fails_the_transfer_as_a_size_mismatch() -> None:
+    # The copy guard faults the train and the GET fails; the responder, its train cut after the first piece, waits
+    # out an acknowledgement that never comes.
+    payload = bytes(range(2 * PAYLOAD_SIZE))
+    pair = run(build_pair(limits=transfer_limits(chunk_bytes=4), get_callback=echo_get(payload), set_callback=accept_set()))
+    asy_uart_comm.PieceBuffer = _RefusingPieceBuffer  # type: ignore[misc]
+    try:
+        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True))
+    finally:
+        _real_pieces()
+    assert got is None
+    errnums = run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrNum"]
+    assert code("E", "UART_SIZE_MISMATCH") in errnums, errnums
 
 
 if __name__ == "__main__":

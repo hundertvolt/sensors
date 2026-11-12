@@ -1,0 +1,215 @@
+
+### 2g GEN.003/005 codegen positional + no S105/S106 generated entry + no _HOTSPOT_PW_DEFAULT
+506:            wifi = f"WifiConfig({_lit(device_table['hostname'])}, {_lit(device_table['hotspot_password'])}, {device_table['conn_fail_to_hotspot']}, {device_table['hotspot_time_min']})"
+rc(_HOTSPOT_PW_DEFAULT)=1
+48:# build/generated_src/; the legacy tree (legacy/) is never in scope. tests_hardware/device_scripts/
+176:# MicroPython-run code (src/, build/generated_src/, tests/, digital_twin/, tests_hardware/device_scripts/) runs on the
+190:"build/generated_src/**" = ["PLW0603", "S104"]
+194:"build/generated_src/sensortask_*_main.py" = ["E402"]
+195:"build/generated_src/sensortask_*_main_noautostart.py" = ["E402", "F401", "T20"]
+363:# the Unix-port shims (no hardware fake there); build/generated_src holds the generated device modules
+365:mypy_path = ["typings", "ext/typings", "src", "digital_twin/unixport", "build/generated_src"]
+372:files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts", "build/generated_src"]
+129:    # S105/S106 stay on: the per-file block below names only test doubles' literal passwords; the hotspot password,
+344:# S105/S106 stay on everywhere else, so a new credential in keyword or assignment form is caught. The hotspot fallback
+349:"digital_twin/launch.py" = ["S105"]
+350:"tests_scripts/test_buildgen_validate.py" = ["S105"]
+
+### 2g TOOL.031 allowed-unused-imports
+159:allowed-unused-imports = ["frozen_html", "manual_bus_electrical", "manual_persistence", "manual_sensor_accuracy", "manual_toolchain", "manual_wifi"]
+
+### 2g TSC.047 test_buildgen_generate positional
+b4b7557:tests_scripts/test_buildgen_generate.py:890:def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(device: str) -> None:
+b4b7557:tests_scripts/test_buildgen_generate.py:891:    # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
+b4b7557:tests_scripts/test_buildgen_generate.py:894:        ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
+b4b7557:tests_scripts/test_buildgen_generate.py:904:    # group on Networking (HotspotPW in identity, DNSFallback alone) and as one set on System.
+b4b7557:tests_scripts/test_buildgen_generate.py:1261:    del table_at(doc, "device")["hotspot_time_min"]
+b4b7557:tests_scripts/test_buildgen_generate.py:1266:    assert "hotspot_time_min" in str(exc_info.value)
+b4b7557:tests_scripts/test_buildgen_generate.py:1287:    del table_at(doc, "device")["hotspot_time_min"]
+b4b7557:tests_scripts/test_buildgen_generate.py:1292:    assert "hotspot_time_min" in captured.err
+b4b7557:tests_scripts/test_buildgen_generate.py:1301:def test_hostname_and_hotspot_password_are_wired_into_generated_code(device: str) -> None:
+b4b7557:tests_scripts/test_buildgen_generate.py:1302:    # The inverse of the tripwire this replaces: hostname and hotspot_password were validated
+b4b7557:tests_scripts/test_buildgen_generate.py:1307:    assert f"WifiConfig({_lit(stated['hostname'])}, {_lit(stated['hotspot_password'])}, " in result.module_source
+
+### 7 HW_BENCH.038
+rc(noqa conformance)=1
+ls-tree isl29125_conformance done
+
+### 9 HW_BENCH.100
+rc(noqa manual/runner)=1
+159:allowed-unused-imports = ["frozen_html", "manual_bus_electrical", "manual_persistence", "manual_sensor_accuracy", "manual_toolchain", "manual_wifi"]
+
+### 10-12 HW_DEV.062-064
+rc(noqa fram_error_log_roundtrip.py)=1
+tests_hardware/device_scripts/fram_error_log_roundtrip.py
+rc(noqa fram_error_log_reset_race_seed_and_race.py)=1
+tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py
+rc(noqa fram_error_log_reset_race_verify.py)=1
+tests_hardware/device_scripts/fram_error_log_reset_race_verify.py
+
+### 13 HW_DEV.090
+rc=1
+
+### 14 HW_DEV.107
+20:    for _ in range(64):  # an upper bound only: the pool holds 16 alarms (pico-sdk pico/time.h), fewer are free
+27:    fact("constructed", len(timers))
+
+### 15 HW_DEV.112
+rc(ls-tree repro)=1
+rc(pyproject repro)=1
+
+### 18 HW_BENCH.103
+
+
+diff-quiet manual_sensor_accuracy rc=0
+
+### 19 SCR.009
+diff-quiet micropypath.toml rc=0
+
+### 24 SCR.070
+rc=1
+
+### 31 SRC_SENS.038
+7:Verified against BST-BMP384-DS003, BST-BMP388-DS001, BST-BMP390-DS002 and the self-test note BST-MPS-AN006 (datasheets/bmp3xx/); one register map, chip ID 0x50 (BMP384/388) or 0x60 (BMP390).
+7:Verified against BST-BMP384-DS003, BST-BMP388-DS001, BST-BMP390-DS002 and the self-test note BST-MPS-AN006 (datasheets/bmp3xx/); one register map, chip ID 0x50 (BMP384/388) or 0x60 (BMP390).
+diff-quiet asy_bmp3xx_driver rc=0
+
+### 35 TEST_UNIT.037
+rc(noqa)=1
+
+### 41 TEST_UNIT.332
+import frozen_html  # mounts /html on import
+rc(noqa)=1
+
+### 45 TOOL.020
+      9 uses: ./.github/actions/setup-micropython-toolchain
+      5 uses: ./.github/actions/uv-sync
+      5 uses: actions/cache@v6
+     16 uses: actions/checkout@v7
+      8 uses: actions/setup-node@v7
+      6 uses: actions/upload-artifact@v7
+      1 uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
+rc(submodules)=1
+uses: ./.github/actions/uv-sync
+uses: actions/cache@v6
+
+### 60 SCR.025
+49:ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts build/generated_src || status=1
+428:      - name: Generate the device modules (ruff checks them)
+431:        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts build/generated_src
+
+### 63 SCR.010
+diff-quiet _require_python.sh rc=0
+14:        source scripts/_require_python.sh && require_python311
+
+### 65 SCR.036
+rc(probe lines in diff)=1
+109:source scripts/_unix_port.sh
+194:# Every binary comes from the one Unix-port probe (scripts/_unix_port.sh), by the build flavour it reports: a missing or
+
+### 66 SCR.072
+diff-quiet build_frozen_html.sh rc=0
+
+### 67 SCR.071
+diff-quiet build_website.sh rc=0
+
+### 75 TOOL.046
+104:NETWORK_ATTEMPTS = 3  # mirrors scripts/uv_sync_retried.sh, the one retried uv sync: a momentary outage is not a failed install
+1609:def run_retried(cmd: list[str], cwd: Path | None = None, *, env: dict[str, str] | None = None, timeout_s: float, secrets: tuple[str, ...] = (), attempts: int = NETWORK_ATTEMPTS, backoff_s: float 
+19:# @tunable tool.uv_sync_attempts = 3
+20:attempts=3
+21:# @tunable tool.uv_sync_backoff_step_s = 10
+22:step=10
+25:    echo "uv sync failed on attempt $attempt/$attempts; retrying in $((attempt * step))s" >&2
+26:    sleep "$((attempt * step))"
+
+### 76 TOOL.052
+690:      # A cache miss fails the picotool step below by name (no cached build tree), never skipping the
+708:      # picotool lives in /usr/local, outside the cache; its build tree is inside it, so a hit installs
+710:      - name: Install the cached picotool
+712:          if [ ! -x /usr/local/bin/picotool ]; then sudo make -C "$HOME/pico-toolchain/picotool/build" install; fi
+713:          /usr/local/bin/picotool version
+ 1 file changed, 77 insertions(+), 13 deletions(-)
+
+### 81 TSC.021
+rc(noqa)=1
+
+### 82 TSC.027
+rc(noqa)=1
+
+### 90 SRC_CORE.016
+rc(type: ignore)=1
+
+### 95 TSC.168
+    assert name not in _top_level_imports(repo_root), f"the JS coverage report directory {name!r} shadows a module this repo imports"
+
+
+def test_ci_uploads_the_directory_vitest_actually_writes(repo_root: Path) -> None:
+    name = _reports_directory(repo_root)
+    ci = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert f"hashFiles('{name}/index.html')" in ci, "ci.yml gates the JS coverage upload on a directory vitest no longer writes"
+    assert f"path: {name}/" in ci, "ci.yml uploads a JS coverage directory vitest no longer writes"
+
+
+def test_the_report_directory_is_gitignored(repo_root: Path) -> None:
+
+### 96 TSC.175
+b4b7557:tests_scripts/_devices.py:25:def bench_device(devices_dir: Path = DEVICES_DIR) -> str:
+b4b7557:tests_scripts/_devices.py:42:def devices_with(driver: str) -> "list[str]":
+
+### 99 TWIN.011
+diff-quiet _fram_chip rc=0
+
+### 100 TWIN.025
+603:    0x2000: bytes([0x04, 0x7F, 0x03, 0x02]),  # MB85RS64V, datasheets/fram/MB85RS64V-DS501-00015-4v0-E.pdf p.10
+604:    0x40000: bytes([0x04, 0x7F, 0x48, 0x03]),  # MB85RS2MTA, datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
+0
+
+### 103 TWIN.057
+rc(noqa)=1
+
+### 107 TWIN.144
+b4b7557:tests/test_digital_twin_sensortask_integration.py:27:import _wall_clock  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+b4b7557:tests/test_digital_twin_sensortask_integration.py:28:import machine  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+b4b7557:tests/test_digital_twin_sensortask_integration.py:29:import microtest  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+b4b7557:tests/test_digital_twin_sensortask_integration.py:30:import network  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+b4b7557:tests/test_digital_twin_sensortask_integration.py:31:import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim (C4 orde
+b4b7557:tests/test_digital_twin_sensortask_integration.py:32:import unix_port_unretrieved_report  # noqa: E402 - imported after the prewarm and the UDP shim (C4
+b4b7557:tests/test_digital_twin_sensortask_integration.py:33:from _async_harness import cancel, release_finished, run_timed  # noqa: E402 - imported after the p
+b4b7557:tests/test_digital_twin_sensortask_integration.py:34:from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the pre
+b4b7557:tests/test_digital_twin_sensortask_integration.py:35:from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order
+b4b7557:tests/test_digital_twin_sensortask_integration.py:36:from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and th
+b4b7557:tests/test_digital_twin_sensortask_integration.py:37:from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm
+b4b7557:tests/test_digital_twin_sensortask_integration.py:38:from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim (
+b4b7557:tests/test_digital_twin_sensortask_integration.py:39:from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim (C4 or
+b4b7557:tests/test_digital_twin_sensortask_integration.py:40:from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4
+b4b7557:tests/test_digital_twin_sensortask_integration.py:41:from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order
+b4b7557:tests/test_digital_twin_sensortask_integration.py:42:from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and t
+b4b7557:tests/test_digital_twin_sensortask_integration.py:43:from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP s
+b4b7557:tests/test_digital_twin_sensortask_integration.py:45:import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+b4b7557:tests/test_digital_twin_sensortask_integration.py:46:import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+b4b7557:tests/test_digital_twin_sensortask_integration.py:47:from asy_scd30_driver import SCD30  # noqa: E402 - imported after the prewarm and the UDP shim (C4 
+b4b7557:tests/test_digital_twin_sensortask_integration.py:48:from asy_sgp40_driver import SGP40  # noqa: E402 - imported after the prewarm and the UDP shim (C4 
+b4b7557:tests/test_digital_twin_sensortask_integration.py:49:from asy_uart_comm import ROLE_INITIATOR, UARTComm  # noqa: E402 - imported after the prewarm and t
+rc(E402 without reason)=1
+
+### 109 TWIN.164
+rc(ls-tree wrappers)=1
+
+### 110 WEB.072
+24
+7:  "engines": {
+8:    "node": ">=24 <25"
+39:    "@types/node": "^24.19.1",
+
+### 122 SCR.038
+ scripts/_pytest_run_record.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+### 140 SCR.061
+diff-quiet run_digital_twin_ci.sh rc=0
+657:        run: scripts/run_digital_twin_ci.sh "$DEVICE" --gc-threshold "$TWIN_GC_THRESHOLD" --part "$TWIN_PART"
+
+### 147 WEB.077
+2:    // Node-context pass: tests_js/_live_twin_command.js, _live_matrix_command.js, _lint_command.js, _summary_reporter.js,
+10:    "include": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js", "tests_js/_port_lock.js", "tests_js/_twin_process.js", "scripts/cross_browser_smoke.mjs", "scripts/_cross_browser_probe.mjs", "scripts/_page_load_connections.mjs"]

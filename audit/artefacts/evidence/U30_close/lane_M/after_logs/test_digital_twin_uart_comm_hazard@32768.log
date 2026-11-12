@@ -1,0 +1,19 @@
+UART_A UART error: a data frame arrived where an ACK was due
+PASS test_both_ends_transmitting_crc16
+UART_A UART error: a data frame arrived where an ACK was due
+PASS test_both_ends_transmitting_nocrc
+PASS test_clear_racing_a_transaction_after_the_last_ack_crc16
+PASS test_clear_racing_a_transaction_after_the_last_ack_nocrc
+PASS test_clear_racing_a_transaction_before_the_first_frame_crc16
+PASS test_clear_racing_a_transaction_before_the_first_frame_nocrc
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+PASS test_clear_racing_a_transaction_mid_train_crc16
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+PASS test_clear_racing_a_transaction_mid_train_nocrc
+UART_A UART error: already inside a transaction
+PASS test_two_initiations_on_one_instance_crc16
+UART_A UART error: already inside a transaction
+PASS test_two_initiations_on_one_instance_nocrc
+10/10 passed, 0 failed, 0 skipped

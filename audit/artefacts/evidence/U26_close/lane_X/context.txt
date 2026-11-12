@@ -1,0 +1,432 @@
+l0.fram_regions_boot_timeout_s = 120 | tests_scripts/test_device_script_fram_regions.py:30
+    > _BOOT_TIMEOUT_S = 120
+l0.session_exit_guard_timeout_s = 60 | tests_scripts/test_session_exit_guard.py:31
+    > _RUN_TIMEOUT_S = 60
+l3.bmp3xx_alone_survives_a_general_call_broadcast_step_ms = 200 | tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py:31
+    > _BROADCAST_STEP_MS = 200
+l3.bmp3xx_alone_survives_a_general_call_broadcasts = 10 | tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py:29
+    > _BROADCASTS = 10
+l3.bmp3xx_alone_survives_a_general_call_run_bound_s = 60.0 | tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py:33
+    > _RUN_BOUND_S = 60.0
+l3.bmp3xx_conformance_probe_conversion_ms = 50 | tests_hardware/device_scripts/bmp3xx_conformance_probe.py:32
+    ^ # A forced conversion at the reset OSR (x4, x1) takes ~11 ms (3.9.2); at x8, x2 ~21 ms: this covers both with margin.
+    > _CONVERSION_MS = 50
+l3.bmp3xx_same_device_rw_concurrency_rung_margin_ms = 100 | tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py:37
+    ^ # The reset rung's reads run this long on each side of the reset.
+    > _RUNG_MARGIN_MS = 100
+l3.bus_concurrency_command_boot_timeout_s = 60.0 | tests_hardware/flash/test_bus_concurrency.py:36
+    ^ # The production boot after a system command's reset, before the raw dump reads the FRAM it left.
+    > _COMMAND_BOOT_TIMEOUT_S = 60.0
+l3.bus_concurrency_cross_device_resume_s = 2.5 | tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:34
+    > _SCD30_RESUME_S = 2.5
+l3.bus_concurrency_cross_device_rung_traffic_ms = 1000 | tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:38
+    > _RUNG_TRAFFIC_MS = 1000
+l3.bus_concurrency_cross_device_sibling_step_ms = 15 | tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:36
+    > _SIBLING_STEP_MS = 15
+l3.bus_concurrency_scd30_write_vs_siblings_writer_delay_ms = 1000 | tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py:37
+    ^ # The write waits until both siblings completed a read, at most this long (a deadline, never a fixed head start).
+    > _WRITER_DELAY_MS = 1000
+l3.bus_electrical_timing_arming_span_max_us = 1500 | tests_hardware/flash/test_bus_electrical_timing.py:22
+    ^ # Twelve timers armed back to back: past this the arming itself, not the scheduler, would be what is measured.
+    > _ARMING_SPAN_MAX_US = 1500
+l3.bus_electrical_timing_country_script_timeout_s = 120.0 | tests_hardware/flash/test_bus_electrical_timing.py:25
+    ^ # Three scans and two radio re-inits per value, three values.
+    > _COUNTRY_SCRIPT_TIMEOUT_S = 120.0
+l3.c_stack_budget_window_ms = 10000 | tests_hardware/device_scripts/c_stack_budget.py:40
+    > _WINDOW_MS = 10000  # about ten read cycles of every reader the build starts
+l3.chip_conformance_argument_reaction_timeout_s = 240.0 | tests_hardware/flash/test_chip_conformance.py:26
+    ^ # Two timed measurement periods per write, each up to two intervals: generous for the bench's interval.
+    > _ARGUMENT_REACTION_TIMEOUT_S = 240.0
+l3.chip_conformance_isl29125_cycle_max_ms = 40 | tests_hardware/flash/test_chip_conformance.py:34
+    > _ISL_CYCLE_MAX_MS = 40
+l3.chip_conformance_isl29125_cycle_min_ms = 3 | tests_hardware/flash/test_chip_conformance.py:32
+    ^ # One ISL29125 12-bit conversion: tINT 101 ms at 16 bit over 16 (p.3, p.6), per channel or per RGB cycle of three.
+    > _ISL_CYCLE_MIN_MS = 3
+l3.chip_conformance_probe_timeout_s = 120.0 | tests_hardware/flash/test_chip_conformance.py:23
+    ^ # The longest probe is the ISL29125's (~15 s of measured settles); the SCD30's waits up to one interval.
+    > _PROBE_TIMEOUT_S = 120.0
+l3.config_float_round_trip_script_timeout_s = 60.0 | tests_hardware/flash/test_config_float_round_trip.py:15
+    > _SCRIPT_TIMEOUT_S = 60.0
+l3.device_script_errors_kept = 5 | tests_hardware/device_scripts/_shared/facts.py:7
+    > _ERRORS_KEPT = 5
+l3.device_script_feed_step_ms = 2000 | tests_hardware/device_scripts/_shared/watchdog.py:12
+    > _FEED_STEP_MS = 2000
+l3.flash_leave_serving_boot_timeout_s = 30.0 | tests_hardware/flash/conftest.py:26
+    > _BOOT_TIMEOUT_S = 30.0
+l3.flash_leave_serving_present_timeout_s = 15.0 | tests_hardware/flash/conftest.py:24
+    > _PRESENT_TIMEOUT_S = 15.0
+l3.fram_command_hold_block_budget_us = 25000 | tests_hardware/device_scripts/fram_command_hold_timing.py:29
+    > _BLOCK_HOLD_BUDGET_US = 25000  # the measured 18,089-23,148 us block hold (SPECIFICATION.md F.5.8) plus 8 %
+l3.heap_layout_script_timeout_s = 120.0 | tests_hardware/flash/test_heap_layout.py:21
+    > _LAYOUT_SCRIPT_TIMEOUT_S = 120.0
+l3.heap_probe_max_kib = 192 | tests_hardware/device_scripts/_shared/heap_probe.py:21
+    > _PROBE_MAX = 192 * 1024
+l3.heap_probe_min = 64 | tests_hardware/device_scripts/_shared/heap_probe.py:19
+    ^ # Search bounds: 64 B is below anything worth reporting; 192 KiB is above the RP2040's free heap, so the search
+    ^ # always converges on a real failure rather than running off the top.
+    > _PROBE_MIN = 64
+l3.heap_probe_retries = 3 | tests_hardware/device_scripts/_shared/heap_probe.py:24
+    ^ # Rereads while the probe still holds its own buffer through a stale root (one has always been enough).
+    > _PROBE_RETRIES = 3
+l3.isl29125_mechanism_envelope_settle_s = 4.5 | tests_hardware/device_scripts/isl29125_mechanism_envelope.py:37
+    ^ # SampleInterval 1 s, the fixed 2-cycle settle and slack for a switch to land; then a sample stored after it.
+    > _SETTLE_S = 4.5
+l3.isl29125_mock_conformance_probe_conversion_settle_ms = 700 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:34
+    ^ # Two 16-bit RGB cycles (3 x tINT, tINT 101 ms, p.3) with margin.
+    > _CONVERSION_SETTLE_MS = 700
+l3.isl29125_mock_conformance_probe_cycle_poll_ms = 1 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:64
+    > _CYCLE_POLL_MS = 1
+l3.isl29125_mock_conformance_probe_cycle_samples = 9 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:60
+    ^ # The 12-bit conversion cycle: CONVENF rises timed by a status-poll series (each read clears the flag, p.12).
+    > _CYCLE_SAMPLES = 9
+l3.isl29125_mock_conformance_probe_cycle_window_ms = 1500 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:62
+    > _CYCLE_WINDOW_MS = 1500
+l3.isl29125_mock_conformance_probe_int_release_ms = 20 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:45
+    > _INT_RELEASE_MS = 20
+l3.isl29125_mock_conformance_probe_one_cycle_ms = 400 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:43
+    ^ # One 16-bit RGB cycle plus margin: the conversion a CONFIG1 write restarted has completed.
+    > _ONE_CYCLE_MS = 400
+l3.isl29125_mock_conformance_probe_reconfigure_settle_ms = 1000 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:37
+    ^ # Three 16-bit RGB cycles: a range or mode change has taken effect with one cycle to spare.
+    > _RECONFIGURE_SETTLE_MS = 1000
+l3.isl29125_mock_conformance_probe_short_settle_ms = 500 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:40
+    ^ # Many 12-bit cycles (tINT / 16 each) after a resolution change.
+    > _SHORT_SETTLE_MS = 500
+l3.isl29125_mock_conformance_probe_write_settle_ms = 50 | tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:31
+    ^ # Measured delays, not polls: the probe characterises the chip's own write-settle and conversion timing for the twin
+    ^ # comparison, so a register read inside these windows would become part of what is measured.
+    > _WRITE_SETTLE_MS = 50
+l3.isl29125_real_irq_edge_dark_settle_ms = 300 | tests_hardware/device_scripts/isl29125_real_irq_edge.py:47
+    ^ # A WS2812 latches its last value; the dark scene needs this long to reach the part before the first conversion.
+    > _DARK_SETTLE_MS = 300
+l3.isl29125_same_device_rw_concurrency_writer_delay_ms = 120 | tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:36
+    ^ # The writer starts once the reader completed its first read, at most this long after (a deadline, not a head start).
+    > _WRITER_DELAY_MS = 120
+l3.isl29125_same_device_rw_concurrency_writer_poll_ms = 10 | tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:38
+    > _WRITER_POLL_MS = 10
+l3.loop_lag_window_s = 30 | tests_hardware/device_scripts/loop_lag_under_combined_load.py:36
+    > _WINDOW_S = 30
+l3.memory_stress_c_stack_script_timeout_s = 60.0 | tests_hardware/flash/test_memory_stress.py:40
+    ^ # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
+    > _C_STACK_SCRIPT_TIMEOUT_S = 60.0
+l3.memory_stress_loop_lag_script_timeout_s = 90.0 | tests_hardware/flash/test_memory_stress.py:37
+    ^ # The lag script's own 30 s window plus the shipped boot and the scratch cleanup.
+    > _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
+l3.memory_stress_stretch_script_timeout_s = 60.0 | tests_hardware/flash/test_memory_stress.py:34
+    > _STRETCH_SCRIPT_TIMEOUT_S = 60.0
+l3.record_twin_flash_run_timeout_s = 3600.0 | scripts/record_twin_instrument_runs.py:31
+    > _FLASH_RUN_TIMEOUT_S = 3600.0  # the whole flash tier under --twin, one pytest process
+l3.reflash_boot_timeout_s = 60.0 | tests_hardware/harness.py:155
+    > _REFLASH_BOOT_TIMEOUT_S = 60.0
+l3.reflash_present_timeout_s = 30.0 | tests_hardware/harness.py:153
+    > _REFLASH_PRESENT_TIMEOUT_S = 30.0
+l3.scd30_argument_reaction_loop_step_ms = 500 | tests_hardware/device_scripts/scd30_argument_reaction.py:43
+    > _LOOP_STEP_MS = 500
+l3.scd30_argument_reaction_loop_writes = 20 | tests_hardware/device_scripts/scd30_argument_reaction.py:41
+    ^ # The power-cut loop: at most this many writes, spaced so the operator's cut can land between two of them.
+    > _LOOP_WRITES = 20
+l3.scd30_argument_reaction_period_slack_ms = 2000 | tests_hardware/device_scripts/scd30_argument_reaction.py:38
+    ^ # Two data-ready events at the original interval, with one interval and this slack to spare.
+    > _PERIOD_SLACK_MS = 2000
+l3.scd30_argument_reaction_read_delay_ms = 5 | tests_hardware/device_scripts/scd30_argument_reaction.py:33
+    ^ # "the read header should be send with a delay of > 3ms following the write sequence" (1.4.4).
+    > _READ_DELAY_MS = 5
+l3.scd30_argument_reaction_ready_poll_ms = 100 | tests_hardware/device_scripts/scd30_argument_reaction.py:35
+    > _READY_POLL_MS = 100
+l3.scd30_conformance_probe_read_delay_ms = 5 | tests_hardware/device_scripts/scd30_conformance_probe.py:29
+    ^ # "the read header should be send with a delay of > 3ms following the write sequence" (1.4.4).
+    > _READ_DELAY_MS = 5
+l3.scd30_conformance_probe_ready_poll_ms = 200 | tests_hardware/device_scripts/scd30_conformance_probe.py:31
+    > _READY_POLL_MS = 200
+l3.scd30_conformance_probe_ready_slack_ms = 2000 | tests_hardware/device_scripts/scd30_conformance_probe.py:34
+    ^ # Data ready may take one full interval after the probe's first read; slack for the read itself.
+    > _READY_SLACK_MS = 2000
+l3.scd30_conformance_probe_recovery_poll_ms = 20 | tests_hardware/device_scripts/scd30_conformance_probe.py:38
+    > _RECOVERY_POLL_MS = 20
+l3.scd30_data_ready_poll_ms = 1000 | tests_hardware/device_scripts/scd30_data_ready_wait.py:25
+    > _POLL_MS = 1000
+l3.scd30_data_ready_wait_margin_s = 2 | tests_hardware/device_scripts/scd30_data_ready_wait.py:27
+    > _MARGIN_S = 2
+l3.scd30_prerequisite_interval_read_timeout_s = 30.0 | tests_hardware/scd30_prerequisite.py:18
+    ^ # One setup and a register read bound both the interval read and the start script (one read-back, one send).
+    > _INTERVAL_READ_TIMEOUT_S = 30.0
+l3.scd30_prerequisite_wait_margin_s = 60 | tests_hardware/scd30_prerequisite.py:20
+    > _WAIT_MARGIN_S = 60
+l3.scd30_same_device_rw_concurrency_writer_delay_s = 0.2 | tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py:38
+    ^ # The write waits until the reader completed its first read, at most this long (a deadline, never a head start).
+    > _WRITER_DELAY_S = 0.2
+l3.scd30_same_device_rw_concurrency_writer_poll_ms = 10 | tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py:40
+    > _WRITER_POLL_MS = 10
+l3.scheduler_saturation_drop_busy_step_us = 900 | tests_hardware/device_scripts/scheduler_saturation_drop.py:27
+    > _BUSY_STEP_US = 900
+l3.sensor_accuracy_frc_sum_rel_max = 0.001 | tests_hardware/flash/test_sensor_accuracy.py:41
+    ^ # The window's figures from the float32 sums may differ from the double-precision ones by at most this, relative.
+    > _FRC_SUM_REL_MAX = 0.001
+l3.settle_budget_ms = 2000 | tests_hardware/device_scripts/_shared/settle.py:22
+    > _SETTLE_BUDGET_MS = 2000
+l3.settle_step_ms = 100 | tests_hardware/device_scripts/_shared/settle.py:20
+    > _SETTLE_STEP_MS = 100
+l3.sgp40_fram_backup_restore_backup_wait_s = 75.0 | tests_hardware/device_scripts/sgp40_fram_backup_restore.py:34
+    > _BACKUP_WAIT_S = 75.0  # 60 s to the first natural BackupPeriod=1min trigger, plus margin
+l3.sgp40_fram_backup_restore_restore_wait_s = 10.0 | tests_hardware/device_scripts/sgp40_fram_backup_restore.py:36
+    > _RESTORE_WAIT_S = 10.0
+l3.sgp40_sample_cadence_timers_poll_ms = 100 | tests_hardware/device_scripts/sgp40_sample_cadence.py:39
+    > _TIMERS_POLL_MS = 100
+l3.system_commands_boot_timeout_s = 60.0 | tests_hardware/flash/test_system_commands.py:48
+    > _BOOT_TIMEOUT_S = 60.0
+l3.system_commands_erase_feed_gap_max_ms = 100 | tests_hardware/flash/test_system_commands.py:42
+    ^ # The erase's own feed cadence: one feed per 256 B unit or chunk, each well under this (agent, 2026-10-14).
+    > _ERASE_FEED_GAP_MAX_MS = 100
+l3.system_commands_picotool_timeout_s = 30.0 | tests_hardware/flash/test_system_commands.py:52
+    > _PICOTOOL_TIMEOUT_S = 30.0
+l3.system_commands_present_timeout_s = 30.0 | tests_hardware/flash/test_system_commands.py:50
+    > _PRESENT_TIMEOUT_S = 30.0
+l3.system_commands_refusal_script_timeout_s = 120.0 | tests_hardware/flash/test_system_commands.py:46
+    > _REFUSAL_SCRIPT_TIMEOUT_S = 120.0
+l3.system_commands_script_timeout_s = 90.0 | tests_hardware/flash/test_system_commands.py:44
+    > _SCRIPT_TIMEOUT_S = 90.0
+l3.uart_comm_hazards_quiet_window_ms = 300 | tests_hardware/device_scripts/uart_comm_hazards.py:50
+    ^ # A rejected frame is answered by silence: each verdict waits the responder's timeout and its resync window past it.
+    > _QUIET_WINDOW_MS = 300
+l3.uart_crossover_hazards_timeout_s = 120.0 | tests_hardware/flash/test_uart_crossover.py:42
+    ^ # Sized from the twin run (12 s with the stalled-TX settle): four hazard classes, the boundary set at 300 ms a verdict.
+    > _HAZARDS_TIMEOUT_S = 120.0
+l3.uart_dma_ring_interrupts_off_oe_bound_us = 20000 | tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:63
+    ^ # Long past the 32-byte FIFO's fill at line rate (2.8 ms at 115200 baud).
+    > _OE_BOUND_US = 20000
+l3.uart_dma_ring_interrupts_off_quiet_ms = 50 | tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:60
+    > _QUIET_MS = 50
+l3.uart_dma_ring_interrupts_off_reset_stream_ms = 2000 | tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:69
+    ^ # The stream the harness's trailing soft reset lands in: far longer than that reset takes to arrive.
+    > _RESET_STREAM_MS = 2000
+l3.uart_dma_ring_interrupts_off_untouched_ms = 1000 | tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:66
+    > _UNTOUCHED_MS = 1000
+l3.uart_driver_read_never_blocks_the_loop_drain_quiet_ms = 20 | tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:54
+    ^ # A quiet line for this long ends a drain: whatever an earlier arm left on the wire has arrived and gone.
+    > _DRAIN_QUIET_MS = 20
+l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms = 50 | tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:48
+    ^ # The ticker is running before the first byte leaves: a deadline on its first recorded turn, not a fixed sleep.
+    > _TICKER_START_MS = 50
+l3.uart_idle_poll_rate_cancel_settle_ms = 400 | tests_hardware/device_scripts/uart_idle_poll_rate.py:39
+    > _CANCEL_SETTLE_MS = 400
+l3.uart_idle_poll_rate_park_settle_ms = 500 | tests_hardware/device_scripts/uart_idle_poll_rate.py:37
+    ^ # The listener has reached its parked wait once its round counter moved: a deadline, not a fixed settle.
+    > _PARK_SETTLE_MS = 500
+l3.uart_link_echo_under_serving_load_load_wait_ms = 90000 | tests_hardware/device_scripts/uart_link_echo_under_serving_load.py:42
+    > _LOAD_WAIT_MS = 90000
+l3.uart_link_echo_under_serving_load_poll_ms = 250 | tests_hardware/device_scripts/uart_link_echo_under_serving_load.py:44
+    > _POLL_MS = 250
+l3.uart_link_echo_under_serving_load_rounds = 20 | tests_hardware/device_scripts/uart_link_echo_under_serving_load.py:38
+    ^ # At least this many rounds, and rounds until the window has passed, so the echoes span the host's whole load.
+    > _ROUNDS = 20
+l3.uart_link_echo_under_serving_load_window_ms = 30000 | tests_hardware/device_scripts/uart_link_echo_under_serving_load.py:40
+    > _WINDOW_MS = 30000
+l3.wifi_radio_reinit_connect_budget_ms = 20000 | tests_hardware/device_scripts/wifi_radio_reinit_recovery.py:31
+    ^ # One attempt's own poll (5 s) plus the DHCP lease the bench AP gives.
+    > _CONNECT_BUDGET_MS = 20000
+l3.wifi_radio_reinit_poll_ms = 250 | tests_hardware/device_scripts/wifi_radio_reinit_recovery.py:33
+    > _POLL_MS = 250
+l4.bench_load_probe_timeout_s = 10.0 | tests_hardware/bench/_load.py:33
+    > _PROBE_TIMEOUT_S = 10.0
+l4.board_image_system_timeout_s = 10.0 | tests_hardware/bench/conftest.py:17
+    > _SYSTEM_TIMEOUT_S = 10.0
+l4.boot_order_console_read_timeout_s = 0.2 | tests_hardware/bench/test_boot_order_and_triggers.py:32
+    > _CONSOLE_READ_TIMEOUT_S = 0.2
+l4.boot_order_console_reopen_s = 0.2 | tests_hardware/bench/test_boot_order_and_triggers.py:34
+    > _CONSOLE_REOPEN_S = 0.2
+l4.boot_order_join_timeout_s = 10.0 | tests_hardware/bench/test_boot_order_and_triggers.py:41
+    > _JOIN_TIMEOUT_S = 10.0
+l4.boot_order_probe_timeout_s = 5.0 | tests_hardware/bench/test_boot_order_and_triggers.py:39
+    > _PROBE_TIMEOUT_S = 5.0
+l4.boot_order_status_poll_s = 0.5 | tests_hardware/bench/test_boot_order_and_triggers.py:28
+    > _STATUS_POLL_S = 0.5
+l4.boot_order_trigger_stamp_tolerance_ms = 20.0 | tests_hardware/bench/test_boot_order_and_triggers.py:37
+    ^ # Host-side arrival stamps carry the USB poll and print scheduling jitter on top of the planned gap.
+    > _STAMP_TOLERANCE_MS = 20.0
+l4.boot_order_window_s = 90.0 | tests_hardware/bench/test_boot_order_and_triggers.py:30
+    > _BOOT_WINDOW_S = 90.0
+l4.bus_concurrency_under_api_load_command_after_answered = 3 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:82
+    > _COMMAND_AFTER_ANSWERED = 3
+l4.bus_concurrency_under_api_load_command_min_answered = 6 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:47
+    > _COMMAND_MIN_ANSWERED = 6
+l4.bus_concurrency_under_api_load_degraded_min_answered = 12 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:39
+    > _DEGRADED_MIN_ANSWERED = 12
+l4.bus_concurrency_under_api_load_flap_min_answered = 6 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:43
+    > _FLAP_MIN_ANSWERED = 6
+l4.bus_concurrency_under_api_load_ntp_block_margin_s = 10.0 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:80
+    > _NTP_BLOCK_MARGIN_S = 10.0
+l4.bus_concurrency_under_api_load_ntp_min_answered = 12 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:41
+    > _NTP_MIN_ANSWERED = 12
+l4.bus_concurrency_under_api_load_plain_min_answered = 24 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:37
+    ^ # The readers' answered floors, of the 24 reads dev's TOML sends per arm (3 readers x 8): every read where nothing
+    ^ # faults, half under a light network fault, a quarter while the link flaps or the board reboots under the load.
+    > _PLAIN_MIN_ANSWERED = 24
+l4.bus_concurrency_under_api_load_scd30_offset_step_k = 0.5 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:317
+    > _SCD30_OFFSET_STEP_K = 0.5
+l4.bus_concurrency_under_api_load_scd30_write_cycles = 2 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:315
+    > _SCD30_WRITE_CYCLES = 2
+l4.bus_concurrency_under_api_load_write_min_answered = 24 | tests_hardware/bench/test_bus_concurrency_under_api_load.py:45
+    > _WRITE_MIN_ANSWERED = 24
+l4.cap_binding_answer_s = 2.0 | tests_hardware/bench/test_network_resilience.py:552
+    > _CAP_BINDING_ANSWER_S = 2.0
+l4.cap_binding_close_margin_s = 5.0 | tests_hardware/bench/test_network_resilience.py:554
+    > _CLOSE_MARGIN_S = 5.0
+l4.conftest_dut_ip_exec_timeout_s = 15.0 | tests_hardware/conftest.py:45
+    > _DUT_IP_EXEC_TIMEOUT_S = 15.0
+l4.conftest_end_boot_timeout_s = 30.0 | tests_hardware/conftest.py:61
+    > _END_BOOT_TIMEOUT_S = 30.0
+l4.conftest_end_present_timeout_s = 15.0 | tests_hardware/conftest.py:59
+    > _END_PRESENT_TIMEOUT_S = 15.0
+l4.conftest_http_ready_poll_s = 2.0 | tests_hardware/conftest.py:49
+    > _HTTP_READY_POLL_S = 2.0
+l4.conftest_http_ready_probe_timeout_s = 5.0 | tests_hardware/conftest.py:47
+    > _HTTP_READY_PROBE_TIMEOUT_S = 5.0
+l4.conftest_ip_and_http_timeout_s = 60.0 | tests_hardware/conftest.py:51
+    > _IP_AND_HTTP_TIMEOUT_S = 60.0
+l4.conftest_provision_put_timeout_s = 10.0 | tests_hardware/conftest.py:43
+    > _PROVISION_PUT_TIMEOUT_S = 10.0
+l4.conftest_sta_tail_step_s = 2.0 | tests_hardware/conftest.py:55
+    > _STA_TAIL_STEP_S = 2.0
+l4.conftest_vl805_read_timeout_s = 20.0 | tests_hardware/conftest.py:57
+    > _VL805_READ_TIMEOUT_S = 20.0
+l4.console_starvation_load_s = 60.0 | tests_hardware/bench/test_network_resilience.py:848
+    > _CONSOLE_LOAD_S = 60.0
+l4.console_starvation_slowloris_clients = 6 | tests_hardware/bench/test_network_resilience.py:850
+    > _CONSOLE_SLOWLORIS = 6
+l4.dut_serving_after_sta_s = 30.0 | tests_hardware/conftest.py:53
+    > _DUT_SERVING_AFTER_STA_S = 30.0
+l4.end_to_end_timing_reboot_loss_margin_s = 1.5 | tests_hardware/bench/test_end_to_end_timing.py:30
+    > _REBOOT_LOSS_MARGIN_S = 1.5
+l4.flash_stall_poll_s = 0.05 | tests_hardware/bench/test_network_resilience.py:910
+    > _FLASH_STALL_POLL_S = 0.05
+l4.flash_stall_window_s = 5.0 | tests_hardware/bench/test_network_resilience.py:912
+    > _FLASH_STALL_WINDOW_S = 5.0
+l4.harness_usb_bind_settle_max_s = 3.0 | tests_hardware/harness.py:122
+    > _USB_BIND_SETTLE_MAX_S = 3.0
+l4.harness_usb_unbind_settle_max_s = 2.0 | tests_hardware/harness.py:120
+    > _USB_UNBIND_SETTLE_MAX_S = 2.0
+l4.hotspot_role_reversal_link_advance_timeout_s = 30.0 | tests_hardware/bench/test_hotspot_role_reversal.py:72
+    > _LINK_ADVANCE_TIMEOUT_S = 30.0
+l4.hotspot_role_reversal_spoof_capture_s = 5.0 | tests_hardware/bench/test_hotspot_role_reversal.py:70
+    > _SPOOF_CAPTURE_S = 5.0
+l4.lwip_slow_client_bytes_per_s = 256 | tests_hardware/bench/test_modlwip_send_stall.py:31
+    > _SLOW_CLIENT_BPS = 256
+l4.lwip_spin_concurrent_request_max_s = 3.0 | tests_hardware/bench/test_modlwip_send_stall.py:34
+    ^ # A request served while the stack is full: well under the 5 s per-call timeout and the stall's up-to-10 s freeze.
+    > _REQUEST_MAX_S = 3.0
+l4.lwip_stall_drain_timeout_s = 30.0 | tests_hardware/bench/test_modlwip_send_stall.py:44
+    > _DRAIN_TIMEOUT_S = 30.0
+l4.lwip_stall_hold_s = 10.0 | tests_hardware/bench/test_modlwip_send_stall.py:36
+    > _HOLD_S = 10.0
+l4.lwip_stall_join_timeout_s = 30.0 | tests_hardware/bench/test_modlwip_send_stall.py:48
+    > _JOIN_TIMEOUT_S = 30.0
+l4.lwip_stall_raw_socket_timeout_s = 10.0 | tests_hardware/bench/test_modlwip_send_stall.py:42
+    > _RAW_SOCKET_TIMEOUT_S = 10.0
+l4.lwip_stall_serving_timeout_s = 120.0 | tests_hardware/bench/test_modlwip_send_stall.py:46
+    > _SERVING_TIMEOUT_S = 120.0
+l4.lwip_stall_settle_s = 2.0 | tests_hardware/bench/test_modlwip_send_stall.py:29
+    > _STALL_SETTLE_S = 2.0
+l4.lwip_stall_status_poll_s = 0.5 | tests_hardware/bench/test_modlwip_send_stall.py:38
+    > _STATUS_POLL_S = 0.5
+l4.lwip_stall_stopped_answering_s = 5.0 | tests_hardware/bench/test_modlwip_send_stall.py:40
+    > _STOPPED_ANSWERING_S = 5.0
+l4.manual_persistence_script_timeout_s = 180.0 | tests_hardware/manual/manual_persistence.py:24
+    > _SCRIPT_TIMEOUT_S = 180.0
+l4.manual_persistence_serving_timeout_s = 120.0 | tests_hardware/manual/manual_persistence.py:22
+    > _SERVING_TIMEOUT_S = 120.0
+l4.manual_rest_timeout_s = 10.0 | tests_hardware/manual/runner.py:26
+    > _REST_TIMEOUT_S = 10.0
+l4.memory_stress_bench_recovery_poll_s = 1.0 | tests_hardware/bench/test_memory_stress_bench.py:42
+    > _RECOVERY_POLL_S = 1.0
+l4.memory_stress_bench_recovery_timeout_s = 30.0 | tests_hardware/bench/test_memory_stress_bench.py:40
+    > _RECOVERY_TIMEOUT_S = 30.0
+l4.network_resilience_no_reconnect_tail_s = 5.0 | tests_hardware/bench/test_network_resilience.py:144
+    > _NO_RECONNECT_TAIL_S = 5.0
+l4.network_resilience_ntp_block_margin_s = 10.0 | tests_hardware/bench/test_network_resilience.py:142
+    > _NTP_BLOCK_MARGIN_S = 10.0
+l4.observe_during_tail_after_s = 5.0 | tests_hardware/harness.py:143
+    > _OBSERVE_TAIL_AFTER_S = 5.0
+l4.observe_during_tail_step_s = 1.0 | tests_hardware/harness.py:145
+    > _OBSERVE_TAIL_STEP_S = 1.0
+l4.openhab_poll_interval_s = 5.0 | tests_hardware/bench/test_network_resilience.py:801
+    > _OPENHAB_POLL_INTERVAL_S = 5.0
+l4.openhab_window_s = 120.0 | tests_hardware/bench/test_network_resilience.py:803
+    > _OPENHAB_WINDOW_S = 120.0
+l4.reset_code_invalid_record_run_wait_s = 60 | tests_hardware/device_scripts/reset_code_invalid_record.py:28
+    > _RUN_WAIT_S = 60
+l4.reset_reasons_loss_margin_s = 2.0 | tests_hardware/bench/test_reset_reasons.py:40
+    > _LOSS_MARGIN_S = 2.0
+l4.reset_reasons_picotool_timeout_s = 30.0 | tests_hardware/bench/test_reset_reasons.py:42
+    > _PICOTOOL_TIMEOUT_S = 30.0
+l4.reset_reasons_script_timeout_s = 120.0 | tests_hardware/bench/test_reset_reasons.py:32
+    > _SCRIPT_TIMEOUT_S = 120.0
+l4.reset_reasons_serving_poll_s = 2.0 | tests_hardware/bench/test_reset_reasons.py:36
+    > _SERVING_POLL_S = 2.0
+l4.reset_reasons_serving_timeout_s = 90.0 | tests_hardware/bench/test_reset_reasons.py:34
+    > _SERVING_TIMEOUT_S = 90.0
+l4.reset_reasons_status_timeout_s = 10.0 | tests_hardware/bench/test_reset_reasons.py:38
+    > _STATUS_TIMEOUT_S = 10.0
+l4.scd30_frc_baseline_probe_timeout_s = 5.0 | tests_hardware/bench/test_scd30_frc_readiness_baseline.py:25
+    > _PROBE_TIMEOUT_S = 5.0
+l4.scd30_frc_baseline_window_max_s = 600.0 | tests_hardware/bench/test_scd30_frc_readiness_baseline.py:23
+    > _WINDOW_MAX_S = 600.0
+l4.scd30_frc_baseline_window_step_s = 20.0 | tests_hardware/bench/test_scd30_frc_readiness_baseline.py:21
+    ^ # The sensor's 63 % response time is 20 s (SCD30 datasheet v1.0, section 1, CO2 sensor specifications); windows of its
+    ^ # multiples up to 10 min.
+    > _WINDOW_STEP_S = 20.0
+l4.sensor_config_push_altitude_observe_intervals = 5 | tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:54
+    > _OBSERVE_INTERVALS = 5
+l4.sensor_config_push_altitude_settle_intervals = 3 | tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:52
+    > _SETTLE_INTERVALS = 3
+l4.sensor_config_push_altitude_step_m = 1000 | tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:50
+    ^ # A shift the compensation must show, kept inside _VAL_ALTITUDE's range either way round.
+    > _ALTITUDE_STEP_M = 1000
+l4.soak_request_failure_rate = 0.001 | tests_hardware/bench/test_memory_stress_bench.py:38
+    ^ # Failed soak requests as a share of those sent, so the bound scales with the chosen duration.
+    > _SOAK_REQUEST_FAILURE_RATE = 0.001
+l4.system_commands_hotspot_up_s = 60.0 | tests_hardware/bench/test_system_commands_over_rest.py:39
+    > _HOTSPOT_UP_S = 60.0
+l4.system_commands_picotool_timeout_s = 30.0 | tests_hardware/bench/test_system_commands_over_rest.py:41
+    > _PICOTOOL_TIMEOUT_S = 30.0
+l4.system_commands_put_timeout_s = 10.0 | tests_hardware/bench/test_system_commands_over_rest.py:33
+    > _PUT_TIMEOUT_S = 10.0
+l4.system_commands_serving_poll_s = 2.0 | tests_hardware/bench/test_system_commands_over_rest.py:37
+    > _SERVING_POLL_S = 2.0
+l4.system_commands_serving_timeout_s = 120.0 | tests_hardware/bench/test_system_commands_over_rest.py:35
+    > _SERVING_TIMEOUT_S = 120.0
+l4.ticks_rollover_poll_interval_s = 300.0 | tests_hardware/bench/test_ticks_ms_rollover.py:25
+    ^ # Several polls on each side of the wraps.
+    > _POLL_INTERVAL_S = 300.0
+l4.ticks_rollover_probe_timeout_s = 10.0 | tests_hardware/bench/test_ticks_ms_rollover.py:36
+    > _PROBE_TIMEOUT_S = 10.0
+l4.ticks_rollover_retry_s = 10.0 | tests_hardware/bench/test_ticks_ms_rollover.py:34
+    > _RETRY_S = 10.0
+l4.ticks_rollover_run_s = 7200.0 | tests_hardware/bench/test_ticks_ms_rollover.py:28
+    ^ # The wraps fall about 15 minutes after boot; the rest of the two hours is margin.
+    > _RUN_S = 7200.0
+l4.ticks_rollover_serving_timeout_s = 120.0 | tests_hardware/bench/test_ticks_ms_rollover.py:32
+    > _SERVING_TIMEOUT_S = 120.0
+l4.ticks_rollover_sync_age_margin_s = 60.0 | tests_hardware/bench/test_ticks_ms_rollover.py:30
+    > _SYNC_AGE_MARGIN_S = 60.0
+l4.uart_link_crc16_build_timeout_s = 1800.0 | tests_hardware/bench/test_uart_link_crc16.py:29
+    ^ # A firmware build from scratch on the bench host: minutes, never hours.
+    > _BUILD_TIMEOUT_S = 1800.0
+l4.uart_link_crc16_failure_poll_gap_s = 3.0 | tests_hardware/bench/test_uart_link_crc16.py:34
+    ^ # Two polls one exercise period or more apart, after the board is serving the round's image again.
+    > _FAILURE_POLL_GAP_S = 3.0
+l4.uart_link_crc16_serving_timeout_s = 120.0 | tests_hardware/bench/test_uart_link_crc16.py:31
+    > _SERVING_TIMEOUT_S = 120.0
+l4.uart_link_under_api_load_echo_iterations = 30 | tests_hardware/bench/test_uart_link_under_api_load.py:38
+    > _ECHO_ITERATIONS = 30
+l4.uart_link_under_api_load_echo_min_answered = 30 | tests_hardware/bench/test_uart_link_under_api_load.py:34
+    ^ # The echo test's readers' answered floor: of the 3 readers x 30 reads it sends, a third, since the script's own boot
+    ^ # and handover eat into the window the readers run in.
+    > _ECHO_MIN_ANSWERED = 30
+l4.uart_link_under_api_load_echo_readers = 3 | tests_hardware/bench/test_uart_link_under_api_load.py:36
+    > _ECHO_READERS = 3
+l4.uart_link_under_api_load_echo_script_timeout_s = 240.0 | tests_hardware/bench/test_uart_link_under_api_load.py:53
+    > _ECHO_SCRIPT_TIMEOUT_S = 240.0
+l4.wifi_networking_probe_timeout_s = 10.0 | tests_hardware/bench/test_wifi_networking.py:35
+    > _PROBE_TIMEOUT_S = 10.0
+l4.wifi_radio_reinit_script_timeout_s = 120.0 | tests_hardware/bench/test_wifi_radio_reinit.py:16
+    > _SCRIPT_TIMEOUT_S = 120.0

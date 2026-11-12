@@ -1,0 +1,121 @@
+RUN stage=-1 i=1 rc=0 ms=11779 load=2.06 1.70 1.82
+PROBE thr=-1 ok=True locked=True early=False first_red=51 ramp_end=103607 restore=103644 s2=21739 check=223608 margin_us=118132 sum_late_us=3252 max_late_us=1449 late_us=[1449, 222, 193, 191, 183, 205, 241, 204, 158, 206] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=2 rc=0 ms=9512 load=2.36 1.77 1.85
+PROBE thr=-1 ok=True locked=True early=False first_red=78 ramp_end=104667 restore=104697 s2=22814 check=224958 margin_us=118147 sum_late_us=4299 max_late_us=1357 late_us=[1300, 1357, 218, 201, 180, 155, 173, 221, 246, 248] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=3 rc=0 ms=9940 load=2.46 1.81 1.86
+PROBE thr=-1 ok=True locked=True early=False first_red=102 ramp_end=103502 restore=103533 s2=21810 check=223315 margin_us=118308 sum_late_us=3131 max_late_us=1398 late_us=[1398, 290, 183, 133, 248, 181, 197, 210, 118, 173] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=4 rc=0 ms=9685 load=2.55 1.85 1.87
+PROBE thr=-1 ok=True locked=True early=False first_red=51 ramp_end=103324 restore=103376 s2=21748 check=222449 margin_us=118424 sum_late_us=2974 max_late_us=1146 late_us=[454, 1146, 173, 108, 257, 141, 243, 188, 146, 118] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=5 rc=0 ms=9774 load=3.00 1.97 1.91
+PROBE thr=-1 ok=True locked=True early=False first_red=69 ramp_end=104295 restore=104326 s2=22686 check=227574 margin_us=118391 sum_late_us=3977 max_late_us=1900 late_us=[655, 1900, 114, 83, 129, 88, 192, 71, 619, 126] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=6 rc=0 ms=9550 load=3.30 2.07 1.95
+PROBE thr=-1 ok=True locked=True early=False first_red=110 ramp_end=105732 restore=105776 s2=22504 check=223484 margin_us=116772 sum_late_us=5342 max_late_us=2069 late_us=[1130, 1198, 142, 150, 143, 98, 182, 2069, 114, 116] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=7 rc=0 ms=9585 load=3.64 2.19 1.98
+PROBE thr=-1 ok=True locked=True early=False first_red=101 ramp_end=103735 restore=103765 s2=22189 check=224145 margin_us=118454 sum_late_us=3369 max_late_us=1678 late_us=[1678, 383, 141, 166, 133, 187, 272, 90, 111, 208] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=8 rc=0 ms=9725 load=3.77 2.26 2.01
+PROBE thr=-1 ok=True locked=True early=False first_red=54 ramp_end=104887 restore=104918 s2=22813 check=224378 margin_us=117926 sum_late_us=3720 max_late_us=1408 late_us=[1264, 1408, 91, 113, 113, 119, 165, 119, 162, 166] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=9 rc=0 ms=9964 load=3.65 2.29 2.02
+PROBE thr=-1 ok=True locked=True early=False first_red=54 ramp_end=104370 restore=104396 s2=22688 check=223933 margin_us=118318 sum_late_us=4067 max_late_us=1712 late_us=[1712, 859, 136, 106, 131, 91, 201, 83, 90, 658] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=10 rc=0 ms=9928 load=3.70 2.35 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=53 ramp_end=104489 restore=104523 s2=22537 check=223307 margin_us=118048 sum_late_us=4143 max_late_us=1693 late_us=[1693, 726, 251, 242, 165, 183, 254, 203, 208, 218] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=11 rc=0 ms=9572 load=3.52 2.35 2.05
+PROBE thr=-1 ok=True locked=True early=False first_red=50 ramp_end=103792 restore=103823 s2=22239 check=224133 margin_us=118447 sum_late_us=3417 max_late_us=1509 late_us=[1509, 613, 143, 132, 261, 177, 125, 170, 142, 145] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=12 rc=0 ms=9531 load=3.29 2.34 2.05
+PROBE thr=-1 ok=True locked=True early=False first_red=51 ramp_end=104080 restore=104116 s2=22586 check=223991 margin_us=118506 sum_late_us=3731 max_late_us=1814 late_us=[1814, 705, 126, 153, 159, 126, 128, 152, 149, 219] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=13 rc=0 ms=9510 load=3.01 2.31 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=67 ramp_end=102229 restore=102261 s2=21950 check=223785 margin_us=119721 sum_late_us=1901 max_late_us=919 late_us=[893, 919, 157, 114, 191, 122, -902, 150, 139, 118] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=14 rc=0 ms=9595 load=2.86 2.30 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=51 ramp_end=104086 restore=104112 s2=22718 check=224140 margin_us=118632 sum_late_us=3806 max_late_us=1486 late_us=[1486, 1116, 160, 117, 170, 186, 193, 152, 110, 116] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=15 rc=0 ms=9572 load=2.79 2.30 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=52 ramp_end=104090 restore=104117 s2=22644 check=224112 margin_us=118554 sum_late_us=3784 max_late_us=1308 late_us=[1219, 1308, 170, 135, 134, 176, 187, 142, 232, 81] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=16 rc=0 ms=9534 load=2.82 2.32 2.05
+PROBE thr=-1 ok=True locked=True early=False first_red=52 ramp_end=105343 restore=105370 s2=23589 check=225085 margin_us=118246 sum_late_us=4927 max_late_us=1994 late_us=[1466, 1994, 243, 109, 231, 168, 302, 127, 161, 126] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=17 rc=0 ms=9535 load=2.62 2.29 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=65 ramp_end=108757 restore=108798 s2=22380 check=224350 margin_us=113623 sum_late_us=8412 max_late_us=4409 late_us=[4409, -15, 2847, 193, 326, 98, 145, 176, 116, 117] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=18 rc=0 ms=9504 load=2.45 2.27 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=51 ramp_end=103997 restore=104025 s2=22742 check=223783 margin_us=118745 sum_late_us=3706 max_late_us=1421 late_us=[1421, 1204, 156, 125, 165, 124, 148, 135, 118, 110] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=19 rc=0 ms=9509 load=2.45 2.27 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=55 ramp_end=104079 restore=104103 s2=22518 check=224129 margin_us=118439 sum_late_us=3752 max_late_us=1394 late_us=[1394, 987, 142, 154, 182, 233, 173, 162, 158, 167] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=-1 i=20 rc=0 ms=9587 load=2.39 2.26 2.04
+PROBE thr=-1 ok=True locked=True early=False first_red=52 ramp_end=105372 restore=105399 s2=23041 check=224492 margin_us=117669 sum_late_us=4969 max_late_us=1679 late_us=[1246, 1679, 154, 131, 313, 149, 211, 226, 303, 557] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=1 rc=0 ms=9576 load=2.49 2.29 2.05
+PROBE thr=32768 ok=True locked=True early=False first_red=52 ramp_end=104341 restore=104359 s2=22316 check=223220 margin_us=117975 sum_late_us=3623 max_late_us=1538 late_us=[1538, 646, 151, 245, 238, 201, 121, 139, 133, 211] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=2 rc=0 ms=9580 load=2.57 2.31 2.06
+PROBE thr=32768 ok=True locked=True early=False first_red=56 ramp_end=105291 restore=105309 s2=23150 check=224937 margin_us=117859 sum_late_us=4966 max_late_us=1650 late_us=[1650, 1359, 215, 136, 667, 227, 138, 179, 165, 230] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=3 rc=0 ms=9603 load=2.41 2.29 2.06
+PROBE thr=32768 ok=True locked=True early=False first_red=84 ramp_end=136474 restore=136492 s2=22764 check=223821 margin_us=86290 sum_late_us=36030 max_late_us=31952 late_us=[1366, 1228, 31952, 154, 527, 196, 164, 197, 123, 123] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=4 rc=0 ms=9571 load=2.42 2.29 2.06
+PROBE thr=32768 ok=True locked=True early=False first_red=56 ramp_end=103649 restore=103666 s2=21731 check=223065 margin_us=118082 sum_late_us=3363 max_late_us=1363 late_us=[249, 1363, 257, 541, 118, 124, 177, 163, 187, 184] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=5 rc=0 ms=9590 load=2.36 2.28 2.06
+PROBE thr=32768 ok=True locked=True early=False first_red=53 ramp_end=104431 restore=104448 s2=21971 check=223470 margin_us=117540 sum_late_us=3711 max_late_us=1816 late_us=[1816, 71, 134, 636, 167, 212, 155, 211, 169, 140] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=6 rc=0 ms=9609 load=2.33 2.28 2.06
+PROBE thr=32768 ok=True locked=True early=False first_red=101 ramp_end=103676 restore=103694 s2=21859 check=223002 margin_us=118183 sum_late_us=3312 max_late_us=1266 late_us=[1266, 467, 198, 507, 143, 137, 137, 120, 130, 207] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=7 rc=0 ms=9556 load=2.51 2.32 2.08
+PROBE thr=32768 ok=True locked=True early=False first_red=51 ramp_end=104178 restore=104201 s2=22386 check=223243 margin_us=118208 sum_late_us=3870 max_late_us=1604 late_us=[1604, 706, 172, 211, 435, 173, 166, 129, 133, 141] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=8 rc=0 ms=9570 load=2.35 2.29 2.07
+PROBE thr=32768 ok=True locked=True early=False first_red=66 ramp_end=105787 restore=105804 s2=22450 check=222861 margin_us=116663 sum_late_us=5468 max_late_us=2014 late_us=[2014, 351, 578, 174, 680, 191, 114, 122, 116, 1128] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=9 rc=0 ms=9569 load=2.30 2.28 2.07
+PROBE thr=32768 ok=True locked=True early=False first_red=67 ramp_end=103951 restore=103968 s2=22238 check=222748 margin_us=118287 sum_late_us=3629 max_late_us=1328 late_us=[1328, 761, 177, 197, 403, 125, 145, 223, 149, 121] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=10 rc=0 ms=9535 load=2.02 2.22 2.05
+PROBE thr=32768 ok=True locked=True early=False first_red=56 ramp_end=104203 restore=104222 s2=22544 check=224047 margin_us=118341 sum_late_us=3914 max_late_us=1232 late_us=[1232, 1182, 171, 117, 489, 108, 114, 117, 265, 119] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=11 rc=0 ms=9547 load=1.79 2.17 2.04
+PROBE thr=32768 ok=True locked=True early=False first_red=53 ramp_end=104804 restore=104823 s2=23045 check=224533 margin_us=118241 sum_late_us=4497 max_late_us=1714 late_us=[1714, 1203, 213, 212, 542, 131, 111, 115, 127, 129] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=12 rc=0 ms=9582 load=1.89 2.18 2.04
+PROBE thr=32768 ok=True locked=True early=False first_red=53 ramp_end=104597 restore=104624 s2=22553 check=224293 margin_us=117956 sum_late_us=3895 max_late_us=1530 late_us=[899, 1530, 176, 145, 240, 175, 153, 159, 233, 185] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=13 rc=0 ms=9551 load=1.60 2.10 2.02
+PROBE thr=32768 ok=True locked=True early=False first_red=72 ramp_end=104282 restore=104305 s2=22568 check=224304 margin_us=118286 sum_late_us=3945 max_late_us=1293 late_us=[1293, 1142, 211, 550, 157, 79, 113, 160, 114, 126] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=14 rc=0 ms=9556 load=1.66 2.10 2.02
+PROBE thr=32768 ok=True locked=True early=False first_red=70 ramp_end=104430 restore=104453 s2=22764 check=224236 margin_us=118334 sum_late_us=4109 max_late_us=1328 late_us=[1328, 1292, 171, 127, 460, 186, 152, 129, 126, 138] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=15 rc=0 ms=9612 load=1.80 2.11 2.02
+PROBE thr=32768 ok=True locked=True early=False first_red=63 ramp_end=105140 restore=105158 s2=23214 check=224910 margin_us=118074 sum_late_us=4774 max_late_us=2052 late_us=[2052, 1018, 184, 520, 219, 237, 202, 106, 121, 115] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=16 rc=0 ms=9568 load=1.84 2.11 2.02
+PROBE thr=32768 ok=True locked=True early=False first_red=54 ramp_end=104180 restore=104198 s2=22569 check=223583 margin_us=118389 sum_late_us=3862 max_late_us=1248 late_us=[1198, 1248, 140, 462, 113, 112, 230, 130, 114, 115] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=17 rc=0 ms=9534 load=1.69 2.08 2.01
+PROBE thr=32768 ok=True locked=True early=False first_red=92 ramp_end=104020 restore=104037 s2=21998 check=222870 margin_us=117978 sum_late_us=3612 max_late_us=1182 late_us=[1182, 707, 233, 167, 512, 163, 164, 118, 176, 190] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=18 rc=0 ms=9591 load=1.51 2.02 1.99
+PROBE thr=32768 ok=True locked=True early=False first_red=55 ramp_end=104386 restore=104415 s2=22172 check=223408 margin_us=117786 sum_late_us=4024 max_late_us=1722 late_us=[1722, 378, 159, 178, 618, 230, 220, 175, 206, 138] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=19 rc=0 ms=9594 load=1.59 2.02 1.99
+PROBE thr=32768 ok=True locked=True early=False first_red=78 ramp_end=105548 restore=105570 s2=22200 check=223906 margin_us=116652 sum_late_us=5167 max_late_us=1817 late_us=[1547, 495, 158, 490, 133, 137, 1817, 127, 135, 128] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=20 rc=0 ms=9566 load=1.82 2.06 2.01
+PROBE thr=32768 ok=True locked=True early=False first_red=70 ramp_end=104949 restore=104971 s2=22330 check=223194 margin_us=117381 sum_late_us=4595 max_late_us=1376 late_us=[1158, 1022, 164, 132, 1376, 122, 120, 128, 180, 193] writes=15
+54/54 passed, 0 failed, 0 skipped
+END 14:20:30

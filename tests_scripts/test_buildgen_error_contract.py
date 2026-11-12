@@ -1,6 +1,6 @@
 """Every build-error rule proven through a CLI (SPECIFICATION.md Part L.5): one malformed-fixture row per
-`rule` id exits 1 with one line naming place and fix and no traceback, the rows cover every `rule=` literal
-under buildgen/, and a generator bug propagates as BuildInternalError with its traceback."""
+`rule` id exits 1 with one line naming place and fix and no traceback, and the rows cover every `rule=` literal
+under buildgen/."""
 
 import ast
 import errno
@@ -13,11 +13,10 @@ from typing import TYPE_CHECKING
 import pytest
 import tomllib
 from _script_loader import load_script_module
-from _toml_fixtures import TomlDoc, base_doc, dump_toml, write_doc
+from _toml_fixtures import TomlDoc, TomlValue, array_at, base_doc, dump_toml, instance_of, instances, table, table_at, with_uart_pair, write_doc
 
-from buildgen import api_reference, buildspec, codegen, definitions, generate, model, validate
-from buildgen.codegen import generate_boot_entry_source, generate_module_source
-from buildgen.errors import BuildError, BuildInternalError
+from buildgen import api_reference, buildspec, codegen, generate, model, validate
+from buildgen.errors import BuildError
 from buildgen.requires_tag import check_requires_tags, parse_requires_tags
 
 if TYPE_CHECKING:
@@ -25,7 +24,7 @@ if TYPE_CHECKING:
 
 _REPO = Path(__file__).resolve().parent.parent
 _DEVICE = "contract"
-_PREFIX = {"generate": "buildgen: ", "definitions": "buildgen: ", "batch": "error: ", "direct": ""}
+_PREFIX = {"generate": "buildgen: ", "batch": "error: ", "direct": ""}
 _SCD30 = "asy_scd30_driver.py"
 _SCD30_TRIGGER_LIMITS = "# @limits trigger_s 1..1800"
 _SCD30_TIMEOUT_TAG = "# @requires bus.timeout>=200000"
@@ -44,26 +43,26 @@ def _compare_a_string_timeout(_tmp: Path) -> None:
     check_requires_tags(tags, {"timeout": "200000"}, _DEVICE, "scd30", "i2c0")
 
 
-def _doc_bus_timeout(value: object) -> "Callable[[TomlDoc], None]":
+def _doc_bus_timeout(value: "TomlValue | None") -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
         if value is None:
-            del doc["bus"]["i2c0"]["timeout"]
+            del table_at(doc, "bus", "i2c0")["timeout"]
         else:
-            doc["bus"]["i2c0"]["timeout"] = value
+            table_at(doc, "bus", "i2c0")["timeout"] = value
 
     return edit
 
 
 def _doc_extra_instance(instance: TomlDoc) -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
-        doc["instance"].append(instance)
+        array_at(doc, "instance").append(instance)
 
     return edit
 
 
-def _doc_instance_field(driver: str, key: str, value: object) -> "Callable[[TomlDoc], None]":
+def _doc_instance_field(driver: str, key: str, value: "TomlValue") -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
-        next(i for i in doc["instance"] if i["driver"] == driver)[key] = value
+        instance_of(doc, driver)[key] = value
 
     return edit
 
@@ -74,50 +73,41 @@ def _doc_unchanged(_doc: TomlDoc) -> None:
 
 def _drop(*path: str) -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
-        table = doc
+        node = doc
         for key in path[:-1]:
-            table = _instance(doc, key[1:]) if key.startswith("@") else table[key]
-        del table[path[-1]]
+            node = instance_of(doc, key[1:]) if key.startswith("@") else table_at(node, key)
+        del node[path[-1]]
 
     return edit
 
 
 def _i2c0_renamed_i2c7(doc: TomlDoc) -> None:
-    doc["bus"]["i2c7"] = doc["bus"].pop("i2c0")
-    for instance in doc["instance"]:
+    table_at(doc, "bus")["i2c7"] = table_at(doc, "bus").pop("i2c0")
+    for instance in instances(doc):
         if instance.get("bus") == "i2c0":
             instance["bus"] = "i2c7"
 
 
-def _instance(doc: TomlDoc, driver: str) -> TomlDoc:
-    found: TomlDoc = next(i for i in doc["instance"] if i["driver"] == driver)
-    return found
-
-
 def _paired(*edits: "Callable[[TomlDoc], None]") -> "Callable[[TomlDoc], None]":
-    # base_doc() plus a UART crossover pair on uart0/uart1 (scd30's IRQ moved off GP8, one of uart1's pins), then the edits.
+    # base_doc() plus with_uart_pair()'s crossover pair on uart0/uart1, then the edits.
     def edit(doc: TomlDoc) -> None:
-        _instance(doc, "scd30")["irq_pin"] = 6
-        knobs = {"baudrate": 115200, "rxbuf": 512, "txbuf": 512, "poll_wait_ms": 2, "poll_idle_ms": 50}
-        doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, **knobs}
-        doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, **knobs}
-        doc["instance"] += [{"driver": "uart_link", "name_ext": "init", "bus": "uart0", "role": "initiator"}, {"driver": "uart_link", "name_ext": "resp", "bus": "uart1", "role": "responder"}]
+        with_uart_pair(doc)
         for further in edits:
             further(doc)
 
     return edit
 
 
-def _set(*path_and_value: object) -> "Callable[[TomlDoc], None]":
+def _set(*path_and_value: "TomlValue") -> "Callable[[TomlDoc], None]":
     # _set("bus", "i2c0", "timeout", 0); a key "@scd30" steps into that driver's [[instance]].
     *path, value = path_and_value
 
     def edit(doc: TomlDoc) -> None:
-        table = doc
+        node = doc
         for key in path[:-1]:
             assert isinstance(key, str)
-            table = _instance(doc, key[1:]) if key.startswith("@") else table.setdefault(key, {})
-        table[str(path[-1])] = value
+            node = instance_of(doc, key[1:]) if key.startswith("@") else table(node.setdefault(key, {}))
+        node[str(path[-1])] = value
 
     return edit
 
@@ -154,11 +144,6 @@ def _overrides_unloadable(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
     monkeypatch.setattr("buildgen.validate.importlib", SimpleNamespace(util=SimpleNamespace(spec_from_file_location=lambda *_a, **_k: None)))
 
 
-def _settings_key_served_twice(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
-    # A table patch: SETTINGS_GROUPS serves Hostname a second time, from the NTP group.
-    monkeypatch.setattr(validate, "SETTINGS_GROUPS", (*validate.SETTINGS_GROUPS, ("networking", "ntp", ("Hostname",), None)))
-
-
 def _signal_sink_default_without_request_signal(_monkeypatch: pytest.MonkeyPatch, tmp: Path) -> None:
     path = tmp / "src" / "asy_notification_service.py"
     text = path.read_text(encoding="utf-8")
@@ -170,7 +155,7 @@ def _signal_sink_default_without_request_signal(_monkeypatch: pytest.MonkeyPatch
 def _lwip_table_gone(monkeypatch: pytest.MonkeyPatch, tmp: Path) -> None:
     # The toolchain's [lwip] table is read from toolchain/versions.toml; this row points that read at a copy without it.
     versions = tmp / "versions.toml"
-    versions.write_text('[toolchain]\nboard = "RPI_PICO_W"\n')
+    versions.write_text('[toolchain]\nboard = "RPI_PICO_W"\n', encoding="utf-8")
     real = model.lwip_macros
     monkeypatch.setattr(validate, "lwip_macros", lambda: real(versions))
 
@@ -180,7 +165,7 @@ def _no_patch(_monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
 
 
 def _out_dir_is_a_file(_monkeypatch: pytest.MonkeyPatch, tmp: Path) -> None:
-    (tmp / "out").write_text("a file where the output directory belongs\n")
+    (tmp / "out").write_text("a file where the output directory belongs\n", encoding="utf-8")
 
 
 def _recipe_table_without_neopixel(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
@@ -218,7 +203,7 @@ def _tag_row(old: str, new: str, where: str = "/scd30") -> Row:
 
 def _web_row(new: str, old: str = '# @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s"', where: str = "/scd30.MeasInterval") -> Row:
     # A plant in one scd30 @web tag, read by the website definitions build.
-    return Row("definitions", f"[{_DEVICE}{where}] ", edits=((_SCD30, old, new),))
+    return Row("batch", f"[{_DEVICE}{where}] ", edits=((_SCD30, old, new),))
 
 
 _X_DRIVER = 'from asy_base_classes import SensorReader\n\n_NAME = "X"\n'
@@ -253,11 +238,9 @@ _ROWS: "dict[str, Row]" = {
     "source.syntax-error": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "", "\nclass Broken(:\n"),)),
     "source.name-missing": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '_NAME = const("SCD30")', '_NAME_GONE = const("SCD30")'),)),
     "source.name-not-literal": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '_NAME = const("SCD30")', "_NAME = const(42)"),)),
-    # sgp40's temperature_source names scd30's Temp, but scd30's get_data() no longer declares a namedtuple result.
-    "source.fields-unreadable": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "async def get_data(self) -> SCD30:", "async def get_data(self) -> tuple:"),)),
     "wiring.cycle": Row(
         "generate", f"[{_DEVICE}] ",
-        doc=lambda d: next(i for i in d["instance"] if i["driver"] == "scd30")["wiring"].update({"fake_dep": "sgp40"}),
+        doc=lambda d: table_at(instance_of(d, "scd30"), "wiring").update({"fake_dep": "sgp40"}),
         edits=((_SCD30, _SCD30_TRIGGER_LIMITS, _SCD30_TRIGGER_LIMITS + "\n# @wiring fake_dep SGP40_Reader fake_dep required kwarg"),),
     ),
     # buildgen/tag_comments.py, limits.py, requires_tag.py, wiring.py, value_wiring.py, web_tag.py
@@ -305,27 +288,27 @@ _ROWS: "dict[str, Row]" = {
         where="/scd30",
     ),
     # buildgen/schema_ast.py and buildgen/definitions.py
-    "schema.unreadable": Row("definitions", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None, _UNDEFINED),))\n_VAL_TEMP_OFFSET = '),)),
-    "schema.malformed": Row("definitions", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None),))\n_VAL_TEMP_OFFSET = '),)),
-    "schema.value-not-json": Row("definitions", f"[{_DEVICE}.MeasInterval] ", edits=((_SCD30, '(("MeasInterval", "int", None, 2, 1800, None),)', '(("MeasInterval", "int", None, b"\\x00", 1800, None),)'),)),
-    "web.schema-field-untagged": Row("definitions", f"[{_DEVICE}/scd30.AmbPres] ", edits=((_SCD30, "# @web AmbPres section=sensors", "# AmbPres section=sensors"),)),
-    "web.special-unlabelled": Row("definitions", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, _AMB_PRES_SPECIAL, ""),)),
-    "web.special-not-in-schema": Row("definitions", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:""="Open network" special:"guest"="Guest"'),)),
-    "web.kind-unresolved": Row("definitions", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, '_CONT_MEAS_FIELD: "FieldSchema" = ("ContMeas", "bool", None, None, None, None)\n', ""), (_SCD30, " kind=toggle", ""))),
-    "web.enum-without-choices": Row("definitions", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, "kind=toggle", "kind=enum"),)),
-    "web.group-undeclared": Row("definitions", f"[{_DEVICE}] ", edits=(("asy_system_service.py", '# @web-group section=system submitGroup=settings label="System Settings" submit=true\n', ""),)),
-    "web.group-declared-twice": Row("definitions", f"[{_DEVICE}] ", edits=(("asy_ntp_client.py", "", '\n# @web-group section=system submitGroup=settings label="System Settings" submit=true\n'),)),
+    "schema.unreadable": Row("batch", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None, _UNDEFINED),))\n_VAL_TEMP_OFFSET = '),)),
+    "schema.malformed": Row("batch", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None),))\n_VAL_TEMP_OFFSET = '),)),
+    "schema.value-not-json": Row("batch", f"[{_DEVICE}.MeasInterval] ", edits=((_SCD30, '(("MeasInterval", "int", None, 2, 1800, None),)', '(("MeasInterval", "int", None, b"\\x00", 1800, None),)'),)),
+    "web.schema-field-untagged": Row("batch", f"[{_DEVICE}/scd30.AmbPres] ", edits=((_SCD30, "# @web AmbPres section=sensors", "# AmbPres section=sensors"),)),
+    "web.special-unlabelled": Row("batch", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, _AMB_PRES_SPECIAL, ""),)),
+    "web.special-not-in-schema": Row("batch", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:""="Open network" special:"guest"="Guest"'),)),
+    "web.kind-unresolved": Row("batch", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, '_CONT_MEAS_FIELD: "FieldSchema" = ("ContMeas", "bool", None, None, None, None)\n', ""), (_SCD30, " kind=toggle", ""))),
+    "web.enum-without-choices": Row("batch", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, "kind=toggle", "kind=enum"),)),
+    "web.group-undeclared": Row("batch", f"[{_DEVICE}] ", edits=(("asy_system_service.py", '# @web-group section=system submitGroup=settings label="System Settings" submit=true\n', ""),)),
+    "web.group-declared-twice": Row("batch", f"[{_DEVICE}] ", edits=(("asy_ntp_client.py", "", '\n# @web-group section=system submitGroup=settings label="System Settings" submit=true\n'),)),
     # Every notification field tag turned hidden: the autoConfig group stays declared with no field left in it.
-    "web.group-without-fields": Row("definitions", f"[{_DEVICE}] ", subs=(("asy_notification_service.py", r"^# @web (\w+) .*$", r'# @web \1 hidden="test"'),)),
-    "web.instance-group-missing": Row("definitions", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '# @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"\n', ""),)),
-    "web.maintenance-tag-missing": Row("definitions", f"[{_DEVICE}/sgp40] ", edits=(("asy_sgp40_driver.py", "section=status submitGroup=maintenance", "section=status submitGroup=elsewhere"),)),
-    "web.codes-unknown-table": Row("definitions", f"[{_DEVICE}.FRCState] ", edits=((_SCD30, "codes=FRCState", "codes=NoSuchTable"),)),
+    "web.group-without-fields": Row("batch", f"[{_DEVICE}] ", subs=(("asy_notification_service.py", r"^# @web (\w+) .*$", r'# @web \1 hidden="test"'),)),
+    "web.instance-group-missing": Row("batch", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '# @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"\n', ""),)),
+    "web.maintenance-tag-missing": Row("batch", f"[{_DEVICE}/sgp40] ", edits=(("asy_sgp40_driver.py", "section=status submitGroup=maintenance", "section=status submitGroup=elsewhere"),)),
+    "web.codes-unknown-table": Row("batch", f"[{_DEVICE}.FRCState] ", edits=((_SCD30, "codes=FRCState", "codes=NoSuchTable"),)),
     "web.string-key-off-string": Row(
-        "definitions", f"[{_DEVICE}.MeasInterval] ",
+        "batch", f"[{_DEVICE}.MeasInterval] ",
         edits=((_SCD30, '# @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s"', '# @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s" shape=hostLabel'),),
     ),
-    "web.quoted-special-off-string": Row("definitions", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, ' special:0="Compensation', ' special:"0"="Compensation'),)),
-    "web.string-special-unquoted": Row("definitions", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:open="Open network"'),)),
+    "web.quoted-special-off-string": Row("batch", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, ' special:0="Compensation', ' special:"0"="Compensation'),)),
+    "web.string-special-unquoted": Row("batch", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:open="Open network"'),)),
     "web.key-needs-number": _web_row('# @web MeasInterval section=sensors submitGroup=self kind=string label="Measurement Interval" unit="s" resolution=1'),
     "web.ignored-when-set-unknown": _web_row("ignoredWhenSet=NoSuchField", old="ignoredWhenSet=AmbPres", where="/scd30.Altitude"),
     # buildgen/validate.py: [device]
@@ -336,17 +319,12 @@ _ROWS: "dict[str, Row]" = {
     "device.field-unknown": Row("generate", f"[{_DEVICE}.colour] ", doc=_set("device", "colour", 1)),
     "device.hotspot-password-length": Row("generate", f"[{_DEVICE}.hotspot_password] ", doc=_set("device", "hotspot_password", "short")),
     "device.hostname-convention": Row("generate", f"[{_DEVICE}.hostname] ", doc=_set("device", "hostname", "SensorStationOther")),
-    "device.hostname-label": Row("generate", f"[{_DEVICE}.hostname] ", doc=_then(_set("device", "name", "Te_st"), _set("device", "hostname", "SensorStationTe_st"))),
     "device.hostname-length": Row("generate", f"[{_DEVICE}.hostname] ", doc=_then(_set("device", "name", "T" * 60), _set("device", "hostname", "SensorStation" + "T" * 60))),
     "device.hotspot-time-min-range": Row("generate", f"[{_DEVICE}.hotspot_time_min] ", doc=_set("device", "hotspot_time_min", 35792)),
-    "device.conn-fail-to-hotspot-range": Row("generate", f"[{_DEVICE}.conn_fail_to_hotspot] ", doc=_set("device", "conn_fail_to_hotspot", 0)),
     "device.max-connections-range": Row("generate", f"[{_DEVICE}.max_connections] ", doc=_set("device", "max_connections", 0)),
     "device.max-connections-lwip": Row("generate", f"[{_DEVICE}.max_connections] ", doc=_set("device", "max_connections", 64)),
     "device.backlog-below-ceiling": Row("generate", f"[{_DEVICE}.backlog] ", doc=_then(_set("device", "max_connections", 4), _set("device", "backlog", 3))),
     "device.backlog-above-ceiling": Row("generate", f"[{_DEVICE}.backlog] ", doc=_then(_set("device", "max_connections", 4), _set("device", "backlog", 6))),
-    "device.ntp-retry-below-tick": Row("generate", f"[{_DEVICE}.ntp_retry_s] ", doc=_set("device", "ntp_retry_s", 1)),
-    "device.ntp-retry-max-below-retry": Row("generate", f"[{_DEVICE}.ntp_retry_max_s] ", doc=_then(_set("device", "ntp_retry_s", 120), _set("device", "ntp_retry_max_s", 60))),
-    "device.ntp-retry-max-range": Row("generate", f"[{_DEVICE}.ntp_retry_max_s] ", doc=_set("device", "ntp_retry_max_s", 536870912)),
     "device.wiring-field-unknown": Row("generate", f"[{_DEVICE}.bogus_target] ", doc=_set("device", "wiring", "bogus_target", "fram")),
     "device.wiring-no-tag": Row("generate", f"[{_DEVICE}.led_target] ", edits=(("asy_wifi_service.py", "# @wiring led_target NeopixelDriver ext_led optional kwarg", "#"),)),
     "device.wiring-field-missing": Row(
@@ -361,8 +339,6 @@ _ROWS: "dict[str, Row]" = {
     "bus.field-type": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", "200ms")),
     "bus.i2c-frequency-range": Row("generate", f"[{_DEVICE}.frequency] ", doc=_set("bus", "i2c0", "frequency", 1000001)),
     "bus.i2c-timeout-range": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", 0)),
-    "bus.i2c-timeout-max": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", 10000000)),
-    "bus.uart-baudrate-range": Row("generate", f"[{_DEVICE}.baudrate] ", doc=_paired(_set("bus", "uart0", "baudrate", 7812501))),
     "bus.uart-rxbuf-range": Row("generate", f"[{_DEVICE}.rxbuf] ", doc=_paired(_set("bus", "uart0", "rxbuf", 32767))),
     "bus.uart-txbuf-range": Row("generate", f"[{_DEVICE}.txbuf] ", doc=_paired(_set("bus", "uart0", "txbuf", 31))),
     "bus.uart-poll-wait-range": Row("generate", f"[{_DEVICE}/uart_link_init.poll_wait_ms] ", doc=_paired(_set("bus", "uart0", "poll_wait_ms", 0))),
@@ -371,38 +347,29 @@ _ROWS: "dict[str, Row]" = {
     "bus.uart-rxbuf-floor": Row("generate", f"[{_DEVICE}/uart_link_init.rxbuf] ", doc=_paired(_set("bus", "uart0", "rxbuf", 79))),
     "bus.uart-rx-ring": Row("generate", f"[{_DEVICE}/uart_link_init.rx_ring] ", doc=_paired(_set("bus", "uart0", "rx_ring", 64))),
     "bus.unused": Row("generate", f"[{_DEVICE}.i2c1] ", doc=_set("bus", "i2c1", {"scl_pin": 7, "sda_pin": 6, "frequency": 50000})),
-    "bus.uart-shared": Row("generate", f"[{_DEVICE}/uart_link_resp.bus] ", doc=_paired(_drop("bus", "uart1"), lambda d: d["instance"][-1].__setitem__("bus", "uart0"))),
     "bus.fixed-address-collision": Row("generate", f"[{_DEVICE}/scd30_b] ", doc=_doc_extra_instance({"driver": "scd30", "name_ext": "b", "bus": "i2c0", "irq_pin": 9, "trigger_s": 3})),
     "bus.address-collision": Row(
         "generate", f"[{_DEVICE}/bmp3xx_b.address] ",
         doc=_then(_doc_extra_instance({"driver": "bmp3xx", "name_ext": "a", "bus": "i2c0", "address": 0x76}), _doc_extra_instance({"driver": "bmp3xx", "name_ext": "b", "bus": "i2c0", "address": 0x76})),
     ),
-    "bus.boot-clear-budget": Row(
-        "generate", f"[{_DEVICE}.timeout] ",
-        doc=_then(_set("bus", "i2c0", "timeout", 200000), _set("bus", "i2c1", {"scl_pin": 7, "sda_pin": 6, "frequency": 50000, "timeout": 200000}), _doc_extra_instance({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1", "address": 0x76})),
-        edits=(("asy_i2c_driver.py", "_CLEAR_PULSES = const(9)", "_CLEAR_PULSES = const(18)"),),
-    ),
     # buildgen/validate.py: [[instance]]
     "instance.name-ext-singleton": Row("generate", f"[{_DEVICE}/notification_x.name_ext] ", doc=_set("@notification", "name_ext", "x")),
-    "instance.name-ext-missing": Row("generate", f"[{_DEVICE}/scd30.name_ext] ", doc=_drop("@scd30", "name_ext")),
     "instance.field-missing": Row("generate", f"[{_DEVICE}/scd30.irq_pin] ", doc=_drop("@scd30", "irq_pin")),
     "instance.address-not-selectable": Row("generate", f"[{_DEVICE}/scd30.address] ", doc=_set("@scd30", "address", 0x61)),
     "instance.field-type": Row("generate", f"[{_DEVICE}/scd30.bus] ", doc=_set("@scd30", "bus", 0)),
     "instance.bus-undeclared": Row("generate", f"[{_DEVICE}/scd30.bus] ", doc=_set("@scd30", "bus", "i2c1")),
     "instance.bus-kind": Row("generate", f"[{_DEVICE}/scd30.bus] ", doc=_set("@scd30", "bus", "spi0")),
     "instance.no-bus-kind-row": Row("generate", f"[{_DEVICE}/scd30] ", patch=_no_bus_kind_row_for_scd30),
-    "instance.uart-role": Row("generate", f"[{_DEVICE}/uart_link_resp.role] ", doc=_paired(lambda d: d["instance"][-1].__setitem__("role", "peer"))),
-    "instance.uart-crc-mode": Row("generate", f"[{_DEVICE}/uart_link_init.crc] ", doc=_paired(lambda d: d["instance"][-2].__setitem__("crc", "crc32"))),
+    "instance.uart-role": Row("generate", f"[{_DEVICE}/uart_link_resp.role] ", doc=_paired(lambda d: table_at(d, "instance", -1).__setitem__("role", "peer"))),
+    "instance.uart-crc-mode": Row("generate", f"[{_DEVICE}/uart_link_init.crc] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("crc", "crc32"))),
     "instance.irq-pull-up-type": Row("generate", f"[{_DEVICE}/scd30.irq_pull_up] ", doc=_set("@scd30", "irq_pull_up", 1)),
     "instance.field-unknown": Row("generate", f"[{_DEVICE}/scd30.colour] ", doc=_set("@scd30", "colour", 1)),
-    "instance.uart-transfer-cap": Row("generate", f"[{_DEVICE}/uart_link_init.max_transfer_bytes] ", doc=_paired(lambda d: d["instance"][-2].__setitem__("max_transfer_bytes", 47))),
-    "instance.uart-link-pair": Row("generate", f"[{_DEVICE}] ", doc=_paired(lambda d: d["instance"][-1].__setitem__("role", "initiator"))),
-    "instance.uart-baud-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.baudrate] ", doc=_paired(_set("bus", "uart1", "baudrate", 57600))),
-    "instance.uart-crc-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.crc] ", doc=_paired(lambda d: d["instance"][-2].__setitem__("crc", "crc16"))),
+    "instance.uart-transfer-cap": Row("generate", f"[{_DEVICE}/uart_link_init.max_transfer_bytes] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("max_transfer_bytes", 47))),
+    "instance.uart-link-pair": Row("generate", f"[{_DEVICE}] ", doc=_paired(lambda d: table_at(d, "instance", -1).__setitem__("role", "initiator"))),
     "instance.uart-timeout-max": Row("generate", f"[{_DEVICE}/uart_link_init] ", doc=_paired(), edits=(("asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS = const(1000)", "_DEFAULT_TIMEOUT_MS = const(100000000)"),)),
     "instance.requires-without-bus": Row(
         "generate", f"[{_DEVICE}/neopixel] ",
-        edits=(("asy_neopixel_driver.py", "# @wiring fram_target FRAMManager log optional kwarg", "# @requires bus.timeout>=1\n# @wiring fram_target FRAMManager log optional kwarg"),),
+        edits=(("asy_neopixel_driver.py", '_NAME = const("NEOPIXEL")', '# @requires bus.timeout>=1\n_NAME = const("NEOPIXEL")'),),
     ),
     "instance.no-buildspec-row": Row(
         "generate", f"[{_DEVICE}/bogus2] ", doc=_doc_extra_instance({"driver": "bogus2", "name_ext": ""}),
@@ -417,9 +384,8 @@ _ROWS: "dict[str, Row]" = {
     # buildgen/validate.py: names, GPIOs
     "names.logger-collision": Row(
         "generate", f"[{_DEVICE}/bmp3xx] ", doc=_doc_extra_instance({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"}),
-        edits=(("asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', '_NAME = const("NTP")'),),
+        edits=(("asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', '_NAME = const("SCD30")'),),
     ),
-    "names.settings-key-collision": Row("generate", f"[{_DEVICE}.Hostname] ", patch=_settings_key_served_twice),
     "names.label-collision": Row(
         "generate", f"[{_DEVICE}/foo_bar] ", patch=_foo_drivers_whose_labels_collide,
         doc=_then(_doc_extra_instance({"driver": "foo_bar", "name_ext": ""}), _doc_extra_instance({"driver": "foo", "name_ext": "bar"})), copy_src=True,
@@ -436,7 +402,6 @@ _ROWS: "dict[str, Row]" = {
     "wiring.target-type": Row("generate", f"[{_DEVICE}/scd30.fram_target] ", doc=_set("@scd30", "wiring", "fram_target", 5)),
     "wiring.source-shape": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"source": "scd30"})),
     "wiring.source-unresolved": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"source": "bme", "field": "Temp"})),
-    "source.field-unknown": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"source": "scd30", "field": "Tmp"})),
     "wiring.default-key-unknown": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"default": True, "temperature": 20, "bogus": 1})),
     "wiring.default-key-missing": Row(
         "generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"default": True}),
@@ -447,12 +412,15 @@ _ROWS: "dict[str, Row]" = {
         "generate", f"[{_DEVICE}/notification.signal_sink] ", doc=_set("@notification", "wiring", "signal_sink", {"default": True}),
         copy_src=True, patch=_signal_sink_default_without_request_signal,
     ),
-    "wiring.warn-outside-notification": Row("generate", f"[{_DEVICE}/scd30.warn_co2] ", doc=_set("@scd30", "wiring", "warn_co2", {"source": "scd30", "field": "CO2"})),
+    "wiring.warn-collision": Row(
+        "generate", f"[{_DEVICE}/notification] ",
+        edits=(("asy_notification_service.py", '_VAL_AUTO_ON = const((("AutoOn", "bool",', '_VAL_AUTO_ON = const((("WarnCO2", "bool",'),),
+    ),
     "wiring.warn-unknown": Row("generate", f"[{_DEVICE}/notification.warn_radon] ", doc=_set("@notification", "wiring", "warn_radon", {"source": "scd30", "field": "CO2"})),
     "wiring.field-unknown": Row("generate", f"[{_DEVICE}/scd30.led_target] ", doc=_set("@scd30", "wiring", "led_target", "neopixel")),
     "wiring.field-missing": Row("generate", f"[{_DEVICE}/notification.signal_sink] ", doc=_drop("@notification", "wiring", "signal_sink")),
     "src.unreadable": Row("generate", "[<src>.HotspotPW] ", drop=("asy_wifi_service.py",)),
-    "src.const-missing": Row("generate", "[<src>._NTP_CHECK_INTERV] ", doc=_set("device", "ntp_retry_s", 60), edits=(("asy_ntp_client.py", "_NTP_CHECK_INTERV = const(", "_NTP_CHECK_INTERVAL_X = const("),)),
+    "src.const-missing": Row("generate", "[<src>._DEFAULT_OUTER_CAP_S] ", edits=(("asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S = const(", "_DEFAULT_OUTER_CAP_X = const("),)),
     "src.schema-missing": Row("generate", "[<src>.HotspotPW] ", edits=(("asy_wifi_service.py", '("HotspotPW", "str", "12345678", 8, 63, None)', '("HotspotPW", "str", "12345678", 8, None, None)'),)),
     "src.default-missing": Row("generate", "[<src>.rx_ring] ", doc=_paired(), edits=(("asy_uart_driver.py", "rx_ring: int = 512,", "rx_ring: int = RING,"),)),
     "toolchain.overrides-unloadable": Row("generate", "[<toolchain>.max_connections] ", patch=_overrides_unloadable),
@@ -501,7 +469,7 @@ def _run(row: Row, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypat
     devices.mkdir()
     toml = devices / f"{_DEVICE}.toml"
     if row.toml is not None:
-        toml.write_text(row.toml)
+        toml.write_text(row.toml, encoding="utf-8")
     elif not row.absent:
         doc: TomlDoc = base_doc()
         row.doc(doc)
@@ -516,8 +484,6 @@ def _run(row: Row, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypat
         return 0, "", built
     if row.entry == "generate":
         code = generate.main(argv)
-    elif row.entry == "definitions":
-        code = definitions.main(argv)
     else:
         (tmp_path / "ext").symlink_to(_REPO / "ext")
         script = load_script_module(_REPO / "scripts" / "_generate_sensortask_modules.py", "_generate_sensortask_modules")
@@ -583,7 +549,7 @@ def test_a_bus_less_device_generates(tmp_path: Path, capsys: pytest.CaptureFixtu
     doc: TomlDoc = base_doc()
     del doc["bus"]
     doc["instance"] = [{"driver": "neopixel", "pin": 15}]
-    doc["device"]["wiring"] = {"led_target": "neopixel"}
+    table_at(doc, "device")["wiring"] = {"led_target": "neopixel"}
     out = tmp_path / "out"
     assert generate.main([str(write_doc(tmp_path, _DEVICE, doc)), "--out-dir", str(out)]) == 0, capsys.readouterr().err
     assert sorted(p.name for p in out.iterdir()) == [f"sensortask_{_DEVICE}.py", f"sensortask_{_DEVICE}_main.py", f"sensortask_{_DEVICE}_main_noautostart.py"]
@@ -607,18 +573,3 @@ def test_a_write_failing_part_way_leaves_no_output_file(tmp_path: Path, capsys: 
     err = capsys.readouterr().err
     assert err.startswith(f"buildgen: [{_DEVICE}] cannot write ") and "No space left on device - fix: " in err
     assert sorted(p.name for p in out.iterdir()) == []
-
-
-@pytest.mark.parametrize("broken", ["module", "boot entry", "no-autostart boot entry"])
-def test_a_generated_source_that_does_not_compile_is_a_build_internal_error(broken: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A generator bug, never a TOML mistake: it propagates past the CLI with its traceback, naming the device and line.
-    real_module, real_entry = generate_module_source, generate_boot_entry_source
-    invalid = "x = 1\ndef broken(:\n"
-    monkeypatch.setattr(generate, "generate_module_source", lambda *a, **k: invalid if broken == "module" else real_module(*a, **k))
-    monkeypatch.setattr(
-        generate,
-        "generate_boot_entry_source",
-        lambda device, *, autostart=True: invalid if broken == ("boot entry" if autostart else "no-autostart boot entry") else real_entry(device, autostart=autostart),
-    )
-    with pytest.raises(BuildInternalError, match=rf"^{_DEVICE}: generated sensortask_{_DEVICE}\S*\.py does not compile: line 2: "):
-        generate.main([str(write_doc(tmp_path, _DEVICE, base_doc()))])

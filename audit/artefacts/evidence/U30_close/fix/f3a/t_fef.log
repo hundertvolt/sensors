@@ -1,0 +1,67 @@
+...........................................F...                          [100%]
+=================================== FAILURES ===================================
+_______ test_the_live_tree_passes_the_command_with_its_generated_modules _______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f3a')
+
+    def test_the_live_tree_passes_the_command_with_its_generated_modules(repo_root: Path) -> None:
+        # The command lint.sh runs: exit 0 on the real tree, every scope and every derived device's module and entries checked.
+        done = subprocess.run([sys.executable, str(Path("/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f3a/bite/scripts/_check_gc_collect_sites.py"))], cwd=repo_root, capture_output=True, text=True, check=False, timeout=120)
+>       assert done.returncode == 0, done.stdout + done.stderr
+E       AssertionError: gc policy sites: 47 allowed, 45 outside the table; scopes checked: src/, tests/, digital_twin/, tests_hardware/; generated modules checked: 18 (generated in memory)
+E         tests/: no Python file to scan - the gc check could not look
+E         digital_twin/: no Python file to scan - the gc check could not look
+E         tests_hardware/: no Python file to scan - the gc check could not look
+E         digital_twin/run_device_script.py: the allowed site main names a file that is gone - remove its row
+E         digital_twin/run_generic_integration.py: the allowed site <module> names a file that is gone - remove its row
+E         digital_twin/run_generic_integration.py: the allowed site _mem_sampler names a file that is gone - remove its row
+E         digital_twin/run_generic_integration.py: the allowed site _print_shutdown_line names a file that is gone - remove its row
+E         tests/_boot_contiguity_probe.py: the allowed site _ProbeGc.collect names a file that is gone - remove its row
+E         tests/_boot_contiguity_probe.py: the allowed site _dump names a file that is gone - remove its row
+E         tests/_threshold_runner.py: the allowed site _run names a file that is gone - remove its row
+E         tests/microtest.py: the allowed site _reset_process_state names a file that is gone - remove its row
+E         tests/test_asy_base_classes.py: the allowed site test_piecebuffer_retains_nothing_after_construction names a file that is gone - remove its row
+E         tests/test_asy_fram_allocation_budget.py: the allowed site _priced names a file that is gone - remove its row
+E         tests/test_asy_system_service.py: the allowed site _call_cost names a file that is gone - remove its row
+E         tests/test_asy_system_service.py: the allowed site _settled_alloc names a file that is gone - remove its row
+E         tests/test_asy_system_service.py: the allowed site test_the_reports_outputs_allocate_nothing names a file that is gone - remove its row
+E         tests/test_asy_uart_comm.py: the allowed site test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation.measured names a file that is gone - remove its row
+E         tests/test_asy_uart_comm.py: the allowed site test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat names a file that is gone - remove its row
+E         tests/test_asy_uart_driver.py: the allowed site test_a_read_retains_nothing.grown names a file that is gone - remove its row
+E         tests/test_asy_webserver_service.py: the allowed site test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat.free_after names a file that is gone - remove its row
+E         tests/test_async_harness.py: the allowed site _growth_over_awaited_tasks.scenario names a file that is gone - remove its row
+E         tests/test_digital_twin_sensortask_integration.py: the allowed site _heap_floor names a file that is gone - remove its row
+E         tests/test_digital_twin_uart_link.py: the allowed site _hammer_with_the_graph_running names a file that is gone - remove its row
+E         tests/test_digital_twin_uart_link.py: the allowed site test_many_back_to_back_transfers_do_not_degrade_or_leak names a file that is gone - remove its row
+E         tests/test_digital_twin_unix_port_unretrieved_report.py: the allowed site _call_cost names a file that is gone - remove its row
+E         tests/test_digital_twin_unix_port_unretrieved_report.py: the allowed site _settled_alloc names a file that is gone - remove its row
+E         tests/test_digital_twin_unix_port_unretrieved_report.py: the allowed site test_the_reports_outputs_allocate_nothing names a file that is gone - remove its row
+E         tests/test_uart_comm_hazard.py: the allowed site _hammer_clean.hammer names a file that is gone - remove its row
+E         tests/test_uart_comm_hazard.py: the allowed site _hammer_faulted.hammer names a file that is gone - remove its row
+E         tests/test_uart_comm_hazard.py: the allowed site _measure_retention names a file that is gone - remove its row
+E         tests_hardware/device_scripts/_shared/heap_probe.py: the allowed site _report names a file that is gone - remove its row
+E         tests_hardware/device_scripts/_shared/heap_probe.py: the allowed site dump_map names a file that is gone - remove its row
+E         tests_hardware/device_scripts/_shared/heap_probe.py: the allowed site largest_block names a file that is gone - remove its row
+E         tests_hardware/device_scripts/allocation_need_per_source.py: the allowed site _build_sieve names a file that is gone - remove its row
+E         tests_hardware/device_scripts/allocation_need_per_source.py: the allowed site _measure names a file that is gone - remove its row
+E         tests_hardware/device_scripts/allocation_need_per_source.py: the allowed site _release_sieve names a file that is gone - remove its row
+E         tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: the allowed site _ProbeGc.collect names a file that is gone - remove its row
+E         tests_hardware/device_scripts/loop_stretch_timing.py: the allowed site _main names a file that is gone - remove its row
+E         tests_hardware/device_scripts/serving_at_default_gc.py: the allowed site _observe names a file that is gone - remove its row
+E         tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py: the allowed site _sweep names a file that is gone - remove its row
+E         tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py: the allowed site _window names a file that is gone - remove its row
+E         tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py: the allowed site _trial names a file that is gone - remove its row
+E         tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py: the allowed site main names a file that is gone - remove its row
+E         tests_hardware/device_scripts/uart_idle_poll_rate.py: the allowed site _count_rounds names a file that is gone - remove its row
+E         tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py: the allowed site _heap_floor names a file that is gone - remove its row
+E         tests_hardware/device_scripts/unretrieved_task_exception_handler.py: the allowed site _at_threshold names a file that is gone - remove its row
+E         tests_hardware/device_scripts/unretrieved_task_exception_handler.py: the allowed site _locked_reports names a file that is gone - remove its row
+E         tests_hardware/device_scripts/unretrieved_task_exception_handler.py: the allowed site _settled_alloc names a file that is gone - remove its row
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-879...s/unretrieved_task_exception_handler.py: the allowed site _settled_alloc names a file that is gone - remove its row\n').returncode
+
+test_gc_fef.py:296: AssertionError
+=========================== short test summary info ============================
+FAILED test_gc_fef.py::test_the_live_tree_passes_the_command_with_its_generated_modules
+1 failed, 46 passed in 1.85s

@@ -1,0 +1,9 @@
+get_dict_cfg
+get_error_counter
+get_override_led
+get_task_starters
+get_timer_starters
+set_override_led
+setup
+start_asy_monitor
+start_asy_pause

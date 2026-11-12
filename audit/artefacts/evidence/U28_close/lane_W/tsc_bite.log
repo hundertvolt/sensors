@@ -1,0 +1,3 @@
+== bite as .ts
+../u28/laneW/tsc_bite/bitten.ts(8,14): error TS2322: Type 'string' is not assignable to type 'number'.
+== bite as .d.ts

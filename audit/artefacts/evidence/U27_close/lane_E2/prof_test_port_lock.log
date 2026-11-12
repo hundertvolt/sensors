@@ -1,0 +1,11 @@
+............................................                             [100%]
+============================= slowest 8 durations ==============================
+2.29s call     tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_after_the_bounded_wait
+2.02s call     tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader
+0.25s call     tests_scripts/test_port_lock.py::test_a_pid_written_during_the_wait_is_honoured
+0.12s call     tests_scripts/test_port_lock.py::test_racing_takers_leave_exactly_one_holder[stale]
+0.12s call     tests_scripts/test_port_lock.py::test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over
+0.08s call     tests_scripts/test_port_lock.py::test_a_grandchild_passes_after_its_parent_took_a_port_of_its_own
+0.07s call     tests_scripts/test_port_lock.py::test_release_removes_only_the_runners_own_locks
+0.07s call     tests_scripts/test_port_lock.py::test_a_cpython_child_of_a_bash_holder_passes_without_retaking
+44 passed in 6.27s

@@ -4,8 +4,9 @@ case among it, is test_uart_comm_hazard.py; both share _uart_comm_hazard_common.
 
 import asyncio
 
-from _uart_comm_harness import Pair, PollRoundClock, copied_out, run
-from _uart_comm_hazard_common import _EXCHANGE_LIMIT_S, _PAYLOAD, _STEP_BOUND_S, hazard_pair, register_both_crc_modes
+from _async_harness import run
+from _uart_comm_harness import ERROR_LEVEL, Pair, PollRoundClock, copied_out
+from _uart_comm_hazard_common import _PAYLOAD, hazard_pair, register_both_crc_modes
 
 import asy_uart_comm
 from asy_uart_comm import UARTComm
@@ -95,7 +96,7 @@ async def _end_peer(pair: Pair, task: "asyncio.Task[None]", offered: int) -> Non
     # Any other task is inside a transaction and ends on its own deadline.
     if not task.done() and _offered(pair) == offered:
         await pair.responder.clear()
-    await asyncio.wait_for(task, _STEP_BOUND_S)
+    await task
 
 
 def _error_count(comm: UARTComm) -> int:
@@ -110,7 +111,7 @@ def _get_with_listener(pair: Pair) -> bool:
         await _end_peer(pair, listener, offered)
         return copied_out(answer)
 
-    return run(exchange(), limit=_EXCHANGE_LIMIT_S) == _SWEEP_PAYLOAD
+    return run(exchange()) == _SWEEP_PAYLOAD
 
 
 async def _listen_recording(pair: Pair, delivered: "list[bytes | None]") -> None:
@@ -144,7 +145,7 @@ def _restarted_listener_answers(pair: Pair) -> bool:
             except asyncio.CancelledError:  # expected
                 pass
 
-    return run(exchange(), limit=_EXCHANGE_LIMIT_S) is True
+    return run(exchange()) is True
 
 
 def _set_with_listener(pair: Pair) -> bool:
@@ -157,7 +158,7 @@ def _set_with_listener(pair: Pair) -> bool:
         await _end_peer(pair, listener, offered)
         return sent
 
-    return run(exchange(), limit=_EXCHANGE_LIMIT_S) is True and delivered == [_SWEEP_PAYLOAD]
+    return run(exchange()) is True and delivered == [_SWEEP_PAYLOAD]
 
 
 def _sweep(
@@ -175,7 +176,7 @@ def _sweep(
         while True:
             # timeout_for(), never a bare _TIMEOUT_MS: on a slow host a waiter gains a poll round at each per-byte CRC
             # yield of its peer, 79 virtual ms for one CRC16 reply at that limit, which 30 ms does not cover (Part J.7).
-            pair = hazard_pair(crc, answer=_SWEEP_PAYLOAD)
+            pair = hazard_pair(crc, answer=_SWEEP_PAYLOAD, debug=ERROR_LEVEL)
             delivered: list[bytes | None] = []
             work, peer = make_work(pair, delivered)
             stepper = _Stepper(k)
@@ -183,7 +184,7 @@ def _sweep(
             # its awaits bounds each later run on any host, a slow one included (Part J.7).
             clock.pace(real=k > 0)
             try:
-                run(_cancel_at(pair, stepper, work, peer, cancel=cancel), limit=_EXCHANGE_LIMIT_S)
+                run(_cancel_at(pair, stepper, work, peer, cancel=cancel))
             finally:
                 clock.pace(real=True)
                 stepper.detach()

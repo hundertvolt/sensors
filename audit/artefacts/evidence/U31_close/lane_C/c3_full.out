@@ -1,0 +1,36 @@
+tests/test_asy_system_service.py@-1 rc=0 24.633201099 mem=0 176/176 passed, 0 failed, 0 skipped fails=0
+tests/test_asy_base_classes.py@-1 rc=0 .423399173 mem=0 190/190 passed, 0 failed, 0 skipped fails=0
+tests/test_ntp_wifi_dns_integration.py@-1 rc=0 1.480188898 mem=0 13/13 passed, 0 failed, 0 skipped fails=0
+tests/test_ntp_fram_system_integration.py@-1 rc=0 7.582275761 mem=0 12/12 passed, 0 failed, 0 skipped fails=0
+test_sensortask[arzi]@-1 rc=0 28.366592302 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[dev]@-1 rc=0 45.343130754 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[grkizi]@-1 rc=0 28.230293076 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[klkizi]@-1 rc=0 28.415679534 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[schlafzi]@-1 rc=0 28.527083967 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[wozi]@-1 rc=0 31.953255746 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+tests/test_asy_system_service.py@32768 rc=0 25.786038570 mem=0 176/176 passed, 0 failed, 0 skipped fails=0
+tests/test_asy_base_classes.py@32768 rc=0 .474353398 mem=0 190/190 passed, 0 failed, 0 skipped fails=0
+tests/test_ntp_wifi_dns_integration.py@32768 rc=0 1.511290302 mem=0 13/13 passed, 0 failed, 0 skipped fails=0
+tests/test_ntp_fram_system_integration.py@32768 rc=0 7.640375350 mem=0 12/12 passed, 0 failed, 0 skipped fails=0
+test_sensortask[arzi]@32768 rc=0 31.939092478 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[dev]@32768 rc=0 53.544592938 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[grkizi]@32768 rc=0 32.042139201 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[klkizi]@32768 rc=0 32.106838548 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[schlafzi]@32768 rc=0 32.364153537 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask[wozi]@32768 rc=0 35.877312007 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+lane rc=1 36.203058622 mem=0 4 failed, 730 passed in 32.86s
+scans rc=1 68.993269795 mem=0 1 failed, 869 passed, 1 warning in 68.25s (0:01:08)
+reader_test_api_reference rc=0 4.584725972 mem=0 98 passed in 3.79s
+reader_test_bench_harness_helpers rc=0 3.876595288 mem=0 322 passed in 2.98s
+reader_test_build_firmware rc=0 8.540688159 mem=0 53 passed, 6 skipped in 7.99s
+reader_test_buildgen_definitions rc=0 4.240074680 mem=0 399 passed in 3.34s
+reader_test_buildgen_error_contract rc=0 9.167267841 mem=0 184 passed in 7.02s
+reader_test_buildgen_fuzz rc=0 7.599091703 mem=0 2 passed in 7.19s
+reader_test_buildgen_generate rc=0 5.533108458 mem=0 368 passed in 4.82s
+reader_test_buildgen_tag_comments rc=0 .819279686 mem=0 105 passed in 0.60s
+reader_test_buildgen_twin_wiring rc=0 1.692717329 mem=0 62 passed in 1.18s
+reader_test_buildgen_validate rc=0 6.662445391 mem=0 413 passed in 5.47s
+reader_test_counter_steps rc=0 3.004932114 mem=0 10 passed in 2.43s
+reader_test_device_script_config_flush rc=0 1.306567227 mem=0 7 passed in 1.06s
+reader_test_device_script_config_schemas rc=0 1.291489739 mem=0 12 passed in 0.87s
+Terminated

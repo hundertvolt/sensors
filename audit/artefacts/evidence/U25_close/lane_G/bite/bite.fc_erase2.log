@@ -1,0 +1,8 @@
+PASS test_a_backup_write_cut_after_every_transaction_restores_the_old_or_the_new_backup
+PASS test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_history
+FAIL test_an_erase_cut_inside_its_blanking_pass_or_its_first_and_last_units_restores_each_ring_or_blanks_it:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_fram_crash_points.py", line 246, in test_an_erase_cut_inside_its_blanking_pass_or_its_first_and_last_units_restores_each_ring_or_blanks_it
+AssertionError: cut after 21: ring CRASH_A restored False, not (1, (0, 0, 0, 0, 0, 0, 0, 0, 0, 125)) or blank
+2/3 passed, 1 failed, 0 skipped

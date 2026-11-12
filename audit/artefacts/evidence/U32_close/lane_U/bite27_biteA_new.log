@@ -1,0 +1,7 @@
+FAIL test_initiator_task_starters_include_exercise_loop:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_link_driver.py", line 105, in test_initiator_task_starters_include_exercise_loop
+AssertionError: [<bound_method 7f0317e8f200 <UARTComm object at 7f0317e8f2e0>.<function start_asy_listen at 0x7f0317e5c0c0>>]
+PASS test_responder_task_starters_are_the_listen_loop_only
+1/2 passed, 1 failed, 0 skipped

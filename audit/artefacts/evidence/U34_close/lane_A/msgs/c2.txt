@@ -1,0 +1,12 @@
+U34 lane A: three driver headers take the SPDX order
+
+src/asy_fram_driver.py, src/asy_bmp3xx_driver.py and src/asy_isl29125_driver.py open like the
+other attributed files: the copyright line, the licence line, then one line pointing to
+THIRD_PARTY_LICENSES.md. Holders are spelled as before; only the order and the wording of the
+pointer line change.
+
+Each header stays three lines: mpy-cross output is byte-identical to the base, so the frozen
+image does not change and no operating mode (STA, AP, Silent, Off, USB) is affected.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

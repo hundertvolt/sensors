@@ -1,0 +1,6 @@
+== old
+n 10 ram_only 416 store 1440
+n 1000 ram_only 8320 store 10336
+== new
+n 10 ram_only 96 store 1216
+n 1000 ram_only 96 store 2208

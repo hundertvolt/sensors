@@ -13,7 +13,6 @@ runs per runner (SSD wear; owner, 2026-09-26)."""
 import argparse
 import re
 import shutil
-import sys
 import time
 from pathlib import Path
 
@@ -22,15 +21,18 @@ _RUNNER = re.compile(r"^[a-z0-9_]+$")
 _RUN_DIR = re.compile(r"^(\d{8}T\d{6}Z)(?:-(\d+))?$")
 
 
-def _timestamp() -> str:
-    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-
-
 def _check(runner: str, keep: int) -> None:
     if not _RUNNER.match(runner):
         raise ValueError(f"runner name {runner!r} must match {_RUNNER.pattern}")
     if keep < 1:
         raise ValueError(f"keep must be at least 1, not {keep}")
+
+
+def _prune(runner_dir: Path, keep: int, new: Path) -> None:
+    # The new run is always kept, so a host clock stepped backwards cannot prune it on arrival.
+    older = [entry for _, entry in _runs(runner_dir) if entry != new]
+    for entry in older[: max(0, len(older) - (keep - 1))]:
+        shutil.rmtree(entry)
 
 
 def _runs(runner_dir: Path) -> list[tuple[tuple[str, int], Path]]:
@@ -43,11 +45,25 @@ def _runs(runner_dir: Path) -> list[tuple[tuple[str, int], Path]]:
     return sorted(runs)
 
 
-def _prune(runner_dir: Path, keep: int, new: Path) -> None:
-    # The new run is always kept, so a host clock stepped backwards cannot prune it on arrival.
-    older = [entry for _, entry in _runs(runner_dir) if entry != new]
-    for entry in older[: max(0, len(older) - (keep - 1))]:
-        shutil.rmtree(entry)
+def _timestamp() -> str:
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+
+def archive(runner: str, paths: list[Path], *, keep: int = 3, root: Path = REPO_ROOT / "build" / "archive") -> Path | None:
+    # Moves every existing path into one new run directory and returns it; None when none exists.
+    _check(runner, keep)
+    existing = [path for path in paths if path.exists() or path.is_symlink()]
+    if not existing:
+        return None
+    run_dir = new_run_dir(runner, keep=keep, root=root)
+    for path in existing:
+        target = run_dir / path.name
+        n = 0
+        while target.exists():
+            n += 1
+            target = run_dir / f"{path.name}-{n}"
+        shutil.move(str(path), target)
+    return run_dir
 
 
 def new_run_dir(runner: str, *, keep: int = 3, root: Path = REPO_ROOT / "build" / "archive") -> Path:
@@ -67,23 +83,6 @@ def new_run_dir(runner: str, *, keep: int = 3, root: Path = REPO_ROOT / "build" 
         except FileExistsError:
             n += 1
     _prune(runner_dir, keep, run_dir)
-    return run_dir
-
-
-def archive(runner: str, paths: list[Path], *, keep: int = 3, root: Path = REPO_ROOT / "build" / "archive") -> Path | None:
-    # Moves every existing path into one new run directory and returns it; None when none exists.
-    _check(runner, keep)
-    existing = [path for path in paths if path.exists() or path.is_symlink()]
-    if not existing:
-        return None
-    run_dir = new_run_dir(runner, keep=keep, root=root)
-    for path in existing:
-        target = run_dir / path.name
-        n = 0
-        while target.exists():
-            n += 1
-            target = run_dir / f"{path.name}-{n}"
-        shutil.move(str(path), target)
     return run_dir
 
 
@@ -110,4 +109,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

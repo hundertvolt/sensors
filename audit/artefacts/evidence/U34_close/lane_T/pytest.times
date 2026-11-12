@@ -1,0 +1,6 @@
+pytest base1 rc=0 0.37s
+pytest head1 rc=0 0.35s
+pytest base2 rc=0 0.27s
+pytest head2 rc=0 0.27s
+pytest base3 rc=0 0.25s
+pytest head3 rc=0 0.28s

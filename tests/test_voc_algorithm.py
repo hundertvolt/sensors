@@ -1,18 +1,16 @@
-import asyncio
+"""The VOC Index port: the fixed-point helpers and the whole algorithm against Sensirion's C, and its persisted state and
+restore."""
+
 import struct
 
-from _fram_chip_fake import FakeMB85RS64V
+import micropython
+from _async_harness import run
+from _fram_builders import make_fram_manager
 from voc_reference_vectors import DIV, EXP, INDEX_CRC32, INDEX_EVERY_500, MUL, SQRT, SRAW_COUNT, sraw_sequence
 
-import asy_spi_driver
-from asy_crc_checks import CRC32
-from asy_fram_manager import FRAMManager
-from asy_spi_driver import SPI
+import voc_algorithm
+from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
-
-# Same one-process-per-test-file FRAM chip swap as tests/test_asy_sgp40_driver.py and every other
-# FRAM-touching test file - see their own comments.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -20,14 +18,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
-
+    from collections.abc import Callable
 
 # The 32 persisted fields in pack_into()'s order; F16(n) is n in the port's Q16.16.
-_FIELDS = (
+_PERSISTED_FIELDS = (
     "mvoc_index_offset", "mtau_mean_variance_hours", "mgating_max_duration_minutes", "msraw_std_initial", "muptime",
     "msraw", "mvoc_index", "m_mean_variance_estimator_gating_max_duration_minutes",
     "m_mean_variance_estimator_initialized", "m_mean_variance_estimator_mean", "m_mean_variance_estimator_sraw_offset",
@@ -40,31 +34,11 @@ _FIELDS = (
     "m_adaptive_lowpass_a2", "m_adaptive_lowpass_initialized", "m_adaptive_lowpass_x1", "m_adaptive_lowpass_x2",
     "m_adaptive_lowpass_x3",
 )
-_UPTIME_GAMMA = _FIELDS.index("m_mean_variance_estimator_uptime_gamma")
-_UPTIME_GATING = _FIELDS.index("m_mean_variance_estimator_uptime_gating")
 
 
-def _f16(n: int) -> int:
-    return n * 65536
-
-
-def make_fram_manager() -> "tuple[FRAMManager, FakeMB85RS64V, SPI]":
-    spi_bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = FRAMManager(spi_bus, 1, max_size=0x2000)
-    chip = manager.fram._spidev.spi._spi
-    assert isinstance(chip, FakeMB85RS64V)
-    return manager, chip, spi_bus
-
-
-def make_fram_manager_sharing(spi_bus: SPI) -> FRAMManager:
-    # A second, independently-allocating FRAMManager sharing the first's spi_bus and so its chip memory -
-    # simulating a reboot's fresh manager object replaying the identical get_chunk() call against surviving
-    # data, matching the SGP40 and FRAM integration suites' pattern.
-    return FRAMManager(spi_bus, 1, max_size=0x2000)
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+def _f16(x: float) -> int:
+    # C's F16() (libfixmath fix16.h): x * 65536, rounded half away from zero - the source folds its constants by it.
+    return int(x * 65536.0 + 0.5) if x >= 0 else int(x * 65536.0 - 0.5)
 
 
 # vocalgorithm_init(), then every sraw_sequence() sample: two tests only read this run, so the first to ask builds it
@@ -88,9 +62,25 @@ def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes
         _REFERENCE_TRAJECTORY.append((indices, checkpoints))
     return _REFERENCE_TRAJECTORY[0]
 
+
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
 # ---------------------------------------------------------------------------
+
+
+def test_a_process_step_converts_no_float_on_a_64_bit_port() -> None:
+    # Constants folded to ints and mul/div as exact int products: a step past the 45 s blackout makes no float, so on
+    # this port (every int under 2**62 small) it runs with the heap locked; rp2's 31-bit ints still box the products.
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    for i in range(60):
+        algo.vocalgorithm_process(20000 + (i * 7919) % 33000)
+    micropython.heap_lock()
+    try:
+        for i in range(60):
+            algo.vocalgorithm_process(20000 + (i * 7919) % 33000)
+    finally:
+        micropython.heap_unlock()
 
 
 def test_get_params_memsize_matches_struct_size() -> None:
@@ -145,16 +135,19 @@ def test_process_after_blackout_produces_index_in_documented_range() -> None:
 
 
 def test_process_sraw_out_of_valid_range_still_produces_an_index() -> None:
-    # sraw <= 0 or >= 65000 skips updating msraw (datasheet SRAW_VOC is 0-65535 ticks; the
-    # algorithm's own valid processing window is narrower) but must never raise or hang.
+    # sraw <= 0 or >= 65000 skips updating msraw, so the cycle runs on the last valid sample, as a repeat of it does;
+    # the index lies in the SGP40 datasheet v1.2 Table 1 range, 1-500 VOC Index points.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
-    for _ in range(50):
-        algo.vocalgorithm_process(30000)  # past blackout
-    voc_index = algo.vocalgorithm_process(0)
-    assert isinstance(voc_index, int)
-    voc_index = algo.vocalgorithm_process(65535)
-    assert isinstance(voc_index, int)
+    reference = VOCAlgorithm()
+    reference.vocalgorithm_init()
+    for _ in range(50):  # past blackout
+        algo.vocalgorithm_process(30000)
+        reference.vocalgorithm_process(30000)
+    for out_of_window in (0, 65535):
+        voc_index = algo.vocalgorithm_process(out_of_window)
+        assert 1 <= voc_index <= 500
+        assert voc_index == reference.vocalgorithm_process(30000)
 
 
 def test_process_sraw_clamped_to_20001_52767_window() -> None:
@@ -334,6 +327,54 @@ def test_unpack_from_buffer_too_small_returns_false_not_raise() -> None:
     assert algo.params.unpack_from(too_small) is False
 
 
+class _RaisingStruct:
+    # Stands in for the module's struct: both calls the persisted state makes raise the given exception.
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    def pack_into(self, *_args: object) -> None:
+        raise self._exc
+
+    def unpack_from(self, *_args: object) -> "tuple[int, ...]":
+        raise self._exc
+
+
+def _with_struct(exc: BaseException, call: "Callable[[], bool]") -> bool:
+    real = voc_algorithm.struct
+    voc_algorithm.struct = _RaisingStruct(exc)  # type: ignore[assignment]  # monkeypatch, restored below
+    try:
+        return call()
+    finally:
+        voc_algorithm.struct = real
+
+
+def test_a_buffer_or_offset_struct_refuses_is_a_false_answer() -> None:
+    # A read-only buffer (TypeError) and an offset past a machine word (OverflowError), as struct raises them.
+    params = VOCAlgorithm().params
+    assert params.pack_into(memoryview(bytes(VOCAlgorithm.get_params_memsize()))) is False  # a read-only memoryview
+    assert params.pack_into(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
+    assert params.unpack_from(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
+
+
+def test_a_stack_overflow_or_an_allocation_failure_in_the_state_codec_propagates() -> None:
+    # The handlers take only what struct raises for a bad buffer or offset: anything else, a C-stack overflow or the
+    # unpack's allocation failing among them, reaches the SGP40 read path's own handler, which logs its text.
+    params = VOCAlgorithm().params
+    buf = bytearray(VOCAlgorithm.get_params_memsize())
+    cases = (
+        (RuntimeError("maximum recursion depth exceeded"), lambda: params.pack_into(buf)),
+        (RuntimeError("maximum recursion depth exceeded"), lambda: params.unpack_from(buf)),
+        (MemoryError("injected for the handler"), lambda: params.unpack_from(buf)),
+    )
+    for exc, call in cases:
+        try:
+            _with_struct(exc, call)
+            raised = None
+        except (MemoryError, RuntimeError) as e:
+            raised = e
+        assert raised is exc, (exc, raised)
+
+
 def test_deserialize_with_malformed_buffer_leaves_algorithm_usable() -> None:
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
@@ -343,40 +384,10 @@ def test_deserialize_with_malformed_buffer_leaves_algorithm_usable() -> None:
     assert isinstance(voc_index, int)  # processing still ran despite the failed deserialize
 
 
-def test_unpack_from_refuses_a_field_outside_int32() -> None:
-    source = VOCAlgorithm()
-    source.vocalgorithm_init()
-    for i in range(60):
-        source.vocalgorithm_process(30000 + i * 41)
-    target = VOCAlgorithm()
-    target.vocalgorithm_init()
-    before = dict(target.params.__dict__)
-    for field, value in ((0, 2**31), (len(_FIELDS) - 1, -(2**31) - 1)):
-        buf = bytearray(VOCAlgorithm.get_params_memsize())
-        assert source.params.pack_into(buf) is True
-        struct.pack_into("<q", buf, 8 * field, value)
-        assert target.params.unpack_from(buf) is False
-        assert dict(target.params.__dict__) == before
-
-
-def test_a_restored_uptime_above_the_small_int_limit_is_clamped() -> None:
-    # A backup from a build whose uptimes ran to F16(32766) restores at the limit, F16(16382).
-    algo = VOCAlgorithm()
-    algo.vocalgorithm_init()
-    algo.params.m_mean_variance_estimator_uptime_gamma = _f16(32766)
-    algo.params.m_mean_variance_estimator_uptime_gating = _f16(32766)
-    buf = bytearray(VOCAlgorithm.get_params_memsize())
-    assert algo.params.pack_into(buf) is True
-    restored = VOCAlgorithm()
-    assert restored.params.unpack_from(buf) is True
-    assert restored.params.m_mean_variance_estimator_uptime_gamma == _f16(16382)
-    assert restored.params.m_mean_variance_estimator_uptime_gating == _f16(16382)
-
-
 def test_pack_into_writes_little_endian() -> None:
     algo = VOCAlgorithm()
     expected = bytearray()
-    for position, name in enumerate(_FIELDS):
+    for position, name in enumerate(_PERSISTED_FIELDS):
         value = (position + 1) * 0x01020305 * (-1 if position % 3 == 0 else 1)
         setattr(algo.params, name, value)
         expected += value.to_bytes(8, "little", signed=True)
@@ -392,31 +403,6 @@ def test_the_ports_own_state_always_restores() -> None:
         for value in struct.unpack_from("<32q", state):
             assert -0x80000000 <= value <= 0x7FFFFFFF, (i, value)
         assert VOCAlgorithm().params.unpack_from(state) is True, i
-
-
-def test_the_lowered_uptime_limit_leaves_the_output_unchanged() -> None:
-    # Both uptimes at the C reference's saturation (F16(32766)) or at the port's (F16(16382)): only
-    # sigmoids that are constant past 10223 s read them, so 2000 post-blackout samples agree.
-    samples = sraw_sequence(46 + 2000)
-    base = VOCAlgorithm()
-    base.vocalgorithm_init()
-    for _ in range(46):
-        base.vocalgorithm_process(next(samples))
-    buf = bytearray(VOCAlgorithm.get_params_memsize())
-    assert base.params.pack_into(buf) is True
-    old_limit, new_limit = VOCAlgorithm(), VOCAlgorithm()
-    for algo, uptime in ((old_limit, _f16(32766)), (new_limit, _f16(16382))):
-        assert algo.params.unpack_from(buf) is True
-        algo.params.m_mean_variance_estimator_uptime_gamma = uptime
-        algo.params.m_mean_variance_estimator_uptime_gating = uptime
-    old_buf, new_buf = bytearray(len(buf)), bytearray(len(buf))
-    for sraw in samples:
-        assert old_limit.vocalgorithm_process(sraw) == new_limit.vocalgorithm_process(sraw)
-    assert old_limit.params.pack_into(old_buf) is True
-    assert new_limit.params.pack_into(new_buf) is True
-    start, end = 8 * _UPTIME_GAMMA, 8 * (_UPTIME_GATING + 1)
-    assert old_buf[:start] == new_buf[:start]
-    assert old_buf[end:] == new_buf[end:]
 
 
 # ---------------------------------------------------------------------------
@@ -482,9 +468,9 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
     algo = VOCAlgorithm()
     # Values from the C reference's own overflow guards (x >= f16(10.3972) -> FIX16_MAXIMUM,
     # x <= f16(-11.7835) -> 0).
-    assert algo._fix16_exp(algo._f16(11.0)) == 0x7FFFFFFF
-    assert algo._fix16_exp(algo._f16(-12.0)) == 0
-    assert algo._fix16_exp(algo._f16(0.0)) == algo._f16(1.0)  # e^0 == 1
+    assert algo._fix16_exp(_f16(11.0)) == 0x7FFFFFFF
+    assert algo._fix16_exp(_f16(-12.0)) == 0
+    assert algo._fix16_exp(_f16(0.0)) == _f16(1.0)  # e^0 == 1
 
 
 def test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch() -> None:
@@ -511,7 +497,7 @@ def test_fix16_div_overflow_returns_the_overflow_sentinel() -> None:
 def test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once() -> None:
     # Wrapped to int32 the divisor is 0, so the call returns the sentinel instead of shifting forever.
     algo = VOCAlgorithm()
-    assert algo._fix16_div(algo._f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
+    assert algo._fix16_div(_f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +520,7 @@ def test_fix16_helpers_match_the_c_reference_vectors() -> None:
 def test_the_index_sequence_matches_the_c_reference() -> None:
     indices, checkpoints = reference_trajectory()
     assert tuple(voc_index for _i, voc_index, _packed, _state in checkpoints) == INDEX_EVERY_500
-    framed = run(CRC32().add(indices))
+    framed = CRC32().add(indices)
     assert framed is not None
     assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32
 
@@ -547,7 +533,7 @@ def test_the_index_sequence_matches_the_c_reference() -> None:
 
 
 def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot() -> None:
-    manager, _chip, spi_bus = make_fram_manager()
+    manager, chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
@@ -562,20 +548,20 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         assert algo.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
 
     # A second manager sharing the same underlying chip - simulates a real reboot: fresh
     # VOCAlgorithm, never processed a single sample, must recover the exact converged state.
-    manager2 = make_fram_manager_sharing(spi_bus)
+    manager2, _ = make_fram_manager(chip=chip)
     run(manager2.setup())
     chunk2 = manager2.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk2 is not None
 
     async def read() -> bytearray:
         buf = chunk2.get_buffer()
-        assert await chunk2.read_into(buf) is True
+        assert chunk2.read_into(buf) is True
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         return bytearray(dbuf)
@@ -600,7 +586,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
     #
     # asy_sgp40_driver.py's _run_restore() never calls unpack_from() at all once read_into() has failed -
     # proven here directly against VOCAlgorithm, not inferred from that caller's short-circuit logic.
-    manager, chip, _spi_bus = make_fram_manager()
+    manager, chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
@@ -614,7 +600,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
         for i in range(20):
             writer.vocalgorithm_process(30000 + i * 13)
         assert writer.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
     addr0, addr1 = chunk._block_addr
@@ -627,7 +613,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
 
     async def read() -> "bool | None":
         buf = chunk.get_buffer()
-        ok = await chunk.read_into(buf)
+        ok = chunk.read_into(buf)
         if ok:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
@@ -642,7 +628,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
     # Mirror of the hard-failure test above, but only one of the two redundant copies is
     # corrupted - _FRAMBaseChunk's own dual-copy redundancy must recover from the other,
     # untouched copy and still hand back the exact original state, not just "read succeeded".
-    manager, chip, _spi_bus = make_fram_manager()
+    manager, chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
@@ -657,7 +643,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         assert algo.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
     addr0, _addr1 = chunk._block_addr
@@ -667,7 +653,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
     async def read() -> "bool | None":
         buf = chunk.get_buffer()
-        ok = await chunk.read_into(buf)
+        ok = chunk.read_into(buf)
         if ok:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
@@ -679,14 +665,13 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
 
 # ---------------------------------------------------------------------------
-# Untested-but-safe conditions found during a deeper review pass
+# Negative offsets and the uncalled tuning API
 # ---------------------------------------------------------------------------
 
 
 def test_pack_into_negative_offset_returns_false_not_raise() -> None:
-    # Confirmed against the real interpreter: MicroPython's struct.pack_into() raises ValueError for a
-    # negative offset, unlike CPython's, which treats one as relative to the buffer's end. Already caught by
-    # pack_into()'s own try/except, but previously untested; no real caller passes a negative offset.
+    # A negative offset counts from the buffer's end, as in CPython (py/modstruct.c, v1.29.0): 300 - 50 leaves no
+    # room for the 256-byte state, so struct raises ValueError and pack_into() answers False. No caller passes one.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     buf = bytearray(300)
@@ -700,12 +685,8 @@ def test_unpack_from_negative_offset_returns_false_not_raise() -> None:
 
 
 def test_set_tuning_parameters_smoke_test_normal_values() -> None:
-    # _vocalgorithm_set_tuning_parameters() has no caller anywhere in this codebase today - only
-    # _vocalgorithm_get_states()/_vocalgorithm_set_states() are used. Kept as documented, Sensirion-
-    # mirroring API surface, but with zero test coverage until now.
-    #
-    # A smoke test confirming it threads the given values through correctly and leaves the algorithm usable
-    # - not a claim that any real caller exercises it (see BACKLOG.md).
+    # No caller in this codebase uses it; kept as Sensirion-mirroring API surface. A smoke test that it threads the
+    # values through and leaves the algorithm usable.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     algo._vocalgorithm_set_tuning_parameters(
@@ -720,6 +701,16 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
     assert algo.params.msraw_std_initial == algo._fix16_from_int(50.0)
     voc_index = algo.vocalgorithm_process(30000)  # must still produce a valid index afterward
     assert isinstance(voc_index, int)
+
+
+def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
+    # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
+    algo = VOCAlgorithm()
+    limit, step, params = _f16(32767 - 1), _f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
+    params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
+    for _ in range(2):
+        algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)
+        assert (params.m_mean_variance_estimator_uptime_gamma, params.m_mean_variance_estimator_uptime_gating) == (limit, limit)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+WAIT 52 ms: no construction
+WAIT 1291 ms: no first sync
+1467 ms test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log
+WAIT 53 ms: no construction
+WAIT 1285 ms: no first sync
+WAIT 2613 ms: no CO2 reading
+WAIT 1024 ms: no flash once the sync was lost
+4993 ms test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing
+WAIT 50 ms: no construction
+WAIT 6293 ms: the boot's attempt never failed
+WAIT 52 ms: the failed unsynced attempt never doubled the step (C.7.2)
+WAIT 0 ms: no sync after the responder returned
+6521 ms test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step
+WAIT 51 ms: no construction
+WAIT 1339 ms: no first sync
+WAIT 3083 ms: no SGP40 and SCD30 reading
+WAIT 1743 ms: no backup written
+WAIT 50 ms: no construction
+WAIT 6283 ms: the boot's attempt never failed
+WAIT 1701 ms: no restore after the sync
+14333 ms test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync
+WAIT 50 ms: no construction
+WAIT 1336 ms: no unsync failure
+WAIT 0 ms: no short failure
+WAIT 0 ms: no implausible failure
+1669 ms test_each_failing_reply_leaves_synced_false_with_its_catalog_code

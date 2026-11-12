@@ -1,6 +1,6 @@
-"""A scripted MQTT 3.1.1 broker for tests/test_asy_mqtt_client.py, on a real loopback socket (asyncio.start_server): it
-records every packet and answers by its flags, so a test can produce faults a real broker shows only on demand (a refused
-CONNACK, a lost PINGRESP or PUBACK, a bad length, a stall), and keeps a session per client id not asking for a clean one."""
+"""A scripted MQTT 3.1.1 broker for tests/test_asy_mqtt_client.py on a real loopback socket (asyncio.start_server): it
+records every packet and answers by its flags, so a test produces faults a real broker shows only on demand (a refused
+CONNACK, a lost PINGRESP or PUBACK, a bad length, a stall); it keeps a session per client id not asking a clean one."""
 
 import asyncio
 
@@ -17,16 +17,6 @@ if TYPE_CHECKING:
         async def wait_closed(self) -> None: ...
 
 
-def read_str(body: bytes, i: int) -> "tuple[bytes, int]":
-    n = (body[i] << 8) | body[i + 1]
-    return body[i + 2 : i + 2 + n], i + 2 + n
-
-
-def publish_packet(topic: bytes, payload: bytes, qos: int = 0, pid: int = 1, *, retain: bool = False) -> bytes:
-    body = bytes([len(topic) >> 8, len(topic) & 0xFF]) + topic + (bytes([pid >> 8, pid & 0xFF]) if qos else b"") + payload
-    return bytes([0x30 | (qos << 1) | (1 if retain else 0)]) + encode_length(len(body)) + body
-
-
 def encode_length(value: int) -> bytes:
     out = bytearray()
     while True:
@@ -35,6 +25,16 @@ def encode_length(value: int) -> bytes:
         out.append(byte | 0x80 if value else byte)
         if not value:
             return bytes(out)
+
+
+def publish_packet(topic: bytes, payload: bytes, qos: int = 0, pid: int = 1, *, retain: bool = False) -> bytes:
+    body = bytes([len(topic) >> 8, len(topic) & 0xFF]) + topic + (bytes([pid >> 8, pid & 0xFF]) if qos else b"") + payload
+    return bytes([0x30 | (qos << 1) | (1 if retain else 0)]) + encode_length(len(body)) + body
+
+
+def read_str(body: bytes, i: int) -> "tuple[bytes, int]":
+    n = (body[i] << 8) | body[i + 1]
+    return body[i + 2 : i + 2 + n], i + 2 + n
 
 
 class FakeBroker:

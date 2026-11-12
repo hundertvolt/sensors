@@ -1,0 +1,19 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_the_pin_is_the_one_commit_third_party_licenses_records __________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/bites_a2/ffs_other')
+
+    def test_the_pin_is_the_one_commit_third_party_licenses_records(repo_root: Path) -> None:
+        recorded = _RECORDED_COMMIT.findall((repo_root / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8"))
+>       assert recorded == [UPSTREAM_COMMIT], f"THIRD_PARTY_LICENSES.md records freezefs at {recorded}, this pin is {UPSTREAM_COMMIT}"
+E       AssertionError: THIRD_PARTY_LICENSES.md records freezefs at ['0000000000000000000000000000000000000000'], this pin is 26be9e339a25e71f506f06a33a2346d6a13a07b8
+E       assert ['00000000000...000000000000'] == ['26be9e339a2...46d6a13a07b8']
+E         
+E         At index 0 diff: '0000000000000000000000000000000000000000' != '26be9e339a25e71f506f06a33a2346d6a13a07b8'
+E         Use -v to get more diff
+
+tests_scripts/test_vendored_freezefs.py:38: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_vendored_freezefs.py::test_the_pin_is_the_one_commit_third_party_licenses_records
+1 failed, 6 deselected in 0.03s

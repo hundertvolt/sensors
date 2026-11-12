@@ -1,0 +1,29 @@
+'scripts/_twin_process.py:24: the twin MICROPYPATH literal '
+"'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read "
+"scripts/micropypath.toml's twin instead",
+'scripts/_twin_process.py launches a twin runner without reading '
+"scripts/micropypath.toml's twin",
+'scripts/cross_browser_smoke.mjs:26: the twin MICROPYPATH literal '
+"'build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen' "
+"- read scripts/micropypath.toml's twin instead",
+'scripts/cross_browser_smoke.mjs launches a twin runner without reading '
+"scripts/micropypath.toml's twin",
+'scripts/run_unix_port_integration.sh:124: the twin MICROPYPATH literal '
+"'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read "
+"scripts/micropypath.toml's twin instead",
+'scripts/run_unix_port_integration.sh launches a twin runner without '
+"reading scripts/micropypath.toml's twin",
+'tests_scripts/test_digital_twin_generated_boot.py:361: the twin '
+"MICROPYPATH literal '{tmp_path}:src:digital_twin:ext:.frozen' - read "
+"scripts/micropypath.toml's twin instead",
+'tests_scripts/test_digital_twin_generated_boot.py launches a twin runner '
+"without reading scripts/micropypath.toml's twin",
+'tests_scripts/test_tool_help.py:104: the twin MICROPYPATH literal '
+"'digital_twin:src:.frozen' - read scripts/micropypath.toml's twin instead",
+'tests_js/_twin_process.js:137: the twin MICROPYPATH literal '
+"'build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen' "
+"- read scripts/micropypath.toml's twin instead",
+'tests_js/_twin_process.js launches a twin runner without reading '
+"scripts/micropypath.toml's twin",
+'tests_hardware/twin_board.py launches a twin runner without reading '
+"scripts/micropypath.toml's twin",

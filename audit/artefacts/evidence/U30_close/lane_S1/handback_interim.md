@@ -1,0 +1,26 @@
+U30 lane S1, INTERIM: memory part committed; the report_if_fatal steps are waiting for <API> (`git rev-parse --verify -q audit/u30-api` still fails). Resume me with it.
+- Commit: 48c81cc on audit/u30-s1 (worktree S/wt-u30s1, branched from 5ba138c, rebuild.sh rc 0, run again after the driver edits). Not pushed.
+- Applied (the U30 parts): steps 54 (`I2CDevice.get_register_into`), 62 (`_pt_burst`, the 8-byte ERR_REG burst decoded under the hold that filled it), 73 (`_rgb_burst`), 74 (`read_counts` into it, `unpack_from` with no copy), 75 and 78 (`_scratch_view`, every register access slices it; new `I2C.get_register_into`), 80 (a whole buffer is passed as it is), 95 (`_BadBurstRead` patches `get_register_into`), 96, 98.
+- Applied from rulings: R-17 (OF-56): `ISL29125_I2C._config_burst`, built at construction and returned by `get_config_snapshot()`. R-16 (OF-51, BMP3XX half): `_comp_unreadable` gives one CFG_READ entry and one console line per episode; the next good capture clears it.
+- Waiting for <API>: steps 58, 59, 60, 61, 69, 70, 71, 72, 90, 91, 92, 93, 123, 124. All their other parts are already landed (U15/U13 form, located by quoted text). What's left is `report_if_fatal(e)` in 11 BMP3XX and 21 ISL29125 broad handlers, plus one L1 per driver through the read path, written to fail first.
+- Not U30 work: step 54's ms settle and steps 62/95's `sleep_ms` (U31), step 69's SPDX header (U34).
+- Seen failing first: test_asy_i2c_driver.py:1402 (identity: a memoryview was passed); the new get_register_into tests (AttributeError); the scratch-view test (no `_scratch_view`); test_asy_bmp3xx_driver.py:574 (no `_pt_burst`), :668 and :691 (the burst skipped `get_register_into`), :1559 (CFG_READ logged every cycle); test_asy_isl29125_driver.py:245 (`bytes()` copy), :794 (no `_rgb_burst`), :882 (a fresh snapshot each call).
+- Guards and their bites: test_asy_isl29125_driver.py's GET-snapshot reorder test passed on base and failed at :2256 with the buffer change before the reorder (fixed by decoding first). The step 98 `silent_false` guard failed at :3350 against a planted copy that ignores `read_counts()`'s False (S/u30/laneS1/bite98/). Nothing planted is committed.
+- Checks (rc 0, zero memory markers at -1 and 32768; seconds after vs base): i2c 1.51/1.60 (1.47/1.61); bmp3xx 13.50/13.84 (12.98/13.37, +4 %); isl29125 2.57/3.58 (2.57/3.53); hazard_multi_device 3.52/5.05; hazard_generated 63.5/64.1; twin bus-hazard concurrency 151.3/156.6 (150.9/156.3); twin bmp3xx 0.08/0.09; twin isl29125 autorange 54.2/54.6. All within 10 %, and nothing passed only on retry.
+- Also clean: ruff on my 6 files; main mypy, both no-args and `src tests tests_hardware/device_scripts`; the 12 convention checks (781 passed).
+- Expected red, not run: tests_scripts/test_twin_record.py (the lead re-records it at W1).
+- Decisions (agent, 2026-10-20):
+  - Register writes (`_write_buffer`) slice the held view too, for consistency with reads.
+  - The fast path tests `end is None or end == len(buf)`. The packet's `end in (None, len(buf))` builds a tuple on every call.
+  - One `_point_at()` helper does the pointer write for both `_read_into_scratch()` and `get_register_into()`.
+  - `_read_sensor_dict()` decodes the snapshot before `_check_divergence()` can await.
+  - `reset()`'s one-time 3-byte read stays on `get_register_bytes` (the packet's form).
+  - `_init_bmp()` also clears the episode flag: an episode never outlives the task.
+- Scan (all 7 classes; modes STA, AP, Silent, Off, USB behave alike: same bytes on the wire, fewer allocations):
+  - New gap in a file I don't own (lane C): src/asy_config_manager.py:352 (CONTRACT) and :359 (CFG_NOT_VALID) still log on every BMP3XX cycle in a config-damaged episode. This is the store half of OF-51; my R-16 change covers only the reader half.
+  - Safe by construction: `get_register_into` tests the pointer ACK, and `readfrom_into` raises on an abort (extmod/machine_i2c.c:451-456, v1.29.0). Each buffer is used up before its owner's next await.
+- Facts owed:
+  - Lead/X: tests_hardware/device_scripts/c_stack_budget.py:42 `_I2C_LEAVES` lacks `get_register_into`, which is now the leaf for the BMP3XX burst and the ISL29125 counts and snapshot. Its docstring says every bus leaf is wrapped. Not my file, not edited.
+  - X: SPEC G.2 gains `I2C/I2CDevice.get_register_into()` ("for a burst the caller decodes at once into a buffer of its own"). For I.2: the held view (one slice per register access), no view for a whole-buffer transfer, construction survivors `_pt_burst` 8 B, `_rgb_burst` 6 B and `_config_burst` 3 B (the snapshot is valid until the next one).
+  - Relay lines written: none.
+- Runs: every one in S/u21/RUNS.md has its exit line, plus an appended note correcting two 09:15 lines that read rc=0 but were rc=1 (stale generated tree before the rebuild; my helper defect, now fixed). Nothing of mine is running, the tree is clean and the typings symlink is removed. Logs are in S/u30/laneS1/.

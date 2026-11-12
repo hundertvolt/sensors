@@ -1,0 +1,77 @@
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py: note: In function "_install":
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:146:11: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+        await svc.start_tasks([_parked_starter])
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py: note: In function "_main":
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py:57:11: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+        await sysfunct.start_tasks([_dying_starter])
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_webserver_service.py: note: In function "test_reset_errors_is_refused_while_the_supervisors_escalation_writes_its_entry":
+tests/test_asy_webserver_service.py:1323:15: error: Missing positional argument
+"task_names" in call to "start_tasks" of "SystemService"  [call-arg]
+            await bench.svc.start_tasks([dead_starter])
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_neopixel_driver.py: note: In function "test_the_supervisor_restarts_a_failed_signal_task_with_one_system_entry":
+tests/test_asy_neopixel_driver.py:884:15: error: Missing positional argument
+"task_names" in call to "start_tasks" of "SystemService"  [call-arg]
+            await svc.start_tasks(driver.get_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_command_reboot.py: note: In function "_main":
+tests_hardware/device_scripts/system_command_reboot.py:115:15: error: Missing
+positional argument "task_names" in call to "start_tasks" of "SystemService" 
+[call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_command_hang.py: note: In function "_main":
+tests_hardware/device_scripts/system_command_hang.py:69:15: error: Missing
+positional argument "task_names" in call to "start_tasks" of "SystemService" 
+[call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_command_fram_erase.py: note: In function "_main":
+tests_hardware/device_scripts/system_command_fram_erase.py:120:15: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_command_config_reset.py: note: In function "_main":
+tests_hardware/device_scripts/system_command_config_reset.py:62:15: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/sgp40_sample_cadence.py: note: In function "_main":
+tests_hardware/device_scripts/sgp40_sample_cadence.py:79:15: error: Missing
+positional argument "task_names" in call to "start_tasks" of "SystemService" 
+[call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/reset_code_stack_exhausted.py: note: In function "_main":
+tests_hardware/device_scripts/reset_code_stack_exhausted.py:76:15: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/reset_code_command_incomplete.py: note: In function "_main":
+tests_hardware/device_scripts/reset_code_command_incomplete.py:72:15: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: note: In function "_boot_lists":
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:83:35: error:
+Missing positional argument "task_names" in call to "start_tasks" of
+"SystemService"  [call-arg]
+            await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters),...
+                                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/c_stack_budget.py: note: In function "_main":
+tests_hardware/device_scripts/c_stack_budget.py:70:15: error: Missing
+positional argument "task_names" in call to "start_tasks" of "SystemService" 
+[call-arg]
+            await sysfunct.start_tasks(device._collect_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 13 errors in 13 files (checked 227 source files)

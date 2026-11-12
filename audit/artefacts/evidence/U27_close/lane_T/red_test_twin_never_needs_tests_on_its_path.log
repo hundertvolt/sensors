@@ -1,0 +1,83 @@
+FFF...................................................                   [100%]
+=================================== FAILURES ===================================
+___________ test_the_layout_file_holds_the_unit_and_the_twin_layout ____________
+
+    def test_the_layout_file_holds_the_unit_and_the_twin_layout() -> None:
+>       layouts = _layouts()
+                  ^^^^^^^^^^
+
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:82: in _layouts
+    layouts = tomllib.loads(_LAYOUT_FILE.read_text(encoding="utf-8"))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+_ test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites _
+
+    def test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites() -> None:
+        # The premise of everything below. If tests/ is ever added to it, this guard is obsolete rather
+        # than failing - delete it then, do not widen it.
+>       assert "tests" not in _layouts()["twin"].split(":"), "the twin layout now carries tests/, so this guard is obsolete"
+                              ^^^^^^^^^^
+
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:138: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:82: in _layouts
+    layouts = tomllib.loads(_LAYOUT_FILE.read_text(encoding="utf-8"))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/micropypath.toml'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+_________________ test_every_twin_launch_reads_the_layout_file _________________
+
+    def test_every_twin_launch_reads_the_layout_file() -> None:
+>       assert launch_site_problems(REPO_ROOT) == []
+E       assert ['scripts/_tw...'s twin", ...] == []
+E         
+E         Left contains 12 more items, first extra item: "scripts/_twin_process.py:24: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read scripts/micropypath.toml's twin instead"
+E         Use -v to get more diff
+
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:144: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_layout_file_holds_the_unit_and_the_twin_layout
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_launch_reads_the_layout_file
+3 failed, 51 passed in 0.83s

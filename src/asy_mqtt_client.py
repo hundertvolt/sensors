@@ -1,6 +1,6 @@
-"""MQTT 3.1.1 client service (QoS 0/1, clean or persistent session, plain TCP): a supervised keeper owns the connection's writes,
-deadlines and reconnects, one reader per connection owns its reads, and a publisher sends each module's measurements.
-The radio stays WifiService's alone; the contract is SPECIFICATION.md Part A.11."""
+"""MQTT 3.1.1 client service (QoS 0/1, clean or persistent session, plain TCP): a supervised keeper owns the
+connection's writes, deadlines and reconnects, one reader per connection its reads, and a publisher sends each module's
+measurements. The radio stays WifiService's alone; the contract is SPECIFICATION.md Part A.12."""
 
 import asyncio
 import errno
@@ -16,7 +16,7 @@ from micropython import const
 from asy_base_classes import COUNTER_CAP, SensorReaderConfig, TickSeconds, utc_now
 from asy_config_manager import INVALID, make_dict, name_cfg, schema_dict
 from asy_dns_client import host_name_ok, resolve_ipv4
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 from mqtt_codec import (
     CONNACK,
     LENGTH_INCOMPLETE,
@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 
     class _Source(Protocol):
         # A module whose /measurements object the publisher sends (C.4.2's get_dict_data()).
-        async def get_dict_data(self) -> Mapping[str, Mapping[str, object]]: ...
+        async def get_dict_data(self) -> Mapping[str, object]: ...
 
     # Build-time values the generated module passes whole: the client id default and every timing (Part N's mqtt.*).
     class MqttConfig(NamedTuple):
@@ -89,7 +89,6 @@ if TYPE_CHECKING:
         link_poll_ms: int
         idle_recheck_ms: int
         dns_timeout_ms: int
-        dns_tries: int
 
     # A wired receiver of inbound messages (owner, 2026-10-07: they may trigger behaviours or carry values; no flash
     # writes). The callback runs on the reader, synchronously, and must copy what it keeps from the two views.
@@ -102,7 +101,7 @@ else:
         "MqttConfig",
         (
             "client_id", "response_timeout_ms", "connect_timeout_ms", "backoff_min_ms", "backoff_max_ms",
-            "stable_after_ms", "qos1_retry_ms", "drain_timeout_ms", "tick_ms", "link_poll_ms", "idle_recheck_ms", "dns_timeout_ms", "dns_tries",
+            "stable_after_ms", "qos1_retry_ms", "drain_timeout_ms", "tick_ms", "link_poll_ms", "idle_recheck_ms", "dns_timeout_ms",
         ),
     )
     MqttConsumer = namedtuple("MqttConsumer", ("topic_filter", "callback"))
@@ -113,7 +112,7 @@ _ERR_SOURCE = const(15)
 _ERR_ALLOC = const(20)
 _ERR_BAD_ARG = const(21)
 _ERR_UNEXPECTED = const(23)
-_ERR_MQTT_DNS = const(115)
+_ERR_MQTT_DNS = const(123)
 _ERR_MQTT_CONNECT = const(116)
 _ERR_MQTT_REFUSED = const(117)
 _ERR_MQTT_PROTOCOL = const(118)
@@ -126,7 +125,7 @@ _WRN_CFG_READ = const(13)
 _WRN_MQTT_SHORT_SESSIONS = const(82)
 _WRN_MQTT_RETIRE_FAILED = const(83)
 
-# Buffers, allocated once at construction (Part A.11's memory budget).
+# Buffers, allocated once at construction (Part A.12's memory budget).
 # @tunable mqtt.rx_buf_bytes = 1024
 _RX_BYTES = const(1024)  # the largest inbound packet parsed; a larger one is read and discarded
 # @tunable mqtt.tx_buf_bytes = 640
@@ -320,8 +319,9 @@ class MQTTClient(SensorReaderConfig):
             self._slot_pid = [0] * _OUT_SLOTS
             self._slot_sent = [time.ticks_ms()] * _OUT_SLOTS
             self._counts = [0] * _COUNTERS
-        except MemoryError as e:  # boot-time only; the client stays off and setup() persists why
+        except MemoryError as e:  # boot-time only: the client stays off, and setup() persists the ALLOC entry
             self._alloc_error = e
+            self.pr.err("MQTT buffers could not be allocated:", e)
         self._wake = asyncio.Event()  # set by reconnect(): ends an idle or backoff wait at once
         self._pub_interval_ms = _VAL_MQTT_PUB_INTERVAL[0][2] * 1000  # read with the other settings at each connect
         self._ping_s = _VAL_MQTT_PING_INTERVAL[0][2]  # 0: no idle ping
@@ -358,7 +358,7 @@ class MQTTClient(SensorReaderConfig):
         self._status_retain = True
         self._persistent = False
         self._session_present = False  # the last CONNACK's flag: the broker resumed a persistent session
-        # The identity a broker may hold a persistent session for, and one left behind to end (Part A.11).
+        # The identity a broker may hold a persistent session for, and one left behind to end (Part A.12).
         self._owed: tuple[str, int, bytes, bytes, bytes, bytes] | None = None
         self._retire: tuple[str, int, bytes, bytes, bytes, bytes] | None = None
         self._push_callbacks.clear()  # every field is persist-only: the next connect reads it
@@ -368,7 +368,7 @@ class MQTTClient(SensorReaderConfig):
         fields = schema_dict(cfg_vals)
         refused = [k for k, v in data.items() if k in fields and isinstance(v, str) and not self._shape_ok(k, v)]
         for key in refused:
-            await self.pr.err_s("Refusing", key, "- outside the MQTT client's accepted form", errno=_ERR_BAD_ARG)
+            self.pr.err_s("Refusing", key, "- outside the MQTT client's accepted form", errno=_ERR_BAD_ARG)
         ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
         for key in refused:
             results[key] = INVALID
@@ -393,7 +393,7 @@ class MQTTClient(SensorReaderConfig):
 
     async def _close(self) -> None:
         # The teardown every connection ends with: the reader cancelled, then the socket closed. Never awaited: an
-        # except CancelledError there would also swallow the keeper's own cancellation (Part A.11).
+        # except CancelledError there would also swallow the keeper's own cancellation (Part A.12).
         reader, self._reader = self._reader, None
         if reader is not None:
             reader.cancel()  # out of the poll set at once; its end raises nothing anyone must retrieve
@@ -414,10 +414,10 @@ class MQTTClient(SensorReaderConfig):
         # Resolve, connect and CONNECT/CONNACK under their own timeouts; _R_NONE once the session is up. The will is the
         # status topic's when `will` is set; quiet (a retire) logs nothing, its caller logging the one warning.
         dns_server = await self._safe_dns_server()  # read before any lock, as NTP does
-        ip = await resolve_ipv4(host, () if dns_server is None else (dns_server,), timeout_ms=self._cfg.dns_timeout_ms, tries=self._cfg.dns_tries, pr=self.pr)
+        ip = await resolve_ipv4(host, () if dns_server is None else (dns_server,), timeout_ms=self._cfg.dns_timeout_ms, logger=self.pr)
         if ip is None:
             if not quiet:
-                await self.pr.err_s("Broker name did not resolve:", host, errno=_ERR_MQTT_DNS)
+                self.pr.err_s("Broker name did not resolve:", host, errno=_ERR_MQTT_DNS)
             return _R_CONNECT
         if not quiet:
             self._broker_ip = ip
@@ -426,7 +426,7 @@ class MQTTClient(SensorReaderConfig):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         except (MemoryError, OSError) as e:
             if not quiet:
-                await self.pr.err_s("Could not open a socket:", e, errno=_ERR_MQTT_CONNECT)
+                self.pr.err_s("Could not open a socket:", e, errno=_ERR_MQTT_CONNECT)
             return _R_CONNECT
         stream: _Stream = asyncio.StreamReader(sock)  # type: ignore[assignment]  # MicroPython's one Stream class
         self._stream = stream  # owned from here: _close() ends it on every path
@@ -436,7 +436,7 @@ class MQTTClient(SensorReaderConfig):
         n = encode_connect(self._txmv, client_id, keepalive, (self._status_topic, will, self._status_qos, self._status_retain) if will else None, user, password, clean=clean)
         if n < 0:  # unreachable within the schema's bounds, which _TX_BYTES is sized for
             if not quiet:
-                await self.pr.err_s("CONNECT does not fit the transmit buffer", errno=_ERR_MQTT_CONNECT)
+                self.pr.err_s("CONNECT does not fit the transmit buffer", errno=_ERR_MQTT_CONNECT)
             return _R_CONNECT
         try:
             try:
@@ -449,12 +449,12 @@ class MQTTClient(SensorReaderConfig):
             reason = await self._read_connack(stream, clean=clean, quiet=quiet)
         except (OSError, asyncio.TimeoutError) as e:
             if not quiet:
-                await self.pr.err_s("Broker connect failed:", ip, e, errno=_ERR_MQTT_CONNECT)
+                self.pr.err_s("Broker connect failed:", ip, e, errno=_ERR_MQTT_CONNECT)
             return _R_CONNECT
         return reason
 
     async def _connection_loop(self) -> None:
-        # The keeper (Part A.11): never ends on a remote fault; a restarted task first closes what the last one left.
+        # The keeper (Part A.12): never ends on a remote fault; a restarted task first closes what the last one left.
         await self._close()
         while True:
             self._wake.clear()
@@ -560,27 +560,26 @@ class MQTTClient(SensorReaderConfig):
         return _R_PROTOCOL
 
     async def _log_end(self, reason: int, lasted_ms: int) -> None:
-        # One persisted entry per failed attempt or lost connection; a link loss and a reconfigure log nothing.
+        # One persisted entry per failed attempt or lost connection; a link loss and a reconfigure log nothing, and the
+        # reader's top has logged an unexpected end.
         if reason in (_R_EOF, _R_IO) and lasted_ms < self._cfg.stable_after_ms:
             self._bump(_C_SHORT)
             if self._short_streak < _SHORT_SESSION_WARN:
                 self._short_streak += 1
                 if self._short_streak == _SHORT_SESSION_WARN:
                     # This end is the warning, not also an error: one occurrence is one kind (C.7.1).
-                    await self.pr.wrn_s("Sessions keep ending right after they start - another client with this client id?", wrnno=_WRN_MQTT_SHORT_SESSIONS)
+                    self.pr.wrn_s("Sessions keep ending right after they start - another client with this client id?", wrnno=_WRN_MQTT_SHORT_SESSIONS)
                     return
         if reason == _R_PING:
-            await self.pr.err_s("No PINGRESP from", self._broker_ip, errno=_ERR_MQTT_NO_PINGRESP)
+            self.pr.err_s("No PINGRESP from", self._broker_ip, errno=_ERR_MQTT_NO_PINGRESP)
         elif reason == _R_EOF:
-            await self.pr.err_s("Broker closed the connection", errno=_ERR_MQTT_LOST)
+            self.pr.err_s("Broker closed the connection", errno=_ERR_MQTT_LOST)
         elif reason == _R_IO:
-            await self.pr.err_s("Connection lost, errno", self._detail, errno=_ERR_MQTT_LOST)
+            self.pr.err_s("Connection lost, errno", self._detail, errno=_ERR_MQTT_LOST)
         elif reason == _R_PROTOCOL:
-            await self.pr.err_s("Protocol error, packet", self._detail, errno=_ERR_MQTT_PROTOCOL)
+            self.pr.err_s("Protocol error, packet", self._detail, errno=_ERR_MQTT_PROTOCOL)
         elif reason == _R_STALLED:
-            await self.pr.err_s("Broker stopped reading", errno=_ERR_MQTT_STALLED)
-        elif reason == _R_UNEXPECTED:
-            await self.pr.err_s("Reader ended unexpectedly", errno=_ERR_UNEXPECTED)
+            self.pr.err_s("Broker stopped reading", errno=_ERR_MQTT_STALLED)
         elif reason == _R_RECONFIGURE:
             self.pr.evt("Reconnecting with new settings.")
 
@@ -649,7 +648,8 @@ class MQTTClient(SensorReaderConfig):
             if topic_matches(flt, topic):
                 try:
                     callback(topic, payload, retained)
-                except Exception:  # a consumer's fault never ends the reader; the keeper logs it
+                except Exception as e:  # a consumer's fault never ends the reader; the keeper logs it
+                    report_if_fatal(e)
                     self._bump(_C_CONSUMER_ERR)
         return _R_NONE
 
@@ -660,7 +660,7 @@ class MQTTClient(SensorReaderConfig):
     async def _publish_loop(self) -> None:
         # A round right after each CONNACK, then every MQTTPubInterval; the interval is read at connect, so a changed
         # setting, which reconnects, applies at once. Each round falls due one interval after the last one fell due, not
-        # after it ran, so a late wake delays that round alone, never the cadence (Part A.11).
+        # after it ran, so a late wake delays that round alone, never the cadence (Part A.12).
         due = time.ticks_ms()
         while True:
             if self._state != _ST_CONNECTED or not self._pub_interval_ms:  # 0: the publisher is off
@@ -684,7 +684,7 @@ class MQTTClient(SensorReaderConfig):
             try:
                 data = await source.get_dict_data()
             except Exception as e:  # a producer's get_dict_data() never raises by contract; guarded all the same
-                await self.pr.err_s("Measurement source failed:", e, errno=_ERR_SOURCE)
+                self.pr.err_s("Measurement source failed:", e, errno=_ERR_SOURCE)
                 continue
             for name in data:  # keys, then a lookup: iterating items() would allocate a tuple per module
                 self._queue_json(self._meas_topic(name), data[name])
@@ -748,7 +748,7 @@ class MQTTClient(SensorReaderConfig):
         return True
 
     def _queue_json(self, topic: bytes, value: object) -> None:
-        # publish()'s QoS 0 path for one measurement object, its JSON written straight into the slot (Part A.11).
+        # publish()'s QoS 0 path for one measurement object, its JSON written straight into the slot (Part A.12).
         if self._alloc_error is not None or self._state != _ST_CONNECTED or not topic_name_ok(topic):
             self._bump(_C_TX_DROP)
             return
@@ -788,11 +788,11 @@ class MQTTClient(SensorReaderConfig):
         # Bit 0 is Session Present, never an error (mqtt_as A4), but always 0 on a clean session (section 3.2.2.2).
         if rx[0] != CONNACK or rx[1] != _ID_BYTES or rx[2] & 0xFE or (clean and rx[2]):
             if not quiet:
-                await self.pr.err_s("Malformed CONNACK:", rx[0], rx[1], rx[2], errno=_ERR_MQTT_PROTOCOL)
+                self.pr.err_s("Malformed CONNACK:", rx[0], rx[1], rx[2], errno=_ERR_MQTT_PROTOCOL)
             return _R_CONNECT
         if rx[3]:
             if not quiet:
-                await self.pr.err_s("Broker refused the connection, return code", rx[3], errno=_ERR_MQTT_REFUSED)
+                self.pr.err_s("Broker refused the connection, return code", rx[3], errno=_ERR_MQTT_REFUSED)
             return _R_CONNECT
         self._session_present = bool(rx[2])
         self._compact(_CONNACK_LEN)
@@ -809,7 +809,7 @@ class MQTTClient(SensorReaderConfig):
         if bools is None or texts is None or ints is None or len(bools) != _BOOL_FIELDS or len(texts) != _TEXT_FIELDS or len(ints) != _INT_FIELDS:
             if not self._cfg_warned:
                 self._cfg_warned = True
-                await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
+                self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
             return False
         enable, persistent, retain = bools
         host, user, password, client_id, prefix, will_topic, online, offline = texts
@@ -821,7 +821,7 @@ class MQTTClient(SensorReaderConfig):
         if not (host_name_ok(host) and client_id_ok(client_id) and prefix_ok(prefix) and (not will_topic or status_topic_ok(will_topic)) and online_b and offline_b and texts_ok):
             if not self._cfg_warned:
                 self._cfg_warned = True
-                await self.pr.wrn_s("Stored MQTT settings out of shape, client off:", host, client_id, prefix, will_topic, wrnno=_WRN_STORED_DEFAULT)
+                self.pr.wrn_s("Stored MQTT settings out of shape, client off:", host, client_id, prefix, will_topic, wrnno=_WRN_STORED_DEFAULT)
             return False
         base = (prefix + "/" + client_id).encode()
         if base != self._base or will_topic != self._will_setting:
@@ -842,7 +842,8 @@ class MQTTClient(SensorReaderConfig):
         return True
 
     async def _reader_loop(self, stream: "_Stream") -> None:
-        # The connection's only reader; it never logs and never raises, and records why it ended for the keeper.
+        # The connection's only reader; it never raises, and records why it ended for the keeper. Its task top logs an
+        # unexpected exception, the one entry it writes (C.9); every other end the keeper logs.
         try:
             while True:
                 n = await stream.readinto(self._rxmv[self._rx_len :])
@@ -866,8 +867,9 @@ class MQTTClient(SensorReaderConfig):
         except OSError as e:
             self._detail = e.errno if isinstance(e.errno, int) else 0
             self._reader_end = _R_IO
-        except Exception:  # never-raise boundary: the keeper persists UNEXPECTED
+        except Exception as e:  # never-raise boundary: the task top
             self._reader_end = _R_UNEXPECTED
+            self.pr.err_s("Reader ended unexpectedly:", e, errno=_ERR_UNEXPECTED)
 
     def _resend_inflight(self, stream: "_Stream", now: "_TicksMs") -> None:
         # Section 4.4: a resumed session's unacknowledged messages, oldest first, with their packet ids and DUP; one the
@@ -902,7 +904,7 @@ class MQTTClient(SensorReaderConfig):
 
     async def _retire_session(self) -> None:
         # One clean connect with the identity left behind and no will, then DISCONNECT: the broker discards that session
-        # ([MQTT-3.1.2-6]). Tried once; a failure is one warning, the session left to the broker's expiry (Part A.11).
+        # ([MQTT-3.1.2-6]). Tried once; a failure is one warning, the session left to the broker's expiry (Part A.12).
         retire = self._retire
         self._retire = None
         if retire is None:
@@ -920,27 +922,23 @@ class MQTTClient(SensorReaderConfig):
             pass
         finally:
             await self._close()
-        await self.pr.wrn_s("Could not end the persistent session left on", host, "- the broker's expiry applies", wrnno=_WRN_MQTT_RETIRE_FAILED)
+        self.pr.wrn_s("Could not end the persistent session left on", host, "- the broker's expiry applies", wrnno=_WRN_MQTT_RETIRE_FAILED)
 
     async def _safe_dns_server(self) -> str | None:
         try:
             return self._get_dns_server()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            await self.pr.err_s("get_dns_server() callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s("get_dns_server() callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
     async def _safe_link_up(self) -> bool:
-        # network_available_locked() under wifi_mode_lock, released before any broker I/O (Part A.11).
-        failed: Exception | None = None
+        # network_available_locked() under wifi_mode_lock, released before any broker I/O (Part A.12).
         async with self.wifi_mode_lock:
             try:
-                available = self._network_available_locked()
+                return self._network_available_locked()
             except Exception as e:  # caller-supplied callback - could legitimately misbehave
-                failed = e
-                available = False
-        if failed is not None:
-            await self.pr.err_s("network_available_locked() callback failed:", failed, errno=_ERR_CALLBACK)
-        return available
+                self.pr.err_s("network_available_locked() callback failed:", e, errno=_ERR_CALLBACK)
+                return False
 
     def _send_slot(self, stream: "_Stream", i: int, *, dup: bool) -> bool:
         # False when the PUBLISH would take the unconfirmed bytes past their cap; it waits for the next ping's answer.
@@ -999,10 +997,10 @@ class MQTTClient(SensorReaderConfig):
             self._flush_outbound(stream, now)
             if self._sub_refused:
                 self._sub_refused = False
-                await self.pr.err_s("Broker refused a subscription", errno=_ERR_MQTT_SUB_REFUSED)
+                self.pr.err_s("Broker refused a subscription", errno=_ERR_MQTT_SUB_REFUSED)
             if self._counts[_C_CONSUMER_ERR] != self._consumer_errors_logged:
                 self._consumer_errors_logged = self._counts[_C_CONSUMER_ERR]
-                await self.pr.err_s("An MQTT consumer raised", errno=_ERR_CALLBACK)
+                self.pr.err_s("An MQTT consumer raised", errno=_ERR_CALLBACK)
             backlog = len(stream.out_buf)
             if backlog > _MAX_OUT_BACKLOG:
                 return _R_STALLED
@@ -1010,7 +1008,7 @@ class MQTTClient(SensorReaderConfig):
                 try:
                     await asyncio.wait_for_ms(stream.drain(), cfg.drain_timeout_ms)
                 except asyncio.TimeoutError:
-                    return _R_STALLED  # the timeout cancelled a socket waiter: this connection ends now (Part A.11)
+                    return _R_STALLED  # the timeout cancelled a socket waiter: this connection ends now (Part A.12)
             if not self._stable and time.ticks_diff(time.ticks_ms(), self._connected_at) >= cfg.stable_after_ms:
                 self._stable = True
                 self._backoff_ms = cfg.backoff_min_ms
@@ -1037,7 +1035,7 @@ class MQTTClient(SensorReaderConfig):
             self._pub_due = True
             await self._set_meas_data(MQTT(Connected=True, TS=utc_now()))
             self.pr.evt("Connected to", self._broker_ip, "port", self._port)
-            self._reader = asyncio.get_event_loop().create_task(self._reader_loop(stream))
+            self._reader = asyncio.create_task(self._reader_loop(stream))
             try:
                 reason = await self._serve(stream)
             except OSError as e:
@@ -1080,7 +1078,7 @@ class MQTTClient(SensorReaderConfig):
         self._retire = None if kept else left
 
     def _shape_ok(self, key: str, value: str) -> bool:
-        # MQTTHost takes NTPHost's hostName shape, its special "" (the client off) aside (Part A.11).
+        # MQTTHost takes NTPHost's hostName shape, its special "" (the client off) aside (Part A.12).
         if key == name_cfg(_VAL_MQTT_HOST):
             return value == "" or host_name_ok(value)
         if key == name_cfg(self._val_client_id):
@@ -1130,12 +1128,10 @@ class MQTTClient(SensorReaderConfig):
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
 
     def start_asy_connection(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._connection_loop())
+        return asyncio.create_task(self._connection_loop())
 
     def start_asy_publish(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._publish_loop())
+        return asyncio.create_task(self._publish_loop())
 
     async def get_data(self) -> MQTT:
         # Narrows to this Reader's concrete MQTT - see SPECIFICATION.md C.4.2's get_data() convention.
@@ -1180,7 +1176,7 @@ class MQTTClient(SensorReaderConfig):
         return self._state == _ST_CONNECTED
 
     def publish(self, topic: str | bytes, payload: str | bytes | bytearray | memoryview, *, qos: int = 0, retain: bool = False) -> bool:
-        # Never blocks, never raises on load: a copy into a free ring slot, or False (counted) - Part A.11.
+        # Never blocks, never raises on load: a copy into a free ring slot, or False (counted) - Part A.12.
         if self._alloc_error is not None:
             return False
         name = topic.encode() if isinstance(topic, str) else topic
@@ -1195,18 +1191,18 @@ class MQTTClient(SensorReaderConfig):
         self._reconfigure = True
         self._wake.set()
 
-    async def setup(self) -> bool:  # call once, before any task starter runs
-        ok = await super().setup()  # the logger first, so the failure below persists
+    async def setup(self) -> None:  # call once, before any task starter runs
+        await super().setup()  # the logger first, so the failure below persists
         if self._alloc_error is not None:
-            await self.pr.err_s("MQTT buffers could not be allocated, client off:", self._alloc_error, errno=_ERR_ALLOC)
-        elif ok and await self._read_params():
+            self.pr.err_s("MQTT buffers could not be allocated, client off", errno=_ERR_ALLOC)
+        elif self.cfgmgr.valid and await self._read_params():
             # The settings' encoded forms and the measurement topics live as long as the settings do: born here,
             # inside the boot list's placement reset (Part I.4(f.1)), not in the first round after it.
             for source in self._sources:
                 try:
                     data = await source.get_dict_data()
-                except Exception:  # never raises by contract; the publisher logs a fault at its own call
+                except Exception as e:  # never raises by contract; the publisher logs a fault at its own call
+                    report_if_fatal(e)
                     data = {}
                 for name in data:
                     self._meas_topic(name)
-        return ok

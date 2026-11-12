@@ -1,0 +1,438 @@
+# scan of mirror.git; tree checks at e27b782 (9795 text files incl. gz blobs)
+lines scanned by source: {'patch': 2020783, 'merge': 1434, 'blob': 834262, 'message': 46177}
+blob pass: 374 gz/prof blobs read, 0 unreadable; not read (blob versions by type, vendor PDFs and icons): {'ico': 5, 'pdf': 23}
+timing: patch stream 33.6s, blobs+messages 15.7s, literal trace 8.7s, tree load 5.6s
+
+## (a) secret-shaped file names
+literal --diff-filter=A paths: 10145; stream new-file paths: 10147; stream destination paths: 10269
+literal-not-in-stream: []; stream-not-in-literal: ['tests_scripts/_script_loader.py', 'tests_scripts/test_request_body_cap_headroom.py']
+  [plan] dev_legacy/config_BMP3XX.cfg pattern=['config_*.cfg'] first e05f015d 2026-08-27 added=yes in_tree=no
+  [plan] dev_legacy/config_SGP40.cfg pattern=['config_*.cfg'] first e05f015d 2026-08-27 added=yes in_tree=no
+  [plan] legacy/dev_drivers/config_BMP3XX.cfg pattern=['config_*.cfg'] first 7934fae1 2026-10-06 added=rename/copy only in_tree=yes
+  [plan] legacy/dev_drivers/config_SGP40.cfg pattern=['config_*.cfg'] first 7934fae1 2026-10-06 added=rename/copy only in_tree=yes
+  [ext] audit/artefacts/evidence/U27_close/gates/final_times/logs/test_website_tokens.log pattern=['*token*'] first 15b8633c 2026-10-15 added=yes in_tree=yes
+  [ext] audit/sweeps/fold_tokens.py pattern=['*token*'] first 5ddce090 2026-10-05 added=yes in_tree=yes
+  [ext] tests_scripts/test_website_tokens.py pattern=['*token*'] first 9bf22747 2026-10-13 added=yes in_tree=yes
+
+## (b) token shapes
+  [ext] url-userinfo [placeholder: proxy URL with test userinfo on a .invalid host] tok len=20 cls=LS sha=aad5a8ab hits=2 commits=1 first 65088dec 2026-10-08 tests_scripts/test_setup_toolchain_env.py:1393 paths={'tests_scripts/test_setup_toolchain_env.py': 2} tree=2
+      ctx: _only_these_network_variables(monkeypatch, setup_toolchain, HTTPS_PROXY="<<q33:9c2d1439>>", SSL_CERT_FILE="<<q11:5a4458cd>>")
+  [plan] gh-prefix [no-credential: the scan's own pattern list] tok len=4 cls=LS sha=b670eb5d hits=1 commits=1 first 8b497d6c 2026-09-30 audit/actions/U29.md:220 paths={'audit/actions/U29.md': 1} tree=1
+      ctx: --diff-filter=A --name-only --format=`<<q22:952c4af7>>`ghp_`/`gho_`/`ghs_`/`github_pat_`, `<<q16:764b78da>>`,
+  [plan] gh-prefix [no-credential: the scan's own pattern list] tok len=4 cls=LS sha=1caf8e22 hits=1 commits=1 first 8b497d6c 2026-09-30 audit/actions/U29.md:220 paths={'audit/actions/U29.md': 1} tree=1
+      ctx: --diff-filter=A --name-only --format=`<<q22:952c4af7>>`ghp_`/`gho_`/`ghs_`/`github_pat_`, `<<q16:764b78da>>`,
+  [plan] gh-prefix [no-credential: the scan's own pattern list] tok len=4 cls=LS sha=9d8e3c88 hits=1 commits=1 first 8b497d6c 2026-09-30 audit/actions/U29.md:220 paths={'audit/actions/U29.md': 1} tree=1
+      ctx: --diff-filter=A --name-only --format=`<<q22:952c4af7>>`ghp_`/`gho_`/`ghs_`/`github_pat_`, `<<q16:764b78da>>`,
+  [plan] gh-prefix [no-credential: the scan's own pattern list] tok len=11 cls=LS sha=34c770df hits=1 commits=1 first 8b497d6c 2026-09-30 audit/actions/U29.md:220 paths={'audit/actions/U29.md': 1} tree=1
+      ctx: --diff-filter=A --name-only --format=`<<q22:952c4af7>>`ghp_`/`gho_`/`ghs_`/`github_pat_`, `<<q16:764b78da>>`,
+
+## (c) password/PSK/secret/token/key-named literals: 46 distinct values
+  by variant: {'c': 25, 'c+pw-suffix': 9, 'c+connect-positional': 2, 'c+prose-quoted': 5, 'c+nmcli': 3, 'c+unquoted-assign': 1, 'c+cli-flag': 1}
+  by class: {'no-credential': 19, 'placeholder': 24, 'accepted': 1, 'bench-throwaway': 2}
+  c [accepted] len=8 cls=D sha=ef797c81 '<row-8-default>' hits=83 commits=49 keys=['hotspotpw', 'password'] first 8c4a73d5 2026-07-13 PROJECT_NOTES.md:217
+      paths={'tests/test_asy_wifi_service.py': 15, 'tests_scripts/test_buildgen_validate.py': 5, 'mockdata/samples.json': 4, 'tests_hardware/bench/test_hotspot_role_reversal.py': 3} tree=230 ['BACKLOG.md', 'PROJECT_AUDIT_PLAN.md', 'SPECIFICATION.md', 'audit/DECISION_PROVENANCE.md']
+      ctx: `<<q37:4fc1f4c3>>`): `self.wlan.config(essid=hostname, password='<row-8-default>')`.
+  c [no-credential: the 8-asterisk password mask] len=8 cls=S sha=07ab59f4 '********' hits=39 commits=20 keys=['"pw"', '_pw', 'hotspotpw', 'password'] first 8c4a73d5 2026-07-13 improved-quality/sensortask-wozi.py:185
+      paths={'src/asy_wifi_service.py': 5, 'tests/test_asy_wifi_service.py': 5, 'js/mock-server.js': 4, 'audit/actions/U18.md': 3} tree=97 ['PROJECT_AUDIT_PLAN.md', 'SPECIFICATION.md', 'audit/PLANNING_SURVEY.md', 'audit/actions/U18.md']
+      ctx: cfg_data["PW"] = "********"
+  c [placeholder] len=11 cls=L sha=f75778f7 'supersecret' hits=28 commits=8 keys=['"pw"'] first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:123
+      paths={'tests/test_asy_wifi_service.py': 18, 'tests/test_setter_microdot_integration.py': 5, 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 3, 'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py': 1} tree=28 ['audit/actions/U29.md', 'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py', 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py', 'tests/test_asy_wifi_service.py']
+      ctx: '{"SSID": "MyNetwork", "PW": "supersecret", "<<q7:701d021d>>": "US", '
+  c [placeholder: unit-test JSON fixture] len=8 cls=LD sha=e0f0a9db 'exactly8' hits=3 commits=2 keys=['"pw"'] first 4c555e0d 2026-08-03 tests/test_asy_wifi_service.py:683
+      paths={'tests/test_asy_wifi_service.py': 3} tree=2 ['tests/test_asy_wifi_service.py']
+      ctx: json_text = '{"SSID": "MyNetwork", "PW": "exactly8", "<<q7:701d021d>>": "US", "<<q8:2db53355>>": "<<q8:7a8b251d>>", "<<q9:ff47121b>>": false}'
+  c [placeholder] len=21 cls=LS sha=e64a7e25 'digital-twin-password' hits=3 commits=3 keys=['password'] first c1da0bf7 2026-08-12 digital_twin/launch.py:67
+      paths={'audit/actions/verify/U29.md': 1, 'audit/actions/verify/U28.md': 1, 'digital_twin/launch.py': 1} tree=4 ['audit/actions/U29.md', 'audit/actions/verify/U28.md', 'audit/actions/verify/U29.md', 'digital_twin/launch.py']
+      ctx: _PASSWORD = "digital-twin-password"
+  c [placeholder: README curl example] len=9 cls=LD sha=122ccc25 'hunter2pw' hits=1 commits=1 keys=['"pw"'] first 70fbe08c 2026-08-20 README.md:176
+      paths={'README.md': 1} tree=1 ['README.md']
+      ctx: -d '{"SSID": "MyNetwork", "PW": "hunter2pw", "<<q7:701d021d>>": "DE", "<<q8:2db53355>>": "<<q9:16e66b2e>>"}' \
+  c [placeholder] len=14 cls=LD sha=76880d60 'hunter2hunter2' hits=17 commits=14 keys=['"pw"', 'hotspotpw', 'password', 'pw'] first 2c1f85bb 2026-08-21 mockdata/wozi.json:16
+      paths={'mockdata/samples.json': 7, 'tests_js/mock-server.test.js': 4, 'tests/test_asy_wifi_service.py': 3, 'mockdata/wozi.json': 2} tree=7 ['audit/actions/U29.md', 'audit/actions/verify/U28.md', 'audit/consolidation/AC3_O.md', 'mockdata/samples.json']
+      ctx: "SSID": "sensor-net", "PW": "hunter2hunter2", "<<q7:701d021d>>": "DE", "<<q8:2db53355>>": "wozi",
+  c [placeholder: mockdata fixture] len=11 cls=LD sha=2984418a 'testbench42' hits=3 commits=3 keys=['"pw"'] first 2c1f85bb 2026-08-21 mockdata/dev.json:21
+      paths={'mockdata/dev.json': 2, 'audit/hreq/G7.md': 1} tree=3 ['audit/harvest/WEB.md', 'audit/harvest/raw/out_H08.md', 'audit/hreq/G7.md']
+      ctx: "SSID": "bench-net", "PW": "testbench42", "<<q7:701d021d>>": "DE", "<<q8:2db53355>>": "dev",
+  c [bench-throwaway: REAL_PW of the deleted bench repro script] len=20 cls=ULD sha=ead195cc (value withheld) hits=1 commits=1 keys=['_pw'] first c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:26
+      paths={'tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py': 1} tree=0 []
+      ctx: REAL_PW = "<<V:ead195cc>>"
+  c [no-credential: network.STAT_ constant name] len=14 cls=US sha=40b75a17 'WRONG_PASSWORD' hits=1 commits=1 keys=['password'] first c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:45
+      paths={'tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py': 1} tree=26 ['BACKLOG.md', 'audit/actions/SUPP_recovery.md', 'audit/actions/U18.md', 'audit/artefacts/ENV/history_trace.md']
+      ctx: network.STAT_WRONG_PASSWORD: "WRONG_PASSWORD",
+  c [placeholder: unit-test fixture] len=16 cls=LD sha=2cdf9a98 'customhotspotpw1' hits=3 commits=2 keys=['hotspotpw', 'password'] first 8f1ec47a 2026-09-09 tests/test_asy_wifi_service.py:2637
+      paths={'tests/test_asy_wifi_service.py': 3} tree=2 ['tests/test_asy_wifi_service.py']
+      ctx: ok, results = run(client.cfgmgr.write_config({"HotspotPW": "customhotspotpw1"}, client.get_cfg_schema()))
+  c [no-credential: type annotation] len=10 cls=ULSW sha=297b0ba7 'str | None' hits=4 commits=2 keys=['password'] first 2db8c308 2026-09-10 digital_twin/network.py:110
+      paths={'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py': 1, 'tests/test_ntp_wifi_dns_integration.py': 1, 'digital_twin/network.py': 1, 'tests/network.py': 1} tree=558 ['SPECIFICATION.md', 'audit/actions/U21.md', 'audit/actions/U24.md', 'audit/actions/U25.md']
+      ctx: def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
+  c [placeholder: unit-test fixture] len=9 cls=LD sha=fcf730b6 'secret123' hits=4 commits=2 keys=['"pw"'] first b5450aa6 2026-09-25 tests/test_asy_wifi_service.py:2932
+      paths={'tests/test_asy_wifi_service.py': 4} tree=2 ['tests/test_asy_wifi_service.py']
+      ctx: stored = {"SSID": "HomeNet", "PW": "secret123", "<<q7:701d021d>>": "DE", "<<q8:2db53355>>": "SensorNode", "<<q9:ff47121b>>": True, "HotspotPW": "<row-8-default>"}
+  c [no-credential: prose: the owner's quote] len=70 cls=ULSW sha=f0328b74 'that is a generated login, I wonder why it got persisted in a file. It' hits=1 commits=1 keys=['password'] first 25caf528 2026-09-25 PROJECT_AUDIT_PLAN.md:180
+      paths={'PROJECT_AUDIT_PLAN.md': 1} tree=1 ['PROJECT_AUDIT_PLAN.md']
+      ctx: | 2026-09-25 | On the committed bench password: "that is a generated login, I wonder why it got persisted in a file. It's a pure throwaway board-bench-password, low risk, no alarm here. The only topic to note and to check here throughout th
+  c [no-credential: the audit's redaction marker] len=29 cls=ULDSW sha=8f534896 '<redacted: bench PSK, HW.T11>' hits=1 commits=1 keys=['_pw'] first 25caf528 2026-09-25 audit/PLANNING_SURVEY.md:1683
+      paths={'audit/PLANNING_SURVEY.md': 1} tree=4 ['audit/PLANNING_SURVEY.md', 'audit/harvest/HW.md', 'audit/harvest/raw/out_H07.md', 'audit/sweeps/harvest_merge.py']
+      ctx: 9. **[V] A credential-looking string is committed.** `<<q65:41211259>>` contains `REAL_SSID="sensors-bench-ap"`, `REAL_PW="<redacted: bench PSK, HW.T11>"`<<q142:746b8429>>`dev_legacy/README.md:661` commits the Pi's `eth0` MAC (minor).
+  c [no-credential: prose] len=15 cls=ULDW sha=e23bcd7b 'BACKLOG item 24' hits=1 commits=1 keys=['pass'] first 16117ec6 2026-10-01 audit/consolidation/M_SCR.md:1137
+      paths={'audit/consolidation/M_SCR.md': 1} tree=46 ['PROJECT_AUDIT_PLAN.md', 'audit/actions/U11.md', 'audit/actions/U19.md', 'audit/actions/U31.md']
+      ctx: real-hardware measurements."<<q12:8fd33fb9>>"BACKLOG item 24"<<q42:4289ea16>>"in turn" is
+  c [placeholder: bound-check test value] len=9 cls=D sha=15e2b0d3 '<row-8-default>9' hits=2 commits=2 keys=['password'] first f76385a6 2026-10-08 tests_scripts/test_buildgen_validate.py:334
+      paths={'tests_scripts/test_buildgen_validate.py': 2} tree=62 ['audit/actions/U12.md', 'audit/actions/verify/U12.md', 'audit/artefacts/evidence/U18_close/lane_k/full_test_asy_base_classes.py.gz!blob', 'audit/artefacts/evidence/U28_close/lane_W/bite_installer/trap.out']
+      ctx: doc["<<q6:263a4dbe>>"]["<<q16:cc2b8152>>"] = "<row-8-default>9"
+  c [placeholder: unit-test fixture] len=11 cls=L sha=08954250 'newpassword' hits=2 commits=2 keys=['"pw"'] first 01032838 2026-10-13 tests/test_setter_microdot_integration.py:336
+      paths={'tests/test_setter_microdot_integration.py': 2} tree=1 ['tests/test_setter_microdot_integration.py']
+      ctx: resp = run(_simulated_set_network_endpoint(client, _FakeRequest({"cmd": "<<q10:26b9a2fe>>", "SSID": "NewNet", "PW": "newpassword"})))
+  c [placeholder: unit-test fixture] len=11 cls=L sha=ec4746f2 'othersecret' hits=1 commits=1 keys=['"pw"'] first 01032838 2026-10-13 tests/test_asy_wifi_service.py:4293
+      paths={'tests/test_asy_wifi_service.py': 1} tree=4 ['audit/artefacts/evidence/U22_close/EXCLUDED.txt', 'tests/test_asy_wifi_service.py']
+      ctx: ok, results = await client.cfgmgr.write_config({"SSID": "OtherNet", "PW": "othersecret"})
+  c [placeholder: unit-test fixture] len=13 cls=L sha=a493045d 'otherpassword' hits=1 commits=1 keys=['"pw"'] first 01032838 2026-10-13 tests/test_digital_twin_wifi_modes.py:212
+      paths={'tests/test_digital_twin_wifi_modes.py': 1} tree=2 ['audit/artefacts/evidence/U22_close/EXCLUDED.txt', 'tests/test_digital_twin_wifi_modes.py']
+      ctx: results = await webserver._apply_settings_groups("<<q10:fefdcdb7>>", {"SSID": "OtherNet", "PW": "otherpassword"})
+  c [placeholder: JS test fixture (and its vitest log)] len=10 cls=LDW sha=79de26ab 'pass word1' hits=3 commits=1 keys=['"pw"', 'pw'] first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log:615
+      paths={'audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log': 2, 'tests_js/render.test.js': 1} tree=4 ['audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log', 'tests_js/render.test.js']
+      ctx: [2m      "PW": "pass word1",[22m
+  c [no-credential: type annotation] len=15 cls=ULS sha=40a4ba15 'cm.ConfigSchema' hits=4 commits=2 keys=['_pw'] first aa3530f7 2026-10-14 tests/test_asy_wifi_service.py:49
+      paths={'tests/test_asy_wifi_service.py': 4} tree=105 ['audit/actions/U20.md', 'audit/artefacts/evidence/U18_close/lane_k/full_test_asy_base_classes.py.gz!blob', 'audit/artefacts/evidence/U20_close/lane_c/notes_C1.txt', 'audit/artefacts/evidence/U6_close/sensortask_multi_instance_before_fix.py.txt']
+      ctx: _VAL_PW: "cm.ConfigSchema" = src_const("<<q23:19db57f1>>", "<<q7:79442168>>")  # type: ignore[assignment]
+  c [no-credential: assertion text in a log] len=108 cls=ULDSW sha=bc3f8f61 '_BLOCK_HOLD_BUDGET_US = 25_000  # the measured 18,089-23,148 us block hold (SPECIFICATION.md F.5.8) plus 8 %' hits=12 commits=1 keys=['token'] first 0c0ad52c 2026-10-15 audit/artefacts/evidence/U26_close/lane_D1/doc12_b1.txt:59
+      paths={'audit/artefacts/evidence/U26_close/lane_D1/doc12_b1.txt': 12} tree=12 ['audit/artefacts/evidence/U26_close/lane_D1/doc12_b1.txt']
+      ctx: E   AssertionError: tests_hardware/device_scripts/fram_command_hold_timing.py:29: l3.fram_command_hold_block_budget_us = 25000, but the next non-comment line does not carry 25000 as a whole token: '_BLOCK_HOLD_BUDGET_US = 25_000  # the meas
+  c [no-credential: f-string template field] len=9 cls=LS sha=4c7c53dc '{current}' hits=1 commits=1 keys=['password'] first 0c0ad52c 2026-10-15 tests_scripts/test_build_firmware.py:462
+      paths={'tests_scripts/test_build_firmware.py': 1} tree=4 ['tests_hardware/bench/test_network_resilience.py', 'tests_hardware/bench/test_sensor_config_push_over_real_hardware.py', 'tests_scripts/test_build_firmware.py', 'toolchain/setup_toolchain.py']
+      ctx: copy.write_text(text.replace(f'hotspot_password = "{current}"', f'hotspot_password = "{password}"', 1), encoding="utf-8")
+  c [no-credential: f-string template field] len=10 cls=LS sha=e2d7ec65 '{password}' hits=1 commits=1 keys=['password'] first 0c0ad52c 2026-10-15 tests_scripts/test_build_firmware.py:462
+      paths={'tests_scripts/test_build_firmware.py': 1} tree=3 ['tests_scripts/test_build_firmware.py', 'tests_scripts/test_setup_toolchain_env.py', 'toolchain/setup_toolchain.py']
+      ctx: copy.write_text(text.replace(f'hotspot_password = "{current}"', f'hotspot_password = "{password}"', 1), encoding="utf-8")
+  c+cli-flag [placeholder: README usage example (xkcd phrase)] len=21 cls=LS sha=62249369 'correct-horse-battery' hits=1 commits=1 keys=['--password'] first ea3aa77b 2026-09-09 README.md:101
+      paths={'README.md': 1} tree=3 ['audit/harvest/TOOL.md', 'audit/harvest/raw/out_H14.md', 'audit/hreq/G8.md']
+      ctx: --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap --password correct-horse-battery
+  c+connect-positional [placeholder: the word 'password' as a twin/test value] len=8 cls=L sha=5e884898 'password' hits=22 commits=5 keys=['connect()'] first b8791e6b 2026-08-12 tests/test_digital_twin_network_neopixel.py:54
+      paths={'tests/test_digital_twin_network_neopixel.py': 22} tree=4482 ['.gitignore', 'BACKLOG.md', 'CLAUDE.md', 'DEVICE_REFERENCE.md']
+      ctx: wlan.connect("ssid", "password")
+  c+connect-positional [placeholder: unit-test fixture] len=11 cls=LW sha=a9d5b4be 'still wrong' hits=1 commits=1 keys=['connect()'] first c1da0bf7 2026-08-12 tests/test_digital_twin_network_neopixel.py:167
+      paths={'tests/test_digital_twin_network_neopixel.py': 1} tree=10 ['SPECIFICATION.md', 'audit/actions/U15.md', 'audit/actions/U27.md', 'audit/artefacts/evidence/U27_close/lane_T/handback.md']
+      ctx: wlan.connect("ssid", "still wrong")
+  c+nmcli [no-credential: prose] len=8 cls=L sha=2a424875 'straight' hits=1 commits=1 keys=['password'] first d65229e0 2026-09-08 BACKLOG.md:288
+      paths={'BACKLOG.md': 1} tree=148 ['CLAUDE.md', 'PROJECT_AUDIT_PLAN.md', 'README.md', 'SPECIFICATION.md']
+      ctx: helper (reads the real AP password straight from `<<q20:8ee2cc67>>` under sudo, no human
+  c+nmcli [placeholder: the README example, quoted] len=22 cls=LS sha=12eab4c5 'correct-horse-battery`' hits=4 commits=3 keys=['--password', 'password'] first 23ec78c2 2026-09-25 audit/harvest/TOOL.md:534
+      paths={'audit/harvest/raw/out_H14.md': 2, 'audit/hreq/G8.md': 1, 'audit/harvest/TOOL.md': 1} tree=3 ['audit/harvest/TOOL.md', 'audit/harvest/raw/out_H14.md', 'audit/hreq/G8.md']
+      ctx: SSID/password ... `<<q32:c108ad1f>>`" — Bench AP password is passed on the command
+  c+nmcli [no-credential: prose] len=12 cls=LS sha=425fec04 '(`secrets`),' hits=1 commits=1 keys=['password'] first 71432f06 2026-09-26 audit/hreq/MERGE.md:1308
+      paths={'audit/hreq/MERGE.md': 1} tree=4 ['audit/actions/U21.md', 'audit/hreq/G8.md', 'audit/hreq/MERGE.md', 'audit/pass2/G5.md']
+      ctx: - **Req**: No real credential is committed: per-device config and host-spilled `<<q12:25589002>>` files stay git-ignored; a new bench AP gets a freshly generated SSID and password (`<<q7:20e8cdb5>>`), shown once at creation, never persisted
+  c+prose-quoted [bench-throwaway: generated bench AP password (token_urlsafe(12)) in the deleted lockout handoff doc] len=16 cls=ULD sha=ab75b959 (value withheld) hits=1 commits=1 keys=['password'] first 29a14cad 2026-09-04 BENCH_NETWORK_LOCKOUT_2026-09-04.md:24
+      paths={'BENCH_NETWORK_LOCKOUT_2026-09-04.md': 1} tree=0 []
+      ctx: password `<<V:ab75b959>>` from scratch) as a dead-man's-switch safety net.
+  c+prose-quoted [no-credential: the attribute name autocomplete] len=12 cls=L sha=ae387fbb 'autocomplete' hits=2 commits=2 keys=['password'] first a28513f6 2026-09-25 PROJECT_AUDIT_PLAN.md:1110
+      paths={'PROJECT_AUDIT_PLAN.md': 2} tree=63 ['PROJECT_AUDIT_PLAN.md', 'SPECIFICATION.md', 'audit/PLANNING_SURVEY.md', 'audit/actions/FOLD_ANSWERS.md']
+      ctx: clickjacking posture (PQ5), password `autocomplete`.
+  c+prose-quoted [no-credential: the key name HotspotPW] len=9 cls=UL sha=f4a1197d 'HotspotPW' hits=2 commits=2 keys=['password'] first 25caf528 2026-09-25 audit/PLANNING_SURVEY.md:734
+      paths={'audit/actions/U36b.md': 1, 'audit/PLANNING_SURVEY.md': 1} tree=444 ['DEVICE_REFERENCE.md', 'PROJECT_AUDIT_PLAN.md', 'SPECIFICATION.md', 'audit/PLANNING_SURVEY.md']
+      ctx: - It then configures `<<q14:ee69d5cc>>`, `<<q18:8d7f190a>>` and `pm`<<q29:3eb15b76>>`DNSServer.run()` task.
+  c+prose-quoted [no-credential: a path:line reference to the repro script] len=78 cls=LDS sha=7ad0e43e 'tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:10' hits=1 commits=1 keys=['psk'] first 8b497d6c 2026-09-30 audit/actions/U29.md:246
+      paths={'audit/actions/U29.md': 1} tree=3 ['audit/actions/U29.md', 'audit/actions/U8C.md']
+      ctx: value, the bench AP PSK of `tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:10` (added
+  c+prose-quoted [no-credential: a line-range reference] len=8 cls=DS sha=a5c52a1c ':377-384' hits=1 commits=1 keys=['password'] first 3f07c2ab 2026-09-30 audit/actions/U32.md:78
+      paths={'audit/actions/U32.md': 1} tree=4 ['audit/actions/U32.md', 'audit/harvest/SENS.md', 'audit/harvest/raw/out_H01.md', 'audit/hreq/G3.md']
+      ctx: window then `<<q30:4b5fa1cb>>` `<<q17:9bfa2b53>>`; SSID/password `:377-384`, TOML `hostname`/
+  c+pw-suffix [placeholder: JS test fixture] len=19 cls=LS sha=3de0c68f 'a-real-new-password' hits=3 commits=3 keys=['pw'] first fb340752 2026-08-26 tests_js/mock-server.test.js:373
+      paths={'tests_js/mock-server.test.js': 3} tree=1 ['tests_js/mock-server.test.js']
+      ctx: const applied = await fetch("<<q11:db51edeb>>", { method: "PUT"<<q29:1a097849>>"a-real-new-password" }) });
+  c+pw-suffix [placeholder: unit-test fixture] len=10 cls=LD sha=8bf729f5 'newpass123' hits=9 commits=4 keys=['hotspotpw'] first 55aef173 2026-09-30 audit/actions/U18.md:1103
+      paths={'tests/test_setter_microdot_integration.py': 4, 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 2, 'audit/actions/U18.md': 2, 'tests/_sensortask_scenarios.py': 1} tree=7 ['audit/actions/U18.md', 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py', 'tests/_sensortask_scenarios.py', 'tests/test_setter_microdot_integration.py']
+      ctx: {"HotspotPW": "newpass123"}` answers Valid, the next hotspot start configures it (the WLAN fake's `<<q12:3b5ab198>>`), and
+  c+pw-suffix [no-credential: prose] len=72 cls=ULSW sha=cb8aa5be 'a new bridge gets random ones; real ones are never committed (CLAUDE.md)' hits=1 commits=1 keys=['credentials'] first 39d93f6f 2026-10-01 audit/consolidation/M_HW_BENCH.md:2158
+      paths={'audit/consolidation/M_HW_BENCH.md': 1} tree=1 ['audit/consolidation/M_HW_BENCH.md']
+      ctx: AP up raises"<<q26:582ba49b>>"a new bridge gets random ones; real ones are never committed (CLAUDE.md)" — no
+  c+pw-suffix [placeholder: JS test fixture] len=16 cls=LS sha=d66e437d 'a-new-hotspot-pw' hits=2 commits=2 keys=['hotspotpw'] first f1f800e7 2026-10-08 tests_js/mock-server.test.js:500
+      paths={'tests_js/mock-server.test.js': 2} tree=1 ['tests_js/mock-server.test.js']
+      ctx: const applied = await fetch("<<q11:db51edeb>>", { method: "PUT"<<q29:1a097849>>"a-real-new-password"<<q13:315fcb66>>"a-new-hotspot-pw" }) });
+  c+pw-suffix [placeholder: JS test fixture] len=15 cls=LS sha=079c4020 'fixture-hotspot' hits=2 commits=2 keys=['hotspotpw'] first f1f800e7 2026-10-08 tests_js/mock-server.test.js:169
+      paths={'tests_js/mock-server.test.js': 2} tree=4 ['audit/artefacts/evidence/U18_close/lane_j/red_mock.txt', 'tests_js/mock-server.test.js']
+      ctx: networkingConfig: { Hostname: "<<q12:a3b5bcb8>>", PW: "hunter2hunter2", HotspotPW: "fixture-hotspot", NTPHost: "<<q16:beeb509d>>", DNSFallback: "<<q10:a26f4ae3>>" },
+  c+pw-suffix [placeholder: JS test fixture (and its vitest log)] len=9 cls=LDW sha=49000323 'hot spot2' hits=2 commits=1 keys=['hotspotpw'] first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log:619
+      paths={'audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log': 1, 'tests_js/render.test.js': 1} tree=4 ['audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log', 'tests_js/render.test.js']
+      ctx: [2m      "HotspotPW": "hot spot2",[22m
+  c+pw-suffix [placeholder: JS test fixture] len=13 cls=LS sha=68d92889 'fixture-proxy' hits=1 commits=1 keys=['proxypw'] first 9bf22747 2026-10-13 tests_js/mock-server.test.js:177
+      paths={'tests_js/mock-server.test.js': 1} tree=2 ['audit/artefacts/evidence/U23_close/lane_m/runs/m1_tests_on_head.log', 'tests_js/mock-server.test.js']
+      ctx: Hostname: "<<q12:a3b5bcb8>>", PW: "hunter2hunter2", HotspotPW: "fixture-hotspot", ProxyPW: "fixture-proxy", NTPHost: "<<q16:beeb509d>>",
+  c+pw-suffix [placeholder: JS test fixture] len=8 cls=LD sha=4cfb53b4 'hotspot1' hits=1 commits=1 keys=['hotspotpw'] first 9bf22747 2026-10-13 tests_js/render.test.js:1982
+      paths={'tests_js/render.test.js': 1} tree=1 ['tests_js/render.test.js']
+      ctx: uninstall = installMockFetch(withSection(section), { ...DATA, networkingConfig: { SSID: "home"<<q6:d482b214>>"secret1"<<q13:315fcb66>>"hotspot1" } });
+  c+pw-suffix [no-credential: prose] len=52 cls=ULSW sha=7751ef17 'ap_down() frees the single radio to scan for the DUT' hits=1 commits=1 keys=['_recover_stale_dut_credentials'] first 0c0ad52c 2026-10-15 tests_scripts/test_bench_no_task_ended_completeness.py:25
+      paths={'tests_scripts/test_bench_no_task_ended_completeness.py': 1} tree=1 ['tests_scripts/test_bench_no_task_ended_completeness.py']
+      ctx: _JOIN_MECHANICS = {"<<q30:dce96147>>": "ap_down() frees the single radio to scan for the DUT's hotspot"}
+  c+unquoted-assign [no-credential: code fragment 'password)'] len=9 cls=LS sha=cd927d54 'password)' hits=3 commits=2 keys=['password'] first 23ec78c2 2026-09-25 audit/harvest/SEC.md:29
+      paths={'audit/harvest/raw/out_H02.md': 2, 'audit/harvest/SEC.md': 1} tree=44 ['PROJECT_AUDIT_PLAN.md', 'audit/DECISION_PROVENANCE.md', 'audit/actions/U18.md', 'audit/actions/U21.md']
+      ctx: password=password) # HotspotPW, per-device configurable" — No explicit `<<q9:ede02ace>>`; auth mode is the
+
+## (d) SSID literals: 50 distinct values
+  by variant: {'d+unquoted-assign': 5, 'd': 39, 'd+connect-positional': 1, 'd+cli-flag': 3, 'd+bytes-prefix': 1, 'd+prose-quoted': 1}
+  by class: {'no-ssid': 10, 'no-credential': 2, 'placeholder': 35, 'bench': 3}
+  d [placeholder: unit-test SSID] len=6 cls=UL sha=45102d54 'MyHost' hits=6 commits=4 keys=['ssid'] first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:493
+      paths={'tests/test_asy_wifi_service.py': 6} tree=8 ['tests/test_asy_wifi_service.py']
+      ctx: assert {"essid": "MyHost", "password": "<row-8-default>"} in client.wlan.config_calls
+  d [placeholder: unit-test SSID] len=9 cls=UL sha=f04dda58 'MyNetwork' hits=22 commits=9 keys=['ssid'] first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:123
+      paths={'tests/test_asy_wifi_service.py': 20, 'README.md': 2} tree=22 ['README.md', 'tests/test_asy_wifi_service.py']
+      ctx: '{"SSID": "MyNetwork", "PW": "supersecret", "<<q7:701d021d>>": "US", '
+  d [no-ssid: type annotation] len=3 cls=UL sha=2b505597 'Any' hits=2 commits=2 keys=['ssid'] first 924738c3 2026-07-25 tests/network.py:76
+      paths={'digital_twin/network.py': 1, 'tests/network.py': 1} tree=3470 []
+      ctx: def connect(self, ssid: "Any"<<q19:00647b6f>>"Any" = None) -> None:
+  d [placeholder: unit-test SSID] len=10 cls=UL sha=5e0d5a36 'SensorNode' hits=14 commits=12 keys=['prose-quoted', 'ssid'] first 4448a6fb 2026-07-30 tests/test_asy_wifi_service.py:2135
+      paths={'REAL_HARDWARE_RUN_LOG.md': 3, 'audit/actions/U32.md': 2, 'audit/harvest/raw/out_H08.md': 2, 'tests/test_asy_wifi_service.py': 2} tree=104 ['BACKLOG.md', 'PROJECT_AUDIT_PLAN.md', 'SPECIFICATION.md', 'audit/PLANNING_SURVEY.md']
+      ctx: assert {"essid": "SensorNode", "password": "<row-8-default>"} in _wlan(client).config_calls
+  d [placeholder: unit-test SSID] len=5 cls=UL sha=8b5962b6 'MyNet' hits=16 commits=8 keys=['ssid'] first 130cef27 2026-08-03 tests/test_setter_microdot_integration.py:115
+      paths={'tests/test_asy_webserver_service.py': 7, 'tests/test_setter_microdot_integration.py': 6, 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 3} tree=32 []
+      ctx: req = _FakeRequest({"cmd": "<<q10:26b9a2fe>>", "<<q8:2db53355>>": "<<q7:95c91963>>", "SSID": "MyNet", "PW": "supersecret", "<<q7:701d021d>>": "US"})
+  d [no-ssid: status word Valid] len=5 cls=UL sha=f5162206 'Valid' hits=20 commits=9 keys=['ssid'] first 130cef27 2026-08-03 tests/test_setter_microdot_integration.py:120
+      paths={'tests/test_setter_microdot_integration.py': 7, 'tests/test_asy_wifi_service.py': 3, 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 3, 'tests/_sensortask_scenarios.py': 2} tree=10632 []
+      ctx: assert resp["<<q6:f6a214f7>>"] == {"<<q8:2db53355>>": "Valid", "SSID": "Valid", "PW": "Valid", "<<q7:701d021d>>": "Valid"}
+  d [placeholder: unit-test SSID] len=7 cls=UL sha=7d4a3a3b 'RealNet' hits=3 commits=3 keys=['ssid'] first 130cef27 2026-08-03 tests/test_setter_microdot_integration.py:218
+      paths={'tests/test_setter_microdot_integration.py': 2, 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 1} tree=1 ['audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py']
+      ctx: app, "PUT", "<<q8:1873b46f>>", {"cmd": "<<q10:26b9a2fe>>", "<<q8:2db53355>>": "<<q8:8a632eb8>>", "SSID": "RealNet", "PW": "supersecret", "<<q7:701d021d>>": "US"}
+  d [placeholder: unit-test SSID] len=6 cls=UL sha=d00df675 'Hacked' hits=5 commits=4 keys=['ssid'] first a94a4d70 2026-08-04 tests/test_setter_microdot_integration.py:253
+      paths={'tests/test_setter_microdot_integration.py': 3, 'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 1, 'audit/consolidation/M_TEST_UNIT.md': 1} tree=5 ['audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py', 'audit/consolidation/M_TEST_UNIT.md', 'tests/test_setter_microdot_integration.py']
+      ctx: req = _FakeRequest({"cmd": "<<q10:ce4b2725>>", "SSID": "Hacked"})  # not setWiFiLED's field
+  d [no-ssid: status word Invalid] len=7 cls=UL sha=96c34a07 'Invalid' hits=2 commits=2 keys=['ssid'] first a94a4d70 2026-08-04 tests/test_setter_microdot_integration.py:256
+      paths={'audit/artefacts/evidence/U18_close/lane_i/probe/setter_oldscope.py': 1, 'tests/test_setter_microdot_integration.py': 1} tree=4660 ['PROJECT_AUDIT_PLAN.md', 'README.md', 'SPECIFICATION.md', 'audit/DECISION_PROVENANCE.md']
+      ctx: assert resp["<<q6:f6a214f7>>"] == {"SSID": "Invalid"}
+  d [placeholder: unit-test SSID] len=6 cls=UL sha=023279ec 'NewNet' hits=4 commits=4 keys=['ssid'] first 7cd363d5 2026-08-12 tests/test_asy_webserver_service.py:445
+      paths={'tests/test_setter_microdot_integration.py': 2, 'tests/test_asy_webserver_service.py': 2} tree=3 ['tests/test_asy_webserver_service.py', 'tests/test_setter_microdot_integration.py']
+      ctx: res = run(app.dispatch_request(_make_request(app, "PUT", "<<q11:db51edeb>>", {"SSID": "NewNet"})))
+  d [placeholder: the twin's own AP] len=17 cls=LS sha=8bda135a 'digital-twin-ssid' hits=1 commits=1 keys=['ssid'] first c1da0bf7 2026-08-12 digital_twin/launch.py:66
+      paths={'digital_twin/launch.py': 1} tree=1 ['digital_twin/launch.py']
+      ctx: _SSID = "digital-twin-ssid"
+  d [placeholder: twin test SSID] len=7 cls=L sha=18ff2ab6 'hotspot' hits=5 commits=2 keys=['ssid'] first 4839c54c 2026-08-12 tests/test_digital_twin_network_neopixel.py:82
+      paths={'tests/test_digital_twin_network_neopixel.py': 5} tree=39983 ['BACKLOG.md', 'CLAUDE.md', 'DEVICE_REFERENCE.md', 'PROJECT_AUDIT_PLAN.md']
+      ctx: wlan.config(essid="hotspot", password="<<q6:2bb80d53>>")
+  d [placeholder: twin test SSID] len=7 cls=UL sha=f0071b8d 'TestNet' hits=12 commits=9 keys=['prose-quoted', 'ssid'] first b6cb8524 2026-08-20 tests/test_digital_twin_sensortask_integration.py:496
+      paths={'tests/test_digital_twin_sensortask_integration.py': 4, 'tests/test_digital_twin_bus_hazard_concurrency.py': 2, 'audit/artefacts/evidence/U26_close/lane_DR/handback.md': 1, 'tests/test_digital_twin_clock_jump.py': 1} tree=10 ['audit/artefacts/evidence/U18_close/lane_t/udp_dest_probe.py', 'audit/artefacts/evidence/U26_close/lane_DR/handback.md', 'audit/consolidation/M_TWIN.md', 'tests/test_digital_twin_bus_hazard_concurrency.py']
+      ctx: persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"}, conn.get_cfg_schema())
+  d [placeholder: twin CI SSID] len=22 cls=LS sha=856255cb 'digital-twin-test-ssid' hits=5 commits=4 keys=['ssid'] first dfb8975d 2026-08-20 scripts/_digital_twin_ci_suite.py:410
+      paths={'scripts/_digital_twin_ci_suite.py': 3, 'scripts/_digital_twin_scenarios.py': 1, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/method/twin_mqtt_timing.py': 1} tree=2 ['scripts/_digital_twin_ci_suite.py', 'scripts/_digital_twin_scenarios.py']
+      ctx: status, body = _http("PUT", "<<q11:db51edeb>>", {"SSID": "digital-twin-test-ssid"})
+  d [placeholder: mockdata SSID (synthetic dump)] len=10 cls=LS sha=24ad231b 'sensor-net' hits=9 commits=9 keys=['ssid'] first 2c1f85bb 2026-08-21 mockdata/wozi.json:16
+      paths={'mockdata/samples.json': 7, 'mockdata/wozi.json': 2} tree=1 ['mockdata/samples.json']
+      ctx: "SSID": "sensor-net", "PW": "hunter2hunter2", "<<q7:701d021d>>": "DE", "<<q8:2db53355>>": "wozi",
+  d [placeholder: mockdata SSID (synthetic dump)] len=9 cls=LS sha=a7fe8e31 'bench-net' hits=2 commits=2 keys=['ssid'] first 2c1f85bb 2026-08-21 mockdata/dev.json:21
+      paths={'mockdata/dev.json': 2} tree=11 ['PROJECT_AUDIT_PLAN.md', 'audit/DECISION_PROVENANCE.md', 'audit/actions/U21.md', 'audit/consolidation/M_DOCS.md']
+      ctx: "SSID": "bench-net", "PW": "testbench42", "<<q7:701d021d>>": "DE", "<<q8:2db53355>>": "dev",
+  d [placeholder: unit-test value] len=6 cls=UL sha=031a8f0f 'Failed' hits=3 commits=3 keys=['ssid'] first ffc9dcd6 2026-08-25 tests/test_asy_webserver_service.py:484
+      paths={'tests/test_asy_webserver_service.py': 2, 'tests/test_readiness_gates.py': 1} tree=3227 ['DEVICE_REFERENCE.md', 'PROJECT_AUDIT_PLAN.md', 'README.md', 'SPECIFICATION.md']
+      ctx: assert body["<<q6:f6a214f7>>"] == {"SSID": "Failed", "PW": "Failed"}
+  d [placeholder: toolchain test SSID] len=20 cls=LDS sha=845c832a 'sensors-bench-abc123' hits=2 commits=2 keys=['ssid'] first c9ae71b8 2026-08-31 tests_scripts/test_setup_toolchain_env.py:257
+      paths={'tests_scripts/test_setup_toolchain_env.py': 2} tree=6 ['tests_scripts/test_setup_toolchain_env.py']
+      ctx: assert ssid == "sensors-bench-abc123"
+  d [placeholder: toolchain test SSID] len=12 cls=LS sha=a4403ea9 'my-test-ssid' hits=1 commits=1 keys=['ssid'] first c9ae71b8 2026-08-31 tests_scripts/test_setup_toolchain_env.py:266
+      paths={'tests_scripts/test_setup_toolchain_env.py': 1} tree=10 ['tests_scripts/test_setup_toolchain_env.py']
+      ctx: assert ssid == "my-test-ssid"
+  d [placeholder: toolchain test SSID] len=14 cls=LS sha=10119e4f 'generated-ssid' hits=1 commits=1 keys=['ssid'] first c9ae71b8 2026-08-31 tests_scripts/test_setup_toolchain_env.py:282
+      paths={'tests_scripts/test_setup_toolchain_env.py': 1} tree=3 ['tests_scripts/test_setup_toolchain_env.py']
+      ctx: assert ssid == "generated-ssid"
+  d [bench: the bench AP SSID] len=16 cls=LS sha=b77bc011 'sensors-bench-ap' hits=3 commits=2 keys=['ssid'] first c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:25
+      paths={'audit/PLANNING_SURVEY.md': 1, 'tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py': 1, 'tests_hardware/device_scripts/wifi_service_reconnect_repro.py': 1} tree=4 ['audit/PLANNING_SURVEY.md', 'audit/actions/U29.md', 'audit/harvest/HW.md', 'audit/harvest/raw/out_H07.md']
+      ctx: REAL_SSID = "sensors-bench-ap"
+  d [placeholder: deliberately absent SSID] len=29 cls=LDS sha=195c44d7 'wozi-diag2-net-does-not-exist' hits=6 commits=6 keys=['ssid'] first c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_service_reconnect_repro.py:32
+      paths={'REAL_HARDWARE_TEST_QUEUE.md': 5, 'tests_hardware/device_scripts/wifi_service_reconnect_repro.py': 1} tree=0 []
+      ctx: GARBAGE_SSID = "wozi-diag2-net-does-not-exist"
+  d [placeholder: deliberately absent SSID] len=28 cls=LS sha=04801e8a 'wozi-test-net-does-not-exist' hits=1 commits=1 keys=['ssid'] first c43e177d 2026-09-02 tests_hardware/bench/test_network_resilience.py:341
+      paths={'tests_hardware/bench/test_network_resilience.py': 1} tree=1 ['audit/actions/U26.md']
+      ctx: _GARBAGE_SSID = "wozi-test-net-does-not-exist"  # <=32 chars (_VAL_SSID's own cap) - real 2.4GHz-legal SSID format/length, just not broadcast by anything on this bench
+  d [placeholder: deliberately absent SSID] len=28 cls=LS sha=6d93a421 'wozi-diag-net-does-not-exist' hits=1 commits=1 keys=['ssid'] first c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:28
+      paths={'tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py': 1} tree=2 ['audit/refined/FINDINGS.md', 'audit/refined/S05.md']
+      ctx: GARBAGE_SSID = "wozi-diag-net-does-not-exist"
+  d [no-credential: type annotation] len=10 cls=ULSW sha=297b0ba7 'str | None' hits=5 commits=3 keys=['ssid'] first 2db8c308 2026-09-10 digital_twin/network.py:110
+      paths={'tests/_protocols.py': 1, 'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py': 1, 'tests/test_ntp_wifi_dns_integration.py': 1, 'digital_twin/network.py': 1} tree=558 ['SPECIFICATION.md', 'audit/actions/U21.md', 'audit/actions/U24.md', 'audit/actions/U25.md']
+      ctx: def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
+  d [bench: a generated bench AP SSID] len=20 cls=LDS sha=84207b0e 'sensors-bench-fa9707' hits=1 commits=1 keys=['ssid'] first f83ca143 2026-09-17 HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md:78
+      paths={'HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md': 1} tree=0 []
+      ctx: afterwards confirmed `SSID: 'sensors-bench-fa9707'` restored. Then survived a full-suite run.
+  d [placeholder: length-test filler] len=1 cls=L sha=33e6d73f 'ä' hits=4 commits=3 keys=['ssid'] first b5450aa6 2026-09-25 tests/test_asy_wifi_service.py:2961
+      paths={'tests/test_asy_wifi_service.py': 3, 'tests_hardware/bench/test_network_resilience.py': 1} tree=93 []
+      ctx: client = _client_with_stored({"SSID": "ä"<<q8:024332af>>"x", "PW": "ä" * 32})
+  d [placeholder: unit-test SSID] len=7 cls=UL sha=5a776d62 'HomeNet' hits=10 commits=3 keys=['ssid'] first b5450aa6 2026-09-25 tests/test_asy_wifi_service.py:2909
+      paths={'tests/test_asy_wifi_service.py': 8, 'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py': 1, 'tests/test_ntp_wifi_dns_integration.py': 1} tree=7 ['audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py', 'tests/test_asy_wifi_service.py', 'tests/test_ntp_wifi_dns_integration.py']
+      ctx: results = run(client._set_dict_cfg({"<<q8:2db53355>>": "ä"<<q7:76811eba>>"SSID": "HomeNet", "<<q9:ff47121b>>": False}, client.get_cfg_schema()))
+  d [placeholder: twin test SSID] len=3 cls=L sha=a08a0fcb 'net' hits=3 commits=3 keys=['connect-positional', 'ssid'] first 5936169b 2026-09-25 tests/test_digital_twin_network_neopixel.py:352
+      paths={'tests/test_fakes.py': 1, 'tests/test_readiness_gates.py': 1, 'tests/test_digital_twin_network_neopixel.py': 1} tree=32121 []
+      ctx: wlan.connect("net", "ä"<<q8:473dbcdd>>"x")  # 65 bytes: cyw43_ll_wifi_join()'s -CYW43_EINVAL
+  d [placeholder: deliberately absent SSID] len=29 cls=LS sha=548f20d9 'bench-test-net-does-not-exist' hits=3 commits=3 keys=['ssid'] first daccbe81 2026-10-01 audit/consolidation/M_HW_BENCH.md:1551
+      paths={'audit/consolidation/M_HW_BENCH.md': 2, 'tests_hardware/bench/test_network_resilience.py': 1} tree=3 ['audit/actions/U26.md', 'audit/consolidation/M_HW_BENCH.md', 'tests_hardware/bench/test_network_resilience.py']
+      ctx: Garbage SSID: `_GARBAGE_SSID = "bench-test-net-does-not-exist"`<<q41:3c1862d6>>`_VAL_SSID`'s
+  d [placeholder: length-test filler] len=1 cls=L sha=4a99557e 'é' hits=4 commits=2 keys=['ssid'] first 1b59a05d 2026-10-06 tests_js/mock-server.test.js:262
+      paths={'tests_js/mock-server.test.js': 4} tree=16 []
+      ctx: const tooLong = await fetch("<<q11:db51edeb>>", { method: "PUT"<<q31:d7bc4800>>"é".repeat(32) }) });
+  d [placeholder: MQTT PoC twin SSID] len=14 cls=LS sha=daa3c580 'mqtt-twin-ssid' hits=1 commits=1 keys=['ssid'] first 8da6057a 2026-10-07 mqtt_poc/prototype/torture.py:97
+      paths={'mqtt_poc/prototype/torture.py': 1} tree=0 []
+      ctx: body = json.dumps({"SSID": "mqtt-twin-ssid"}).encode()
+  d [placeholder: non-ASCII test SSID] len=22 cls=ULDS sha=a95a422f 'K\\u00fcche-W\\u00e4sche' hits=1 commits=1 keys=['ssid'] first f5c82557 2026-10-08 tests/_sensortask_scenarios.py:1346
+      paths={'tests/_sensortask_scenarios.py': 1} tree=1 ['tests/_sensortask_scenarios.py']
+      ctx: ssid = "K\u00fcche-W\u00e4sche"  # non-ASCII: a body's byte count differs from its character count
+  d [placeholder: length-test filler] len=6 cls=LDS sha=2ff2451b '\\u20ac' hits=1 commits=1 keys=['ssid'] first f5c82557 2026-10-08 tests/test_asy_webserver_service.py:3252
+      paths={'tests/test_asy_webserver_service.py': 1} tree=5 ['tests/test_asy_webserver_service.py', 'tests/test_strict_json.py']
+      ctx: ssid = "\u20ac" * 200
+  d [placeholder: unit-test SSID] len=8 cls=UL sha=6c372dd3 'OtherNet' hits=2 commits=1 keys=['ssid'] first 01032838 2026-10-13 tests/test_asy_wifi_service.py:4293
+      paths={'tests/test_asy_wifi_service.py': 1, 'tests/test_digital_twin_wifi_modes.py': 1} tree=5 ['tests/test_asy_wifi_service.py', 'tests/test_digital_twin_wifi_modes.py', 'tests_scripts/test_bench_control_restore.py']
+      ctx: ok, results = await client.cfgmgr.write_config({"SSID": "OtherNet", "PW": "othersecret"})
+  d [placeholder: JS test SSID (vitest log)] len=6 cls=L sha=884e7472 'newnet' hits=9 commits=1 keys=['ssid'] first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log:602
+      paths={'audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log': 8, 'tests_js/render.test.js': 1} tree=10 ['audit/artefacts/evidence/U23_close/lane_c/render_p2_failfirst.log', 'tests_js/render.test.js']
+      ctx: AssertionError: expected [ { SSID: 'newnet' }, …(2) ] to deeply equal [ { SSID: 'newnet' }, …(2) ]
+  d [placeholder: JS test SSID] len=4 cls=L sha=4ea14058 'home' hits=1 commits=1 keys=['ssid'] first 9bf22747 2026-10-13 tests_js/render.test.js:1982
+      paths={'tests_js/render.test.js': 1} tree=49293 []
+      ctx: uninstall = installMockFetch(withSection(section), { ...DATA, networkingConfig: { SSID: "home"<<q6:d482b214>>"secret1"<<q13:315fcb66>>"hotspot1" } });
+  d [no-credential: type annotation] len=15 cls=ULS sha=40a4ba15 'cm.ConfigSchema' hits=2 commits=2 keys=['ssid'] first aa3530f7 2026-10-14 tests/test_asy_wifi_service.py:48
+      paths={'tests/test_asy_wifi_service.py': 2} tree=105 ['audit/actions/U20.md', 'audit/artefacts/evidence/U18_close/lane_k/full_test_asy_base_classes.py.gz!blob', 'audit/artefacts/evidence/U20_close/lane_c/notes_C1.txt', 'audit/artefacts/evidence/U6_close/sensortask_multi_instance_before_fix.py.txt']
+      ctx: _VAL_SSID: "cm.ConfigSchema" = src_const("<<q23:19db57f1>>", "<<q9:a43816de>>")  # type: ignore[assignment]
+  d [placeholder: length-test filler] len=1 cls=L sha=2d711642 'x' hits=2 commits=1 keys=['ssid'] first 311aef80 2026-10-14 tests/test_digital_twin_network_neopixel.py:122
+      paths={'tests/test_digital_twin_network_neopixel.py': 2} tree=430124 []
+      ctx: ap.config(essid="x"<<q16:0f5610d2>>"p" * 70)
+  d+bytes-prefix [no-ssid: the generator's f-string template] len=36 cls=LDS sha=740eaf82 'sensors-bench-{secrets.token_hex(3)}' hits=2 commits=2 keys=['bytes-prefix'] first c9ae71b8 2026-08-31 toolchain/setup_toolchain.py:832
+      paths={'toolchain/setup_toolchain.py': 2} tree=1 ['toolchain/setup_toolchain.py']
+      ctx: ssid = f"sensors-bench-{secrets.token_hex(3)}"
+  d+cli-flag [placeholder: README usage example SSID] len=8 cls=LS sha=9a0808e6 'bench-ap' hits=2 commits=2 keys=['cli-flag'] first ea3aa77b 2026-09-09 README.md:101
+      paths={'README.md': 2} tree=7 ['README.md', 'audit/PLANNING_SURVEY.md', 'audit/actions/U29.md', 'audit/consolidation/M_DOCS.md']
+      ctx: --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap --password correct-horse-battery
+  d+cli-flag [no-ssid: a metavar] len=5 cls=US sha=ebcb7b97 'SSID`' hits=1 commits=1 keys=['cli-flag'] first ea3aa77b 2026-09-09 README.md:88
+      paths={'README.md': 1} tree=45 []
+      ctx: | `<<q11:3573ddf8>>` | `<<q7:58021fa7>>` explicit AP SSID — only used when creating a new bridge, ignored if one already exists |
+  d+cli-flag [placeholder: the README example SSID, quoted] len=10 cls=LS sha=bcfa236d 'bench-ap`.' hits=1 commits=1 keys=['cli-flag'] first 1c71ae43 2026-10-01 audit/consolidation/M_DOCS.md:920
+      paths={'audit/consolidation/M_DOCS.md': 1} tree=1 ['audit/consolidation/M_DOCS.md']
+      ctx: --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap`<<q17:eac8bfeb>>`:205-211`): "`<<q18:3d4165b0>>` installs the
+  d+connect-positional [placeholder: twin test SSID] len=4 cls=L sha=69c5c12d 'ssid' hits=27 commits=5 keys=['connect-positional'] first b8791e6b 2026-08-12 tests/test_digital_twin_network_neopixel.py:54
+      paths={'tests/test_digital_twin_network_neopixel.py': 27} tree=3674 []
+      ctx: wlan.connect("ssid", "password")
+  d+prose-quoted [bench: a generated bench AP SSID (deleted lockout doc)] len=20 cls=LDS sha=ccc77318 'sensors-bench-1984de' hits=1 commits=1 keys=['prose-quoted'] first 29a14cad 2026-09-04 BENCH_NETWORK_LOCKOUT_2026-09-04.md:23
+      paths={'BENCH_NETWORK_LOCKOUT_2026-09-04.md': 1} tree=0 []
+      ctx: recreating `br0`/`<<q8:19e50d66>>`/`<<q11:fa1b1dec>>` with SSID `sensors-bench-1984de` /
+  d+unquoted-assign [no-ssid: a variable name] len=8 cls=L sha=7063dece 'hostname' hits=17 commits=11 keys=['unquoted-assign'] first 8c4a73d5 2026-07-13 PROJECT_NOTES.md:217
+      paths={'audit/refined/S12.md': 2, 'audit/harvest/raw/out_H02.md': 2, 'audit/harvest/raw/out_H16.md': 2, 'audit/harvest/PAR.md': 2} tree=2615 ['BACKLOG.md', 'PROJECT_AUDIT_PLAN.md', 'SPECIFICATION.md', 'audit/DECISION_PROVENANCE.md']
+      ctx: `<<q37:4fc1f4c3>>`): `self.wlan.config(essid=hostname, password='<row-8-default>')`.
+  d+unquoted-assign [no-ssid: prose] len=3 cls=L sha=b9776d7d 'the' hits=4 commits=4 keys=['unquoted-assign'] first 80805388 2026-09-04 SPECIFICATION.md:3354
+      paths={'audit/consolidation/M_DOCS.md': 1, 'audit/actions/U32.md': 1, 'audit/actions/U26.md': 1, 'SPECIFICATION.md': 1} tree=665802 []
+      ctx: the test-author'<<q20:fdd72dd1>>'s own SSID/password are fully deterministic (SSID = the
+  d+unquoted-assign [no-ssid: prose] len=12 cls=L sha=80c00e10 'unconfigured' hits=3 commits=2 keys=['unquoted-assign'] first 23ec78c2 2026-09-25 audit/harvest/NET.md:199
+      paths={'audit/harvest/raw/out_H02.md': 2, 'audit/harvest/NET.md': 1} tree=185 ['README.md', 'audit/REGISTER.md', 'audit/actions/U25.md', 'audit/actions/verify/U25.md']
+      ctx: configured yet\"<<q37:4725ec20>>" — Empty SSID = unconfigured → immediate hotspot
+  d+unquoted-assign [no-ssid: prose] len=7 cls=L sha=1785cfc3 'nothing' hits=1 commits=1 keys=['unquoted-assign'] first 14704801 2026-10-06 audit/consolidation/M_SRC_NET.md:1581
+      paths={'audit/consolidation/M_SRC_NET.md': 1} tree=20245 ['.github/workflows/ci.yml', '.gitignore', 'BACKLOG.md', 'CLAUDE.md']
+      ctx: mode")`, `<<q6:7187f067>>`, with the comment (1 line) "# No SSID: nothing to attempt, so no failure streak - straight back to
+  d+unquoted-assign [no-ssid: the word None] len=4 cls=UL sha=dc937b59 'None' hits=5 commits=2 keys=['unquoted-assign'] first 311648d5 2026-10-07 mqtt_poc/RESEARCH.md:121
+      paths={'mqtt_poc/research/02_mqtt_as_deep_dive.md': 3, 'audit/artefacts/evidence/U28_close/lane_W/red_playwright.log': 1, 'mqtt_poc/RESEARCH.md': 1} tree=46501 []
+      ctx: | A1 | Classic variant owns the radio: `<<q17:d558220d>>` in the constructor (`<<q8:65ceb993>>`), `<<q22:64b34898>>` on every reconnect (`:747`), `<<q17:79d0a144>>` on every outage (`:910`<<q43:82e1f38a>>`ssid=None`<<q9:4cc2b406>>`connect()
+
+## literal trace of withheld values (every added line, blob line and message holding one)
+  [bench-throwaway: REAL_PW of the deleted bench repro script] len=20 cls=ULD sha=ead195cc (value withheld): 2 occurrences in 2 commits; tree at e27b782: 0
+      c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:26 | REAL_PW = "<<V:ead195cc>>"
+      23ec78c2 2026-09-25 audit/sweeps/harvest_merge.py:18 | REDACT = [('<<V:ead195cc>>', '<redacted: bench PSK, HW.T11>')]
+  [bench-throwaway: generated bench AP password (token_urlsafe(12)) in the deleted lockout handoff doc] len=16 cls=ULD sha=ab75b959 (value withheld): 1 occurrences in 1 commits; tree at e27b782: 0
+      29a14cad 2026-09-04 BENCH_NETWORK_LOCKOUT_2026-09-04.md:24 | password `<<V:ab75b959>>` from scratch) as a dead-man's-switch safety net.
+
+## (e) high-entropy tokens
+  identifier-like (made of words or low class alternation), not counted further: 31606
+  family git object id (40 hex): 2327 occurrences, 103 distinct
+  family build or cache artefact name: 1863 occurrences, 10 distinct
+  family Claude session id (commit trailer or session URL): 1782 occurrences, 73 distinct
+  family lockfile integrity hash (hex): 1696 occurrences, 1696 distinct
+  family lockfile integrity hash: 1047 occurrences, 437 distinct
+  family sha256 pin or digest (64 hex): 736 occurrences, 228 distinct
+  family mktemp name: 581 occurrences, 577 distinct
+  family path or URL: 237 occurrences, 97 distinct
+  family GitHub API node id (CI job JSON): 179 occurrences, 134 distinct
+  family other hex run (32 hex): 80 occurrences, 48 distinct
+  family other hex run (512 hex): 30 occurrences, 14 distinct
+  family datasheet-derived text: 12 occurrences, 9 distinct
+  family other hex run (45 hex): 5 occurrences, 1 distinct
+  family CI cache key: 5 occurrences, 3 distinct
+  family other hex run (42 hex): 4 occurrences, 1 distinct
+  family base64 fixture: 4 occurrences, 1 distinct
+  family other hex run (36 hex): 3 occurrences, 3 distinct
+  outside a known family: 20 distinct
+  [bench-throwaway: generated bench AP password (token_urlsafe(12)) in the deleted lockout handoff doc] len=16 cls=ULD sha=ab75b959 segs=16 hits=1 first 29a14cad 2026-09-04 BENCH_NETWORK_LOCKOUT_2026-09-04.md:24 tree=0
+      ctx: password `<<V:ab75b959>>` from scratch) as a dead-man's-switch safety net.
+  [no-credential: bus-topology name] len=17 cls=ULDS sha=c4b6935b segs=6/3/2/3 hits=3 first ec537a6b 2026-09-10 BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md:983 tree=0
+      ctx: FRAM entirely absent; the single-I2C-no-SPI topology that implies; notification with zero `<<q6:5a3aa2a2>>`
+  [no-credential: datasheet file name] len=33 cls=ULDS sha=7b1da7f1 segs=1/7/8/9/4 hits=6 first 2e292b8f 2026-09-25 PROJECT_AUDIT_PLAN.md:890 tree=6
+      ctx: (F.5.2), CYW43. Window lengths need the Pico W QSPI flash datasheet (`<<q53:0d775522>>`, added 2026-09-25).
+  [no-credential: code identifier] len=22 cls=ULDS sha=425bda52 segs=1/7/6/0/1/2 hits=1 first eca6ef49 2026-09-29 audit/actions/verify/U12.md:23 tree=1
+      ctx: - V.U12.15 | A.U12.15 | FIX | Three text defects in permanent SPEC/docstring. (1) "The four `<<q7:31f7648c>>` helpers are the same code" — `<<q9:c49f31c5>>` is not (V.U12.12); they compute the same int32 results. (2) "<<q18:d2852a92>>" over
+  [no-credential: status field name] len=16 cls=ULDS sha=12b9478e segs=5/1/8 hits=2 first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_d/seen_failing_generated_boot.txt:26 tree=2
+      ctx: E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['<<q24:c0281834>>', '<<q25:016103a3>>', '<<q24:df52d6b7>>', '<<q25:853d5dfe>>']"
+  [no-credential: status field name] len=17 cls=ULDS sha=035b0f12 segs=5/1/9 hits=2 first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_d/seen_failing_generated_boot.txt:26 tree=2
+      ctx: E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['<<q24:c0281834>>', '<<q25:016103a3>>', '<<q24:df52d6b7>>', '<<q25:853d5dfe>>']"
+  [no-credential: status field name] len=16 cls=ULDS sha=923ec921 segs=5/1/8 hits=2 first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_d/seen_failing_generated_boot.txt:26 tree=2
+      ctx: E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['<<q24:c0281834>>', '<<q25:016103a3>>', '<<q24:df52d6b7>>', '<<q25:853d5dfe>>']"
+  [no-credential: status field name] len=17 cls=ULDS sha=9ef3267c segs=5/1/9 hits=2 first 9bf22747 2026-10-13 audit/artefacts/evidence/U23_close/lane_d/seen_failing_generated_boot.txt:26 tree=2
+      ctx: E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['<<q24:c0281834>>', '<<q25:016103a3>>', '<<q24:df52d6b7>>', '<<q25:853d5dfe>>']"
+  [no-credential: code identifier] len=16 cls=ULDS sha=1edb062b segs=4/0/10 hits=7 first 2c78fae3 2026-09-29 audit/pass3/D2.md:14 tree=9
+      ctx: - D2.06 | BUS.N019 (`<<q35:0fd32b8e>>`) | UNPROVABLE-HERE | `<<q18:d2ccd04d>>` binds `<<q11:ad343cbc>>` with no mode (:117); CS is first driven in `<<q7:e260962f>>` (:181-184, `<<q9:fc3705e7>>` then `<<q8:e4935b13>>`); every transfer path r
+  [no-credential: code identifier] len=31 cls=ULDS sha=dc2dca60 segs=3/9/5/5/3/1 hits=1 first 2c78fae3 2026-09-29 audit/pass3/D2.md:14 tree=1
+      ctx: - D2.06 | BUS.N019 (`<<q35:0fd32b8e>>`) | UNPROVABLE-HERE | `<<q18:d2ccd04d>>` binds `<<q11:ad343cbc>>` with no mode (:117); CS is first driven in `<<q7:e260962f>>` (:181-184, `<<q9:fc3705e7>>` then `<<q8:e4935b13>>`); every transfer path r
+  [no-credential: driver class name] len=19 cls=ULDS sha=e8f7a7f6 segs=8/6/3 hits=2 first 8c4a73d5 2026-07-13 python/IndividualDrivers/asy_sgp40_driver/__init__.py:267 tree=1
+      ctx: # bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
+  [no-credential: error-path name] len=16 cls=ULDS sha=f88efcae segs=7/8 hits=5 first 5dbf4dfe 2026-07-15 tests/test_asy_i2c_driver.py:304 tree=3
+      ctx: # NAK'<<q41:dcb783d6>>'s SoftI2C-specific, a different code path).
+  [no-credential: test class name] len=20 cls=ULDS sha=15fca56a segs=0/19 hits=2 first aa3530f7 2026-10-14 tests/test_bus_hazard_multi_device.py:861 tree=2
+      ctx: class <<t20>>(_EraseWire):
+  [no-credential: bus-pairing name] len=20 cls=ULDS sha=5f68f24c segs=5/6/2/4 hits=10 first 3da4e174 2026-09-09 tests/test_digital_twin_bus_hazard_concurrency.py:137 tree=7
+      ctx: # wozi's own <<t20>> pairing can never be confirmed on real hardware (wozi is
+  [no-credential: bus-pairing name] len=28 cls=ULDS sha=8a7227f6 segs=5/5/8/2/4 hits=2 first 196a02c7 2026-09-12 tests/test_digital_twin_bus_hazard_concurrency.py:165 tree=0
+      ctx: # dev's <<t28>> grouping also gets real-hardware proof
+  [no-credential: bus-pairing name] len=19 cls=ULDS sha=0dce1e14 segs=5/5/2/4 hits=1 first 3da4e174 2026-09-09 tests/test_digital_twin_bus_hazard_concurrency.py:151 tree=0
+      ctx: # dev's SCD30+SGP40-on-i2c1 pairing also gets real-hardware proof
+  [no-credential: probe label] len=23 cls=ULDS sha=b63d7b70 segs=3/2/5/1/2/2/2 hits=2 first 1ea08ad4 2026-09-12 tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:84 tree=5
+      ctx: emit("<<t23>>", hx(p.rd(REG_ID, 2)))
+  [bench-throwaway: REAL_PW of the deleted bench repro script] len=20 cls=ULD sha=ead195cc segs=20 hits=2 first c43e177d 2026-09-02 tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py:26 tree=0
+      ctx: REAL_PW = "<<V:ead195cc>>"
+  [no-credential: status field key] len=16 cls=ULDS sha=d97b6bf3 segs=5/1/8 hits=2 first 9bf22747 2026-10-13 tests_js/render.test.js:961 tree=2
+      ctx: { key: "SGP40_x_BackupTS", label: "<<q14:0e1bb517>>", kind: "<<q8:8171bacf>>", path: ["<<q7:12c3b282>>", "<<q8:8a6f68c5>>"] },
+  [no-credential: USB by-id fixture path (its serial appears nowhere else)] len=54 cls=ULDS sha=d6f6f0cc segs=3/11/5/2/2/4/16/4 hits=1 first 65088dec 2026-10-08 tests_scripts/test_setup_toolchain_env.py:161 tree=1
+      ctx: _MICROPYTHON_BY_ID = "<<t54>>"
+
+## (f) MAC addresses (OUI only) and private IPv4
+  OUI 00:00:5e distinct=2 hits=9 first 7e22d895 2026-09-30 audit/actions/U21.md:737
+      paths={'tests_scripts/test_setup_toolchain_env.py': 3, 'audit/consolidation/M_TSC.md': 3, 'audit/actions/U21.md': 2, 'audit/artefacts/evidence/U21_close/lane_t/report.md': 1} tree=8 ['audit/actions/U21.md', 'audit/artefacts/evidence/U21_close/lane_t/report.md', 'audit/consolidation/M_TSC.md', 'tests_scripts/test_setup_toolchain_env.py']
+  OUI 11:11:11 distinct=1 hits=2 first 2629f09b 2026-09-04 tests_scripts/test_setup_toolchain_env.py:345
+      paths={'tests_scripts/test_setup_toolchain_env.py': 2} tree=2 ['tests_scripts/test_setup_toolchain_env.py']
+  OUI aa:bb:cc distinct=1 hits=23 first 4448a6fb 2026-07-30 tests/test_asy_wifi_service.py:2059
+      paths={'tests_scripts/test_setup_toolchain_env.py': 19, 'tests/test_asy_wifi_service.py': 2, 'audit/artefacts/evidence/U18_close/lane_w/mypy_noargs.txt': 1, '<commit message>': 1} tree=7 ['audit/artefacts/evidence/U18_close/lane_w/mypy_noargs.txt', 'tests_scripts/test_setup_toolchain_env.py']
+  OUI d8:3a:dd distinct=2 hits=15 first 28c5d8ee 2026-09-04 BACKLOG.md:243
+      paths={'dev_legacy/README.md': 4, 'BACKLOG.md': 2, 'tests_scripts/test_setup_toolchain_env.py': 2, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/README.md': 1, 'audit/actions/U21.md': 1} tree=4 ['audit/actions/U1.md', 'audit/actions/U21.md', 'audit/refined/FINDINGS.md', 'audit/refined/S12.md']
+  OUI ff:ff:ff distinct=1 hits=5 first 2629f09b 2026-09-04 tests_scripts/test_setup_toolchain_env.py:246
+      paths={'tests_scripts/test_setup_toolchain_env.py': 5} tree=3 ['tests_scripts/test_setup_toolchain_env.py']
+  IP 10.0.0.1 hits=200 first 96ba194e 2026-07-21 tests/test_captive_dns.py:590 paths={'tests/test_asy_wifi_service.py': 15, 'tests/test_ntp_wifi_dns_integration.py': 4, 'tests_scripts/test_setup_toolchain_env.py': 2, 'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py': 2} tree=187 ['audit/archive/20261006T072405Z/gate-b/L1_test_sh_gc_default.log', 'audit/artefacts/evidence/U11_close/uart_size_mismatch_gate_pilot/gc_32768.log', 'audit/artefacts/evidence/U13_close/coverage_tracer_heap/coverage_alone.log.gz!blob', 'audit/artefacts/evidence/U13_close/coverage_tracer_heap/coverage_d8ac624_under_load.log.gz!blob']
+  IP 10.0.0.2 hits=2 first b5450aa6 2026-09-25 tests_scripts/test_bench_no_task_ended_completeness.py:75 paths={'tests_scripts/test_bench_no_task_ended_completeness.py': 2} tree=2 ['tests_scripts/test_bench_no_task_ended_completeness.py']
+  IP 10.0.0.5 hits=199 first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:297 paths={'tests/test_asy_wifi_service.py': 15, 'tests/test_ntp_wifi_dns_integration.py': 4, 'tests_scripts/test_setup_toolchain_env.py': 2, 'audit/artefacts/evidence/U18_close/lane_i/probe/dbg_ntpwifi.py': 2} tree=187 ['audit/archive/20261006T072405Z/gate-b/L1_test_sh_gc_default.log', 'audit/artefacts/evidence/U11_close/uart_size_mismatch_gate_pilot/gc_32768.log', 'audit/artefacts/evidence/U13_close/coverage_tracer_heap/coverage_alone.log.gz!blob', 'audit/artefacts/evidence/U13_close/coverage_tracer_heap/coverage_d8ac624_under_load.log.gz!blob']
+  IP 10.0.0.7 hits=3 first 0b9a1847 2026-10-08 tests/test_asy_dns_client.py:702 paths={'tests_js/render.test.js': 2, 'tests/test_asy_dns_client.py': 1} tree=2 ['tests_js/render.test.js']
+  IP 10.0.0.9 hits=2 first 639e9926 2026-07-21 tests/test_captive_dns.py:235 paths={'tests/test_captive_dns.py': 2} tree=1 ['tests/test_asy_captive_dns.py']
+  IP 10.0.0.53 hits=7 first f1f800e7 2026-10-08 tests/test_asy_wifi_service.py:456 paths={'tests/test_asy_wifi_service.py': 7} tree=7 ['tests/test_asy_wifi_service.py']
+  IP 10.0.0.55 hits=1 first 54c0d42d 2026-07-27 tests/test_asy_wifi_service.py:1228 paths={'tests/test_asy_wifi_service.py': 1} tree=1 ['tests/test_asy_wifi_service.py']
+  IP 10.0.0.254 hits=5 first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:431 paths={'tests/test_asy_wifi_service.py': 5} tree=0 []
+  IP 10.20.30.40 hits=7 first a6abe134 2026-07-28 tests/test_asy_dns_client.py:334 paths={'tests/test_asy_dns_client.py': 4, 'audit/artefacts/evidence/U18_close/lane_r/tail.txt': 3} tree=6 ['audit/artefacts/evidence/U18_close/lane_r/tail.txt', 'tests/test_asy_dns_client.py']
+  IP 10.20.30.41 hits=4 first f1f800e7 2026-10-08 audit/artefacts/evidence/U18_close/lane_r/tail.txt:290 paths={'audit/artefacts/evidence/U18_close/lane_r/tail.txt': 2, 'tests/test_asy_dns_client.py': 2} tree=4 ['audit/artefacts/evidence/U18_close/lane_r/tail.txt', 'tests/test_asy_dns_client.py']
+  IP 10.20.30.42 hits=2 first d48dab18 2026-10-08 tests/test_asy_dns_client.py:855 paths={'tests/test_asy_dns_client.py': 2} tree=0 []
+  IP 10.255.255.254 hits=20 first ffe52a80 2026-07-19 tests/test_asy_udp_socket.py:159 paths={'tests/test_asy_udp_socket.py': 6, 'audit/artefacts/evidence/U18_close/lane_r/tail.txt': 2, 'audit/artefacts/evidence/U18_close/lane_u/patch_tests4.py': 2, 'audit/consolidation/M_TEST_UNIT.md': 2} tree=15 ['audit/artefacts/evidence/U18_close/lane_r/tail.txt', 'audit/artefacts/evidence/U18_close/lane_u/patch_tests4.py', 'audit/consolidation/M_TEST_UNIT.md', 'audit/harvest/TEST.md']
+  IP 172.16.0.9 hits=5 first a6abe134 2026-07-28 tests/test_asy_dns_client.py:397 paths={'audit/artefacts/evidence/U18_close/lane_r/tail.txt': 2, 'tests/test_asy_dns_client.py': 2, 'audit/refined/S12.md': 1} tree=5 ['audit/artefacts/evidence/U18_close/lane_r/tail.txt', 'audit/refined/S12.md', 'tests/test_asy_dns_client.py']
+  IP 192.168.0.10 hits=1 first 311648d5 2026-10-07 mqtt_poc/research/02_mqtt_as_deep_dive.md:38 paths={'mqtt_poc/research/02_mqtt_as_deep_dive.md': 1} tree=0 []
+  IP 192.168.1.1 hits=61 first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:316 paths={'mockdata/samples.json': 14, 'tests/test_asy_wifi_service.py': 13, 'mockdata/dev.json': 4, 'mockdata/wozi.json': 4} tree=34 ['audit/actions/U10.md', 'audit/actions/U25.md', 'audit/artefacts/evidence/U18_close/lane_j/red_mock.txt', 'audit/artefacts/evidence/U18_close/lane_n/dbg/put_dbg.py']
+  IP 192.168.1.5 hits=4 first f843c3df 2026-09-01 tests_hardware/bench_control.py:128 paths={'tests_hardware/bench_control.py': 3, 'tests_scripts/test_spoof_udp.py': 1} tree=2 ['tests_hardware/bench_control.py', 'tests_scripts/test_spoof_udp.py']
+  IP 192.168.1.10 hits=9 first f34ac442 2026-10-08 tests/test_mqtt_codec.py:168 paths={'mockdata/samples.json': 7, 'tests/test_asy_dns_client.py': 1, 'tests/test_mqtt_codec.py': 1} tree=0 []
+  IP 192.168.1.42 hits=27 first 924738c3 2026-07-25 tests/test_asy_wifi_service.py:316 paths={'mockdata/samples.json': 10, 'tests/test_asy_wifi_service.py': 5, 'mockdata/wozi.json': 4, 'tests/_sensortask_scenarios.py': 2} tree=9 ['audit/artefacts/evidence/U25_close/lane_MN/handback.md', 'audit/harvest/TWIN.md', 'audit/harvest/raw/out_H06.md', 'audit/hreq/G7.md']
+  IP 192.168.1.50 hits=30 first a6abe134 2026-07-28 tests/test_asy_dns_client.py:275 paths={'tests/test_asy_dns_client.py': 5, 'audit/artefacts/evidence/U18_close/lane_r/tail.txt': 2, 'audit/artefacts/evidence/U18_close/lane_c/u18c_logs/mypy_noargs.log': 1, 'audit/artefacts/evidence/U18_close/lane_c/u18c_logs/mypy_noargs2.log': 1} tree=27 ['audit/artefacts/evidence/U18_close/lane_c/u18c_logs/mypy_noargs.log', 'audit/artefacts/evidence/U18_close/lane_c/u18c_logs/mypy_noargs2.log', 'audit/artefacts/evidence/U18_close/lane_c/u18c_logs/mypy_noargs3.log', 'audit/artefacts/evidence/U18_close/lane_c/u18c_logs/mypy_noargs4.log']
+  IP 192.168.1.53 hits=4 first f1f800e7 2026-10-08 tests/_sensortask_scenarios.py:1769 paths={'tests/_sensortask_scenarios.py': 2, 'tests/test_asy_wifi_service.py': 2} tree=4 ['tests/_sensortask_scenarios.py', 'tests/test_asy_wifi_service.py']
+  IP 192.168.1.77 hits=4 first 2c1f85bb 2026-08-21 mockdata/dev.json:31 paths={'mockdata/dev.json': 4} tree=0 []
+  IP 192.168.4.1 hits=96 first 639e9926 2026-07-21 tests/test_captive_dns.py:75 paths={'tests/test_captive_dns.py': 14, 'tests/test_asy_captive_dns.py': 10, 'audit/consolidation/M_TWIN.md': 7, 'tests/test_asy_wifi_service.py': 7} tree=74 ['SPECIFICATION.md', 'audit/REGISTER.md', 'audit/actions/U14.md', 'audit/actions/U25.md']
+  IP 192.168.4.55 hits=2 first 54c0d42d 2026-07-27 tests/test_asy_wifi_service.py:1205 paths={'tests/test_asy_wifi_service.py': 2} tree=2 ['tests/test_asy_wifi_service.py']
+  IP 192.168.<bench>.1 hits=965 first f98a301a 2026-09-19 HEAP_FRAGMENTATION_MEASUREMENTS.md:3887 paths={'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/console.txt': 466, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/console.txt.gz!blob': 466, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/ntp_recovery.json': 16, 'mqtt_poc/bench_results/2026-10-08_f2e30c4a/fram_after_flash.json': 2} tree=0 []
+  IP 192.168.<bench>.42 hits=1 first 7403998b 2026-10-08 mqtt_poc/bench_results/2026-10-08_51a5bd2d/README.md:16 paths={'mqtt_poc/bench_results/2026-10-08_51a5bd2d/README.md': 1} tree=0 []
+  IP 192.168.<bench>.53 hits=2 first 36b17b74 2026-10-07 openhab/things/airsensor_schlafzi.things:2 paths={'openhab/things/airsensor_schlafzi.things': 1, 'openhab/things/airsensor_schlafzi.txt': 1} tree=0 []
+  IP 192.168.<bench>.54 hits=2 first 36b17b74 2026-10-07 openhab/things/airsensor_klkizi.things:2 paths={'openhab/things/airsensor_klkizi.things': 1, 'openhab/things/airsensor_klkizi.txt': 1} tree=0 []
+  IP 192.168.<bench>.55 hits=2 first 36b17b74 2026-10-07 openhab/things/airsensor_grkizi.things:2 paths={'openhab/things/airsensor_grkizi.things': 1, 'openhab/things/airsensor_grkizi.txt': 1} tree=0 []
+  IP 192.168.<bench>.56 hits=2 first 36b17b74 2026-10-07 openhab/things/airsensor_wozi.things:2 paths={'openhab/things/airsensor_wozi.things': 1, 'openhab/things/airsensor_wozi.txt': 1} tree=0 []
+  IP 192.168.<bench>.57 hits=535 first 952e7069 2026-09-16 REAL_HARDWARE_MEASUREMENT_FINDINGS.md:13 paths={'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/console.txt': 233, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/console.txt.gz!blob': 233, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/ntp_recovery.json': 8, 'mqtt_poc/bench_results/2026-10-08_f2e30c4a/bench_step/pytest.log': 7} tree=4 ['audit/harvest/HW.md', 'audit/harvest/raw/out_H07.md', 'audit/refined/FINDINGS.md', 'audit/refined/S12.md']
+  IP 192.168.<bench>.58 hits=2 first 36b17b74 2026-10-07 openhab/things/airsensor_arzi.things:2 paths={'openhab/things/airsensor_arzi.things': 1, 'openhab/things/airsensor_arzi.txt': 1} tree=0 []
+  IP 192.168.<bench>.67 hits=2 first 1a8049ea 2026-08-27 .claude/settings.json:5 paths={'.claude/settings.json': 1, '<commit message>': 1} tree=0 []
+  IP 192.168.<bench>.75 hits=53 first a10c5787 2026-09-04 dev_legacy/README.md:712 paths={'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/broker/mosquitto_18883.log': 35, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/observation.json': 4, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/console.txt': 2, 'mqtt_poc/bench_results/2026-10-08_51a5bd2d/observations/mqtt_steady_state/console.txt.gz!blob': 2} tree=0 []
+
+total runtime 126.2s

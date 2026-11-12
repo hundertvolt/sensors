@@ -1,0 +1,1357 @@
+file	func	status	ncnb_old	ncnb_new	shape_delta	new_flags	new_excepts	new_raise_msgs	new_numbers
+asy_api_response.py	<module-consts>	consts	1	2	+2 -1				
+asy_api_response.py	handle_set_cmd	changed	19	19	fatal+1 log+1				
+asy_api_response.py	make_response	changed	9	9					
+asy_api_response.py	parse_cmd_request	removed	12	0	try-1 isinstance-1 if-3				
+asy_base_classes.py	<module-consts>	consts	0	25	+25 -0				
+asy_base_classes.py	DeviceSession.__init__	new	0	3					
+asy_base_classes.py	HourlyWindowCounter.__init__	new	0	3					
+asy_base_classes.py	HourlyWindowCounter._advance	new	0	12	if+2				
+asy_base_classes.py	HourlyWindowCounter.add	new	0	5	if+1				
+asy_base_classes.py	HourlyWindowCounter.reset	new	0	3					
+asy_base_classes.py	HourlyWindowCounter.total	new	0	8	if+1				
+asy_base_classes.py	Lockable.__aenter__	changed	3	3					
+asy_base_classes.py	Lockable.__aexit__	changed	11	11	fatal+1 log+1				
+asy_base_classes.py	Lockable.__init__	changed	2	2					
+asy_base_classes.py	LockableBuffer.__init__	removed	12	0	try-1 if-1				
+asy_base_classes.py	LockableBuffer.get_buf	removed	2	0					
+asy_base_classes.py	LockableBuffer.get_data_buf	removed	4	0	if-1				
+asy_base_classes.py	LockedCounter.__init__	changed	4	3					
+asy_base_classes.py	LockedCounter._clamp	changed	4	4					
+asy_base_classes.py	LockedCounter._step	removed	6	0					
+asy_base_classes.py	LockedCounter.decrement	changed	2	6	if+1				
+asy_base_classes.py	LockedCounter.get_value	changed	3	2					
+asy_base_classes.py	LockedCounter.increment	changed	2	6	if+1				
+asy_base_classes.py	LockedCounter.set_value	changed	3	2					
+asy_base_classes.py	LockedFlag.__init__	changed	3	2					
+asy_base_classes.py	LockedFlag.get_value	changed	3	2					
+asy_base_classes.py	LockedFlag.set_false	changed	3	2					
+asy_base_classes.py	LockedFlag.set_true	changed	3	2					
+asy_base_classes.py	LockedValue.__init__	changed	3	2					
+asy_base_classes.py	LockedValue.get_value	changed	3	2					
+asy_base_classes.py	LockedValue.set_value	changed	3	2					
+asy_base_classes.py	PieceBuffer.__init__	new	0	4					
+asy_base_classes.py	PieceBuffer.__len__	new	0	2					
+asy_base_classes.py	PieceBuffer.copy_into	new	0	13	if+1 while+1				
+asy_base_classes.py	PieceBuffer.pieces	new	0	2					
+asy_base_classes.py	PieceBuffer.read_at	new	0	13	if+1 while+1				
+asy_base_classes.py	PieceBuffer.trim	new	0	10	if+2 while+1				
+asy_base_classes.py	PieceBuffer.write_at	new	0	14	if+1 while+1				
+asy_base_classes.py	RegionBuffer.__init__	new	0	12	try+1 if+1		MemoryError,OverflowError		
+asy_base_classes.py	RegionBuffer.get_buf	new	0	2					
+asy_base_classes.py	RegionBuffer.get_data_buf	new	0	4	if+1				
+asy_base_classes.py	SensorReader.__init__	changed	21	24	if-1	_timer_reported			
+asy_base_classes.py	SensorReader._climb_ladder	new	0	16	try+1 if+4 fatal+1 log+1		Exception		
+asy_base_classes.py	SensorReader._commit_mgr_cfg	new	0	2					
+asy_base_classes.py	SensorReader._error_check	changed	11	17	if+2				
+asy_base_classes.py	SensorReader._get_dict_cfg	changed	25	34	if+2 fatal+2 log+2				
+asy_base_classes.py	SensorReader._get_meas_data	changed	3	3					
+asy_base_classes.py	SensorReader._init_done	new	0	8	if+2				
+asy_base_classes.py	SensorReader._init_failed	new	0	7	if+1				
+asy_base_classes.py	SensorReader._rearm_timer	new	0	6	if+1				
+asy_base_classes.py	SensorReader._recover_bus	new	0	14	if+3				
+asy_base_classes.py	SensorReader._recover_device	new	0	2					
+asy_base_classes.py	SensorReader._recover_failed_push	new	0	36	try+2 if+6 fatal+2 log+2		Exception		
+asy_base_classes.py	SensorReader._republish	new	0	5					
+asy_base_classes.py	SensorReader._set_dict_cfg	new	0	48	try+4 if+6 fatal+3 log+3		Exception		
+asy_base_classes.py	SensorReader._set_meas_data	changed	3	3					
+asy_base_classes.py	SensorReader._set_mgr_cfg	new	0	2					
+asy_base_classes.py	SensorReader._timer_failed	new	0	5		_timer_reported			
+asy_base_classes.py	SensorReader._timer_fault	new	0	7	if+2	_timer_reported			
+asy_base_classes.py	SensorReader._trigger_loop	new	0	12	if+2 while+1 wait+1				
+asy_base_classes.py	SensorReader._writes_closed	new	0	2					
+asy_base_classes.py	SensorReader.get_error_counter	new	0	2	log+1				
+asy_base_classes.py	SensorReader.get_error_sources	changed	2	2					
+asy_base_classes.py	SensorReader.get_trigger_starters	new	0	2					
+asy_base_classes.py	SensorReader.reset_error_counter	changed	3	4					
+asy_base_classes.py	SensorReader.setup	new	0	3					
+asy_base_classes.py	SensorReaderConfig.__init__	changed	22	15	log+1				
+asy_base_classes.py	SensorReaderConfig._commit_mgr_cfg	new	0	2					
+asy_base_classes.py	SensorReaderConfig._get_mgr_cfg	changed	3	5	if+1				
+asy_base_classes.py	SensorReaderConfig._recover_failed_push	removed	29	0	try-2 if-5				
+asy_base_classes.py	SensorReaderConfig._set_dict_cfg	removed	40	0	try-3 if-6				
+asy_base_classes.py	SensorReaderConfig._set_mgr_cfg	changed	5	3					
+asy_base_classes.py	SensorReaderConfig._writes_closed	new	0	2					
+asy_base_classes.py	SensorReaderConfig.get_cfg_schema	changed	2	2					
+asy_base_classes.py	SensorReaderConfig.get_error_sources	changed	2	2					
+asy_base_classes.py	SensorReaderConfig.setup	changed	2	4					
+asy_base_classes.py	TickSeconds.__init__	new	0	5	time+1				
+asy_base_classes.py	TickSeconds.read	new	0	13	if+2 time+2				1000
+asy_base_classes.py	TickSeconds.restart	new	0	4	time+1				
+asy_base_classes.py	_checked_write_results	removed	4	0	raise-1 isinstance-1 if-1				
+asy_base_classes.py	arm_tick_timer	new	0	11	try+1 if+1 task+1		MemoryError,OSError		1000
+asy_base_classes.py	set_utc_valid	new	0	3					
+asy_base_classes.py	utc_now	new	0	2	time+2				
+asy_bmp3xx_driver.py	<module-consts>	consts	37	56	+36 -17				
+asy_bmp3xx_driver.py	BMP3XX_I2C.__init__	changed	4	3					
+asy_bmp3xx_driver.py	BMP3XX_I2C._get_osr_setting	changed	9	9					
+asy_bmp3xx_driver.py	BMP3XX_I2C._read	changed	33	45	raise+4 if+4 wait+1			BMP3XX fatal error (ERR_REG fatal_err) | I2C bus not initialized	939,999,1000,2000
+asy_bmp3xx_driver.py	BMP3XX_I2C._read_register	changed	6	6	isinstance-1			I2C bus not initialized	
+asy_bmp3xx_driver.py	BMP3XX_I2C._set_osr_setting	changed	5	6	raise+1 if+1			I2C bus not initialized	
+asy_bmp3xx_driver.py	BMP3XX_I2C._wait_status_bits	changed	10	12	raise+1 if+1			I2C bus not initialized	
+asy_bmp3xx_driver.py	BMP3XX_I2C.get_altitude	removed	4	0	raise-1 if-1				
+asy_bmp3xx_driver.py	BMP3XX_I2C.get_config_snapshot	changed	13	13					
+asy_bmp3xx_driver.py	BMP3XX_I2C.get_filter_coefficient	changed	7	7					
+asy_bmp3xx_driver.py	BMP3XX_I2C.get_pressure_altitude	new	0	2					44307.7
+asy_bmp3xx_driver.py	BMP3XX_I2C.reset	changed	10	14	raise+2 if+2			I2C bus not initialized	
+asy_bmp3xx_driver.py	BMP3XX_I2C.set_filter_coefficient	changed	5	6	raise+1 if+1			I2C bus not initialized	
+asy_bmp3xx_driver.py	BMP3XX_I2C.setup	changed	10	9					
+asy_bmp3xx_driver.py	BMP3XX_I2C.take_por_detected	new	0	6	raise+1 if+1			I2C bus not initialized	
+asy_bmp3xx_driver.py	BMP3XX_Reader.__init__	new	0	35	task+1	_comp_unreadable			119
+asy_bmp3xx_driver.py	BMP3XX_Reader._apply_stored_config	new	0	15	try+1 if+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader._init_bmp	new	0	19	try+1 if+2 fatal+1 log+1	_comp_unreadable	Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader._push_filter_coefficient	new	0	4	if+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader._push_pressure_oversampling	new	0	4	if+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader._push_temperature_oversampling	new	0	4	if+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader._push_trigger_s	new	0	4	if+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader._read_bmp	new	0	31	try+1 raise+1 if+4 fatal+1 log+1	_comp_unreadable	Exception,ValueError	stored configuration not re-applied after a chip r	
+asy_bmp3xx_driver.py	BMP3XX_Reader._read_loop	new	0	10	if+2 while+1 wait+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader._read_sensor_dict	new	0	12	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader._recover_device	new	0	9	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader._store_bmp	new	0	14	if+2				
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_data	new	0	2					
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_dict_cfg	new	0	6					
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_dict_data	new	0	3					
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_error_counter	new	0	2	log+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_filter_coefficient	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_pressure_oversampling	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_task_starters	new	0	2					
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_temperature_oversampling	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_timer_starters	new	0	2					
+asy_bmp3xx_driver.py	BMP3XX_Reader.get_trigger_starters	new	0	2					
+asy_bmp3xx_driver.py	BMP3XX_Reader.set_filter_coefficient	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader.set_pressure_oversampling	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader.set_temperature_oversampling	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_bmp3xx_driver.py	BMP3XX_Reader.set_trigger_s	new	0	7	if+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader.start_asy_read	new	0	3	task+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader.start_asy_trigger	new	0	3	task+1				
+asy_bmp3xx_driver.py	BMP3XX_Reader.start_timer	new	0	9	try+1 task+1		MemoryError,OSError		1000
+asy_bmp3xx_driver.py	BMP3XX_Reader.stop_timer	new	0	2					
+asy_bmp3xx_driver.py	BMP3xx_DeviceSession.__init__	removed	3	0					
+asy_bmp3xx_driver.py	BMP3xx_Reader.__init__	removed	36	0	task-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._base_trigger	removed	8	0	if-1 while-1 wait-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._init_bmp	removed	23	0	try-2 if-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._push_filter_coefficient	removed	4	0	if-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._push_pressure_oversampling	removed	4	0	if-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._push_temperature_oversampling	removed	4	0	if-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._push_trigger_secs	removed	4	0	if-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._read_bmp	removed	12	0	try-1 time-2				
+asy_bmp3xx_driver.py	BMP3xx_Reader._read_sensor_dict	removed	11	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader._store_bmp	removed	19	0	if-2				
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_data	removed	2	0					
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_dict_cfg	removed	6	0					
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_dict_data	removed	3	0					
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_error_counter	removed	2	0	log-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_filter_coefficient	removed	6	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_pressure_oversampling	removed	6	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_task_starters	removed	2	0					
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_temperature_oversampling	removed	6	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.get_timer_starters	removed	2	0					
+asy_bmp3xx_driver.py	BMP3xx_Reader.read_loop	removed	10	0	if-2 while-1 wait-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.set_filter_coefficient	removed	7	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.set_pressure_oversampling	removed	7	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.set_temperature_oversampling	removed	7	0	try-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.set_trigger_secs	removed	10	0	try-1 raise-1 if-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.start_asy_read	removed	3	0	task-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.start_asy_trigger	removed	3	0	task-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.start_timer	removed	9	0	try-1 task-1				
+asy_bmp3xx_driver.py	BMP3xx_Reader.stop_timer	removed	2	0					
+asy_captive_dns.py	<module-consts>	consts	6	12	+10 -4				
+asy_captive_dns.py	CaptiveDNS.__init__	new	0	4	log+1				
+asy_captive_dns.py	CaptiveDNS.get_error_counter	new	0	2	log+1				
+asy_captive_dns.py	CaptiveDNS.get_error_sources	new	0	2					
+asy_captive_dns.py	CaptiveDNS.get_loggers	new	0	2					
+asy_captive_dns.py	CaptiveDNS.reset_error_counter	new	0	2					
+asy_captive_dns.py	CaptiveDNS.run	new	0	56	try+3 if+7 while+1 wait+3 fatal+2 log+2		Exception		
+asy_captive_dns.py	DNSQuery.__init__	changed	24	33	raise+4 if+3 fatal+1 log+1		MemoryError	label type or length not supported | name longer than 255 octets | not a query with exactly one question	128
+asy_captive_dns.py	DNSQuery.response	changed	13	16	if+1				
+asy_captive_dns.py	DNSServer.__init__	removed	9	0	log-1				
+asy_captive_dns.py	DNSServer.get_error_counter	removed	2	0	log-1				
+asy_captive_dns.py	DNSServer.get_error_sources	removed	2	0					
+asy_captive_dns.py	DNSServer.get_loggers	removed	2	0					
+asy_captive_dns.py	DNSServer.reset_error_counter	removed	2	0					
+asy_captive_dns.py	DNSServer.run	removed	55	0	try-3 if-6 while-1 wait-2				
+asy_captive_dns.py	_ipv4_to_int	removed	11	0	if-2				
+asy_config_manager.py	<module-consts>	consts	0	14	+14 -0				
+asy_config_manager.py	ConfigManager.__init__	changed	10	20		_closed,_read_failing,absent_at_boot,faulted,unpersisted,writable			
+asy_config_manager.py	ConfigManager._closed_for_reset	new	0	4	if+1				
+asy_config_manager.py	ConfigManager._flush_staged	changed	16	24	try+1 if+1 wait+1 fatal+1 log+1	unpersisted	Exception		
+asy_config_manager.py	ConfigManager._get_converted_values	removed	8	0	try-1 if-1				
+asy_config_manager.py	ConfigManager._get_typed_values	new	0	15	if+3	_read_failing			
+asy_config_manager.py	ConfigManager._get_values	changed	11	13	if+2				
+asy_config_manager.py	ConfigManager._read_run_starts	new	0	4		_read_failing			
+asy_config_manager.py	ConfigManager._write_file	new	0	4		unpersisted			
+asy_config_manager.py	ConfigManager.close_writes	new	0	2		_closed			
+asy_config_manager.py	ConfigManager.commit	new	0	2					
+asy_config_manager.py	ConfigManager.delete_file	new	0	16	try+1 if+1		OSError		
+asy_config_manager.py	ConfigManager.flush_pending	changed	4	6					
+asy_config_manager.py	ConfigManager.get_bool_values	changed	7	2	isinstance-1 if-2				
+asy_config_manager.py	ConfigManager.get_dict	changed	11	15	if+2	_read_failing			
+asy_config_manager.py	ConfigManager.get_float_values	changed	2	2					
+asy_config_manager.py	ConfigManager.get_int_values	changed	2	2					
+asy_config_manager.py	ConfigManager.get_str_values	changed	2	2					
+asy_config_manager.py	ConfigManager.reset_error_counter	changed	2	5	if+1	_read_failing			
+asy_config_manager.py	ConfigManager.setup	changed	69	79	isinstance+1 if-1	absent_at_boot,faulted,unpersisted,writable			
+asy_config_manager.py	ConfigManager.write_config	changed	51	54	try+1 if+3				
+asy_config_manager.py	ConfigManager.writes_closed	new	0	2					
+asy_config_manager.py	_as_bool	new	0	2					
+asy_config_manager.py	_as_str	new	0	2					
+asy_config_manager.py	_coerce_float	new	0	6	if+2				
+asy_config_manager.py	_coerce_int	new	0	11	try+1 if+3		OverflowError,ValueError		
+asy_config_manager.py	_special_bypass	changed	12	12					
+asy_config_manager.py	_stored_float	new	0	3					
+asy_config_manager.py	check_cfg_get_default	changed	16	12	try-1				
+asy_config_manager.py	checked_float	new	0	12	if+4				
+asy_config_manager.py	checked_int	new	0	12	if+4				
+asy_config_manager.py	checked_numeric	new	0	6	if+2				
+asy_config_manager.py	coerce_numeric	removed	13	0	try-1 if-4				
+asy_config_manager.py	compare_before_write	new	0	37	if+6				
+asy_config_manager.py	config_filename	new	0	2					
+asy_config_manager.py	make_dict	changed	12	6	try-2				
+asy_config_manager.py	schema_dict	changed	5	2	try-1				
+asy_config_manager.py	schema_names	changed	5	2	try-1				
+asy_config_manager.py	type_or_range_error	changed	40	20	try-1 if-10				
+asy_crc_checks.py	<module-consts>	consts	0	1	+1 -0				
+asy_crc_checks.py	CRCBase.__init__	new	0	10					
+asy_crc_checks.py	CRCBase._crc	new	0	13	if+2 wait+1				
+asy_crc_checks.py	CRCBase._crc_wide	new	0	21	if+1 wait+1				65535
+asy_crc_checks.py	CRCBase._validate_init	new	0	3					
+asy_crc_checks.py	CRCBase.add	new	0	10	if+2				
+asy_crc_checks.py	CRCBase.add_into	new	0	12	if+3				
+asy_crc_checks.py	CRCBase.check	new	0	11	if+4				
+asy_crc_checks.py	CRCBase.check_from	new	0	15	if+4				
+asy_crc_checks.py	CRCBase.check_inc	new	0	6	if+1				
+asy_crc_checks.py	CRCBase.length	new	0	2					
+asy_crc_checks.py	CRCBase.run_inc	new	0	10	if+3				
+asy_crc_checks.py	CRCPass.__init__	new	0	2					
+asy_crc_checks.py	CRC_Base.__init__	removed	9	0					
+asy_crc_checks.py	CRC_Base._crc	removed	13	0	if-2 wait-1				
+asy_crc_checks.py	CRC_Base._validate_init	removed	3	0					
+asy_crc_checks.py	CRC_Base.add	removed	13	0	try-1 if-2				
+asy_crc_checks.py	CRC_Base.add_into	removed	15	0	try-1 if-3				
+asy_crc_checks.py	CRC_Base.check	removed	11	0	if-4				
+asy_crc_checks.py	CRC_Base.check_from	removed	15	0	if-4				
+asy_crc_checks.py	CRC_Base.check_inc	removed	6	0	if-1				
+asy_crc_checks.py	CRC_Base.length	removed	2	0					
+asy_crc_checks.py	CRC_Base.run_inc	removed	10	0	if-3				
+asy_crc_checks.py	CRC_Pass.__init__	removed	2	0					
+asy_dns_client.py	<module-consts>	consts	11	19	+11 -3				
+asy_dns_client.py	_build_query	changed	21	23	raise+1 if+1			not an encodable DNS name	
+asy_dns_client.py	_is_ipv4_literal	removed	5	0	if-1				
+asy_dns_client.py	_parse_response	changed	21	17	if-2				
+asy_dns_client.py	_reply_rcode	new	0	6	if+2				128
+asy_dns_client.py	host_label_ok	new	0	4	if+1				
+asy_dns_client.py	ipv4_to_int	new	0	11	if+2				
+asy_dns_client.py	resolve_ipv4	changed	33	53	if+6		OverflowError		
+asy_fram_driver.py	<module-consts>	consts	26	45	+31 -12				
+asy_fram_driver.py	FRAM_SPI.__aenter__	changed	8	8					
+asy_fram_driver.py	FRAM_SPI.__aexit__	changed	11	11	fatal+1 log+1				
+asy_fram_driver.py	FRAM_SPI.__init__	changed	22	24					
+asy_fram_driver.py	FRAM_SPI._check_device_id	changed	7	7					
+asy_fram_driver.py	FRAM_SPI._check_write_anomaly	new	0	12	if+3	initialized			
+asy_fram_driver.py	FRAM_SPI._enable_write	changed	3	6	if+1				
+asy_fram_driver.py	FRAM_SPI._report_chip_lost	new	0	3					
+asy_fram_driver.py	FRAM_SPI._set_write_protected	changed	19	20					
+asy_fram_driver.py	FRAM_SPI._write	changed	7	8					
+asy_fram_driver.py	FRAM_SPI.get_values_sync	changed	9	11	if+1				
+asy_fram_driver.py	FRAM_SPI.get_write_protected	changed	5	5					
+asy_fram_driver.py	FRAM_SPI.is_ready	new	0	2					
+asy_fram_driver.py	FRAM_SPI.report_get_values	changed	10	12	if+1				
+asy_fram_driver.py	FRAM_SPI.report_set_values	changed	19	27	if+3				
+asy_fram_driver.py	FRAM_SPI.set_values_sync	changed	8	10	if+1				
+asy_fram_driver.py	FRAM_SPI.set_write_protected	changed	20	25	try-1 if+3				
+asy_fram_driver.py	FRAM_SPI.setup	changed	17	31	try-1 raise+1 if+3 while+1			FRAM SPI device not found | SPI bus not initialized	
+asy_fram_driver.py	FRAM_SPI.verify_present	changed	27	23	try-1 if+1				
+asy_fram_manager.py	<module-consts>	consts	10	30	+22 -2				
+asy_fram_manager.py	AsyFramChunk.__init__	removed	12	0					
+asy_fram_manager.py	AsyFramChunk.get_buffer	removed	2	0					
+asy_fram_manager.py	AsyFramChunk.get_size	removed	2	0					
+asy_fram_manager.py	AsyFramChunk.read	removed	8	0	if-2				
+asy_fram_manager.py	AsyFramChunk.read_into	removed	5	0	if-1				
+asy_fram_manager.py	AsyFramChunk.write	removed	11	0	if-2				
+asy_fram_manager.py	AsyFramChunk.write_into	removed	5	0	if-1				
+asy_fram_manager.py	AsyFramChunkBuffer.__init__	removed	3	0					
+asy_fram_manager.py	AsyFramChunkBuffer.get_crc_buf	removed	4	0	if-1				
+asy_fram_manager.py	AsyFramChunkTimestampedBuffer.__init__	removed	3	0					
+asy_fram_manager.py	AsyFramChunkTimestampedBuffer.get_crc_buf	removed	4	0	if-1				
+asy_fram_manager.py	AsyFramChunkTimestampedBuffer.get_ts_buf	removed	4	0	if-1				
+asy_fram_manager.py	AsyFramManager.__init__	removed	9	0	log-1				
+asy_fram_manager.py	AsyFramManager.get_chunk	removed	35	0	if-2				
+asy_fram_manager.py	AsyFramManager.get_error_counter	removed	2	0	log-1				
+asy_fram_manager.py	AsyFramManager.get_error_sources	removed	2	0					
+asy_fram_manager.py	AsyFramManager.get_loggers	removed	2	0					
+asy_fram_manager.py	AsyFramManager.get_pause	removed	2	0					
+asy_fram_manager.py	AsyFramManager.get_timestamped_chunk	removed	41	0	if-2				
+asy_fram_manager.py	AsyFramManager.reset_error_counter	removed	2	0					
+asy_fram_manager.py	AsyFramManager.set_pause	removed	3	0					
+asy_fram_manager.py	AsyFramManager.setup	removed	8	0	try-1				
+asy_fram_manager.py	AsyFramTimestampedChunk.__init__	removed	23	0					
+asy_fram_manager.py	AsyFramTimestampedChunk.get_buffer	removed	4	0					
+asy_fram_manager.py	AsyFramTimestampedChunk.get_size	removed	2	0					
+asy_fram_manager.py	AsyFramTimestampedChunk.read	removed	9	0	if-2				
+asy_fram_manager.py	AsyFramTimestampedChunk.read_into	removed	34	0	try-3 if-5 time-2				
+asy_fram_manager.py	AsyFramTimestampedChunk.write	removed	13	0	if-2				
+asy_fram_manager.py	AsyFramTimestampedChunk.write_into	removed	38	0	try-3 if-5 time-2				
+asy_fram_manager.py	FRAMChunk.get_buffer	new	0	2					
+asy_fram_manager.py	FRAMChunk.read	new	0	8	if+2				
+asy_fram_manager.py	FRAMChunk.read_into	new	0	6	if+1				
+asy_fram_manager.py	FRAMChunk.write	new	0	12	if+2				
+asy_fram_manager.py	FRAMChunk.write_into	new	0	6	if+1				
+asy_fram_manager.py	FRAMChunkBuffer.__init__	new	0	2					
+asy_fram_manager.py	FRAMChunkTimestampedBuffer.__init__	new	0	2					
+asy_fram_manager.py	FRAMChunkTimestampedBuffer.get_ts_buf	new	0	4	if+1				
+asy_fram_manager.py	FRAMManager.__init__	new	0	11	log+1	_pause,initialized			8192
+asy_fram_manager.py	FRAMManager._watch_chip_loop	new	0	9	if+3 wait+1				
+asy_fram_manager.py	FRAMManager.erase_chip	new	0	27	try+1 if+3 wait+1		MemoryError		
+asy_fram_manager.py	FRAMManager.erase_ready	new	0	2					
+asy_fram_manager.py	FRAMManager.get_chunk	new	0	27	if+2				
+asy_fram_manager.py	FRAMManager.get_error_counter	new	0	2	log+1				
+asy_fram_manager.py	FRAMManager.get_error_sources	new	0	2					
+asy_fram_manager.py	FRAMManager.get_loggers	new	0	2					
+asy_fram_manager.py	FRAMManager.get_pause	new	0	2					
+asy_fram_manager.py	FRAMManager.get_task_starters	new	0	2					
+asy_fram_manager.py	FRAMManager.get_timer_starters	new	0	2					
+asy_fram_manager.py	FRAMManager.get_timestamped_chunk	new	0	36	if+2				
+asy_fram_manager.py	FRAMManager.quiesce	new	0	5					
+asy_fram_manager.py	FRAMManager.reset_error_counter	new	0	2					
+asy_fram_manager.py	FRAMManager.set_pause	new	0	3					
+asy_fram_manager.py	FRAMManager.setup	new	0	10	try+1 fatal+1 log+1	initialized	Exception		
+asy_fram_manager.py	FRAMManager.start_asy_watch_chip	new	0	3	task+1				
+asy_fram_manager.py	FRAMTimestampedChunk.__init__	new	0	13					
+asy_fram_manager.py	FRAMTimestampedChunk.get_buffer	new	0	4					
+asy_fram_manager.py	FRAMTimestampedChunk.read	new	0	10	if+2				
+asy_fram_manager.py	FRAMTimestampedChunk.read_into	new	0	28	try+1 if+5 fatal+1 log+1		Exception		
+asy_fram_manager.py	FRAMTimestampedChunk.write	new	0	14	if+2				
+asy_fram_manager.py	FRAMTimestampedChunk.write_into	new	0	31	try+1 if+4 fatal+1 log+1		Exception		
+asy_fram_manager.py	_AsyBaseFramChunk.__init__	removed	32	0	try-1				
+asy_fram_manager.py	_AsyBaseFramChunk._clear_chunk	removed	14	0	try-1 if-2 wait-1				
+asy_fram_manager.py	_AsyBaseFramChunk._compare_with	removed	13	0	try-1 if-1				
+asy_fram_manager.py	_AsyBaseFramChunk._episode_wrn	removed	5	0					
+asy_fram_manager.py	_AsyBaseFramChunk._handle_status_bytes	removed	15	0	if-3				
+asy_fram_manager.py	_AsyBaseFramChunk._read	removed	47	0	if-11				
+asy_fram_manager.py	_AsyBaseFramChunk._read_chunk	removed	56	0	try-1 if-8 while-1 wait-2				
+asy_fram_manager.py	_AsyBaseFramChunk._read_into	removed	8	0					
+asy_fram_manager.py	_AsyBaseFramChunk._read_progress	removed	14	0	if-2				
+asy_fram_manager.py	_AsyBaseFramChunk._set_check_sb	removed	21	0	if-5				
+asy_fram_manager.py	_AsyBaseFramChunk._write	removed	31	0	if-7				
+asy_fram_manager.py	_AsyBaseFramChunk._write_chunk	removed	20	0	try-1 if-4 wait-2				
+asy_fram_manager.py	_AsyBaseFramChunk.clear	removed	11	0	if-2				
+asy_fram_manager.py	_AsyBaseFramChunk.get_pause	removed	2	0					
+asy_fram_manager.py	_AsyBaseFramChunk.get_verify	removed	2	0					
+asy_fram_manager.py	_AsyBaseFramChunk.set_verify	removed	4	0					
+asy_fram_manager.py	_FRAMBaseChunk.__init__	new	0	29	try+1	_no_check_logged,_read_fault,_read_match,_read_valid	MemoryError,OverflowError		
+asy_fram_manager.py	_FRAMBaseChunk._blank_verdict	new	0	4	if+1				
+asy_fram_manager.py	_FRAMBaseChunk._clear_chunk	new	0	15	try+1 if+2 wait+1 fatal+1 log+1		Exception		
+asy_fram_manager.py	_FRAMBaseChunk._compare_with	new	0	17	try+1 if+2	_no_check_logged,_read_fault,_read_match,_read_valid			
+asy_fram_manager.py	_FRAMBaseChunk._copy_out	new	0	7	try+1		MemoryError		
+asy_fram_manager.py	_FRAMBaseChunk._handle_status_bytes	new	0	14	if+3				
+asy_fram_manager.py	_FRAMBaseChunk._read	new	0	53	if+16				
+asy_fram_manager.py	_FRAMBaseChunk._read_chunk	new	0	61	try+1 if+8 while+1 wait+2 fatal+1 log+1	_read_fault	Exception		
+asy_fram_manager.py	_FRAMBaseChunk._read_into	new	0	9		_read_fault,_read_match,_read_valid			
+asy_fram_manager.py	_FRAMBaseChunk._read_progress	new	0	14	if+2	_read_match,_read_valid			
+asy_fram_manager.py	_FRAMBaseChunk._set_check_sb	new	0	21	if+5	_read_fault			
+asy_fram_manager.py	_FRAMBaseChunk._write	new	0	30	if+8				
+asy_fram_manager.py	_FRAMBaseChunk._write_chunk	new	0	30	try+1 if+7 wait+2 fatal+1 log+1		Exception		
+asy_fram_manager.py	_FRAMBaseChunk.clear	new	0	13	if+3				
+asy_fram_manager.py	_FRAMBaseChunk.get_verify	new	0	2					
+asy_fram_manager.py	_FRAMBaseChunk.invalidate	new	0	9	if+2				
+asy_fram_manager.py	_FRAMBaseChunk.set_verify	new	0	4					
+asy_fram_manager.py	_FRAMBaseChunk.wait_idle	new	0	3					
+asy_fram_manager.py	_owner_seed	new	0	8	if+1				65521
+asy_framing_codecs.py	<module-consts>	consts	3	3	+0 -0				
+asy_framing_codecs.py	FramingBase.__init__	new	0	4					
+asy_framing_codecs.py	FramingBase._checked	new	0	2					
+asy_framing_codecs.py	FramingBase.decode_from	new	0	4	if+1				
+asy_framing_codecs.py	FramingBase.delimiter	new	0	2					
+asy_framing_codecs.py	FramingBase.encode_into	new	0	4	if+1				
+asy_framing_codecs.py	FramingBase.is_delimited	new	0	2					
+asy_framing_codecs.py	FramingBase.max_encoded	new	0	2					
+asy_framing_codecs.py	FramingBase.overhead	new	0	4	if+1				
+asy_framing_codecs.py	FramingBase.ready	new	0	2					
+asy_framing_codecs.py	FramingCOBS.__init__	new	0	9	try+1 if+1		MemoryError,OverflowError		
+asy_framing_codecs.py	FramingCOBS._checked	new	0	2					
+asy_framing_codecs.py	FramingCOBS._checked_encoded	new	0	2					
+asy_framing_codecs.py	FramingCOBS.decode_from	new	0	22	if+4 while+2 wait+1				
+asy_framing_codecs.py	FramingCOBS.delimiter	new	0	2					
+asy_framing_codecs.py	FramingCOBS.encode_into	new	0	24	if+3 wait+1				
+asy_framing_codecs.py	FramingCOBS.is_delimited	new	0	2					
+asy_framing_codecs.py	FramingCOBS.ready	new	0	2					
+asy_framing_codecs.py	FramingPass.__init__	new	0	2					
+asy_framing_codecs.py	Framing_Base.__init__	removed	5	0					
+asy_framing_codecs.py	Framing_Base._checked	removed	2	0					
+asy_framing_codecs.py	Framing_Base.decode_from	removed	4	0	if-1				
+asy_framing_codecs.py	Framing_Base.delimiter	removed	2	0					
+asy_framing_codecs.py	Framing_Base.encode_into	removed	4	0	if-1				
+asy_framing_codecs.py	Framing_Base.is_delimited	removed	2	0					
+asy_framing_codecs.py	Framing_Base.max_encoded	removed	2	0					
+asy_framing_codecs.py	Framing_Base.overhead	removed	4	0	if-1				
+asy_framing_codecs.py	Framing_Base.ready	removed	2	0					
+asy_framing_codecs.py	Framing_COBS.__init__	removed	9	0	try-1 if-1				
+asy_framing_codecs.py	Framing_COBS._checked	removed	2	0					
+asy_framing_codecs.py	Framing_COBS.decode_from	removed	22	0	if-4 while-2 wait-1				
+asy_framing_codecs.py	Framing_COBS.delimiter	removed	2	0					
+asy_framing_codecs.py	Framing_COBS.encode_into	removed	24	0	if-3 wait-1				
+asy_framing_codecs.py	Framing_COBS.is_delimited	removed	2	0					
+asy_framing_codecs.py	Framing_COBS.ready	removed	2	0					
+asy_framing_codecs.py	Framing_Pass.__init__	removed	2	0					
+asy_i2c_driver.py	<module-consts>	consts	1	10	+9 -0				
+asy_i2c_driver.py	I2C.__init__	changed	12	15					
+asy_i2c_driver.py	I2C._bytes_to_int	changed	6	6					
+asy_i2c_driver.py	I2C._clear_locked	new	0	6					
+asy_i2c_driver.py	I2C._fill_reg_addr	new	0	8	raise+1 if+1			invalid addrsize	255
+asy_i2c_driver.py	I2C._point_at	new	0	3					
+asy_i2c_driver.py	I2C._read_into_scratch	changed	8	5	if-1				
+asy_i2c_driver.py	I2C._write_all	new	0	10	try+1 raise+1 if+2		OSError		
+asy_i2c_driver.py	I2C._write_buffer	new	0	7	if+1				
+asy_i2c_driver.py	I2C._writeto_mem	removed	5	0	if-1				
+asy_i2c_driver.py	I2C.clear	new	0	4					
+asy_i2c_driver.py	I2C.deinit	changed	4	5					
+asy_i2c_driver.py	I2C.get_register_bytes	new	0	4	if+1				
+asy_i2c_driver.py	I2C.get_register_into	new	0	6	if+1				
+asy_i2c_driver.py	I2C.init	changed	13	14					
+asy_i2c_driver.py	I2C.readfrom_into	changed	14	16					
+asy_i2c_driver.py	I2C.recover	new	0	9	try+1 task+1		OSError,ValueError		
+asy_i2c_driver.py	I2C.set_bits	changed	21	24					255
+asy_i2c_driver.py	I2C.set_register_struct	changed	15	22	try+1				
+asy_i2c_driver.py	I2C.take_boot_clear_status	new	0	4					
+asy_i2c_driver.py	I2C.writeto	changed	19	19					
+asy_i2c_driver.py	I2C.writeto_then_readfrom	changed	15	10					
+asy_i2c_driver.py	I2CDevice.__init__	changed	4	4					
+asy_i2c_driver.py	I2CDevice._probe_for_device	changed	10	10					
+asy_i2c_driver.py	I2CDevice.get_register_bytes	new	0	2					
+asy_i2c_driver.py	I2CDevice.get_register_into	new	0	2					
+asy_i2c_driver.py	I2CDevice.readinto	changed	7	7					
+asy_i2c_driver.py	I2CDevice.set_bits	changed	21	21					
+asy_i2c_driver.py	I2CDevice.set_register_struct	changed	8	8					
+asy_i2c_driver.py	I2CDevice.setup	changed	3	3	if-1				
+asy_i2c_driver.py	I2CDevice.write	changed	7	7					
+asy_i2c_driver.py	I2CDevice.write_then_readinto	changed	23	9					
+asy_i2c_driver.py	_clear_bus	new	0	29	if+5				
+asy_i2c_driver.py	_clear_bus_awaiting	new	0	29	if+5				
+asy_i2c_driver.py	_scl_released	new	0	7	if+1 while+1 time+3 wait+1				
+asy_i2c_driver.py	_scl_released_sync	new	0	6	if+1 while+1 time+3				
+asy_isl29125_driver.py	<module-consts>	consts	83	93	+31 -21				
+asy_isl29125_driver.py	ISL29125_DeviceSession.__init__	removed	3	0					
+asy_isl29125_driver.py	ISL29125_I2C.__init__	changed	13	15					
+asy_isl29125_driver.py	ISL29125_I2C._decode_rgb_burst	changed	10	5	try-1 if-1				
+asy_isl29125_driver.py	ISL29125_I2C._read_byte	changed	6	6	isinstance-1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C._reject_unless	changed	3	3					
+asy_isl29125_driver.py	ISL29125_I2C._write_shadow_locked	changed	3	4	raise+1 if+1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C.clear_brownout	changed	3	4	raise+1 if+1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C.configure	changed	58	58					
+asy_isl29125_driver.py	ISL29125_I2C.decode_config	changed	15	10	try-1 if-1				
+asy_isl29125_driver.py	ISL29125_I2C.decode_status	changed	9	9					
+asy_isl29125_driver.py	ISL29125_I2C.encode_shadow	changed	11	8	try-1				
+asy_isl29125_driver.py	ISL29125_I2C.get_config_snapshot	changed	6	5	isinstance-1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C.is_bus_fault_pattern	changed	6	6					
+asy_isl29125_driver.py	ISL29125_I2C.matches_shadow	changed	6	6					
+asy_isl29125_driver.py	ISL29125_I2C.normalise	changed	9	9					
+asy_isl29125_driver.py	ISL29125_I2C.persist_for_interval	changed	7	7					
+asy_isl29125_driver.py	ISL29125_I2C.read_counts	changed	7	8	raise+1 isinstance-1 if+1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C.reset	changed	17	18	raise+1 isinstance-1 if+1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C.set_thresholds	changed	9	10	raise+1 if+1			I2C bus not initialized	
+asy_isl29125_driver.py	ISL29125_I2C.setup	changed	7	8					
+asy_isl29125_driver.py	ISL29125_I2C.time_to_settle_ms	changed	2	6	if+1 time+1				
+asy_isl29125_driver.py	ISL29125_I2C.verify_device_id	changed	4	4					
+asy_isl29125_driver.py	ISL29125_Reader.__init__	changed	67	69		_int_held,_int_rearmed,_unsettled_cycle			
+asy_isl29125_driver.py	ISL29125_Reader._band_code	new	0	8	if+2				
+asy_isl29125_driver.py	ISL29125_Reader._base_trigger	removed	8	0	if-1 while-1 wait-1				
+asy_isl29125_driver.py	ISL29125_Reader._check_divergence	changed	11	12	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._checked_cfg	changed	6	6	isinstance-1				
+asy_isl29125_driver.py	ISL29125_Reader._colour_temperature	changed	11	11					
+asy_isl29125_driver.py	ISL29125_Reader._device_id_answers	changed	6	8	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._down_thresh	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._end_calibration	changed	4	6	if+1				
+asy_isl29125_driver.py	ISL29125_Reader._evaluate_range	changed	16	20	if+1 time+1				
+asy_isl29125_driver.py	ISL29125_Reader._expire_calibration	new	0	5	if+1 time+2				
+asy_isl29125_driver.py	ISL29125_Reader._green_in_window	new	0	4	if+1				
+asy_isl29125_driver.py	ISL29125_Reader._handle_status	changed	7	7					
+asy_isl29125_driver.py	ISL29125_Reader._init_isl	changed	44	53	fatal+2 log+2	_int_held,_int_rearmed,_irq_fired			
+asy_isl29125_driver.py	ISL29125_Reader._measure_gain_ratio	changed	30	27	if-1 time-2				
+asy_isl29125_driver.py	ISL29125_Reader._measured_ratio	changed	4	7	if+1				
+asy_isl29125_driver.py	ISL29125_Reader._note_candidate	changed	8	8					
+asy_isl29125_driver.py	ISL29125_Reader._note_decision_source	changed	9	15	if+2	_int_rearmed			
+asy_isl29125_driver.py	ISL29125_Reader._on_irq	changed	3	3					
+asy_isl29125_driver.py	ISL29125_Reader._push_autorange_dwell	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_autorange_thresh	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_calibrate	changed	5	5					
+asy_isl29125_driver.py	ISL29125_Reader._push_filter_coefficient	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_gain_ratio	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_ir_comp_adjust	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_ir_comp_offset	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_range	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_range_auto	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_resolution	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_trigger_s	new	0	2					
+asy_isl29125_driver.py	ISL29125_Reader._push_trigger_secs	removed	2	0					
+asy_isl29125_driver.py	ISL29125_Reader._read_isl	changed	46	58	if+5 time-2 fatal+2 log+2	_unsettled_cycle			
+asy_isl29125_driver.py	ISL29125_Reader._read_loop	new	0	10	if+2 while+1 wait+1				
+asy_isl29125_driver.py	ISL29125_Reader._read_on	changed	15	16	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._read_sensor_dict	changed	22	20	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._reapply_configuration	new	0	11	try+1 if+1 fatal+1 log+1		Exception		
+asy_isl29125_driver.py	ISL29125_Reader._reapply_persist	changed	7	8	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._rearm_interrupt	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_isl29125_driver.py	ISL29125_Reader._recover_brownout	changed	13	3	try-1 if-2				
+asy_isl29125_driver.py	ISL29125_Reader._recover_device	new	0	2					
+asy_isl29125_driver.py	ISL29125_Reader._set_int_armed	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_isl29125_driver.py	ISL29125_Reader._settle_wait	changed	7	7					
+asy_isl29125_driver.py	ISL29125_Reader._snapshot_field	changed	9	10	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._store_isl	changed	37	34	if-1				
+asy_isl29125_driver.py	ISL29125_Reader._switch_range	changed	17	13	try-1 fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader._verify_after_failed_write	removed	10	0	try-1 if-1				
+asy_isl29125_driver.py	ISL29125_Reader._verify_config	new	0	10	try+1 fatal+1 log+1		Exception		
+asy_isl29125_driver.py	ISL29125_Reader._write_thresholds	new	0	8	if+2				
+asy_isl29125_driver.py	ISL29125_Reader._write_thresholds_locked	new	0	11	try+1 if+1 fatal+1 log+1		Exception		
+asy_isl29125_driver.py	ISL29125_Reader.get_dict_cfg	changed	7	7					
+asy_isl29125_driver.py	ISL29125_Reader.get_dict_data	changed	14	15					
+asy_isl29125_driver.py	ISL29125_Reader.get_ir_comp_adjust	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader.get_ir_comp_offset	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader.get_range	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader.get_resolution	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader.get_task_starters	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader.get_timer_starters	changed	2	2					
+asy_isl29125_driver.py	ISL29125_Reader.get_trigger_starters	new	0	2					
+asy_isl29125_driver.py	ISL29125_Reader.read_loop	removed	10	0	if-2 while-1 wait-1				
+asy_isl29125_driver.py	ISL29125_Reader.set_autorange_dwell	changed	6	6					
+asy_isl29125_driver.py	ISL29125_Reader.set_autorange_thresh	changed	6	5					
+asy_isl29125_driver.py	ISL29125_Reader.set_filter_coefficient	changed	2	6	if+1				
+asy_isl29125_driver.py	ISL29125_Reader.set_gain_ratio	changed	6	6					
+asy_isl29125_driver.py	ISL29125_Reader.set_ir_comp_adjust	changed	7	8	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader.set_ir_comp_offset	changed	7	8	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader.set_range	changed	12	13	fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader.set_range_auto	changed	14	16	fatal+1 log+1	_int_held			
+asy_isl29125_driver.py	ISL29125_Reader.set_resolution	changed	11	12	if-1 fatal+1 log+1				
+asy_isl29125_driver.py	ISL29125_Reader.set_trigger_s	new	0	6	if+1				
+asy_isl29125_driver.py	ISL29125_Reader.set_trigger_secs	removed	6	0	if-1				
+asy_isl29125_driver.py	ISL29125_Reader.start_asy_read	changed	3	3					
+asy_isl29125_driver.py	ISL29125_Reader.start_asy_trigger	changed	3	3					
+asy_isl29125_driver.py	ISL29125_Reader.start_timer	changed	13	13					
+asy_isl29125_driver.py	ISL29125_Reader.stop_timer	changed	2	2					
+asy_neopixel_driver.py	<module-consts>	consts	2	7	+6 -1				
+asy_neopixel_driver.py	NeopixelDriver.__init__	changed	24	13		_overlay_on			1000
+asy_neopixel_driver.py	NeopixelDriver._led_ext_signal_starter	removed	11	0	while-2 wait-2				
+asy_neopixel_driver.py	NeopixelDriver._led_overl_signal	removed	8	0	while-1 wait-1				
+asy_neopixel_driver.py	NeopixelDriver._overlay_loop	new	0	12	try+1 while+1 wait+2		TimeoutError		
+asy_neopixel_driver.py	NeopixelDriver._signal_loop	new	0	28	try+1 while+1 wait+3				
+asy_neopixel_driver.py	NeopixelDriver.get_error_sources	changed	2	2					
+asy_neopixel_driver.py	NeopixelDriver.get_loggers	changed	2	2					
+asy_neopixel_driver.py	NeopixelDriver.get_task_starters	changed	2	2					
+asy_neopixel_driver.py	NeopixelDriver.get_timer_starters	changed	2	2					
+asy_neopixel_driver.py	NeopixelDriver.led_signal	changed	7	8					
+asy_neopixel_driver.py	NeopixelDriver.neopixel_signal	removed	32	0	try-1 if-1 while-1 wait-3				
+asy_neopixel_driver.py	NeopixelDriver.off	changed	3	3		_overlay_on			
+asy_neopixel_driver.py	NeopixelDriver.on	changed	3	3		_overlay_on			
+asy_neopixel_driver.py	NeopixelDriver.request_signal	changed	9	11	if+1 time+4				
+asy_neopixel_driver.py	NeopixelDriver.reset_error_counter	changed	2	2					
+asy_neopixel_driver.py	NeopixelDriver.setup	new	0	3					
+asy_neopixel_driver.py	NeopixelDriver.start_asy_ext_cmd_watcher	removed	3	0	task-1				
+asy_neopixel_driver.py	NeopixelDriver.start_asy_neopixel_led_overl	removed	3	0	task-1				
+asy_neopixel_driver.py	NeopixelDriver.start_asy_neopixel_signal	removed	3	0	task-1				
+asy_neopixel_driver.py	NeopixelDriver.start_asy_overlay	new	0	3	task+1				
+asy_neopixel_driver.py	NeopixelDriver.start_asy_signal	new	0	3	task+1				
+asy_neopixel_driver.py	NeopixelDriver.toggle	changed	3	3					
+asy_neopixel_driver.py	_clamp_byte	changed	5	2	try-1				
+asy_neopixel_driver.py	_signal_values	new	0	8	if+2				
+asy_notification_service.py	<module-consts>	consts	11	27	+18 -2				
+asy_notification_service.py	NotificationCoordinator.__init__	removed	20	0					
+asy_notification_service.py	NotificationCoordinator._check_one	removed	22	0	try-1 if-2				
+asy_notification_service.py	NotificationCoordinator._combined_schema	removed	5	0					
+asy_notification_service.py	NotificationCoordinator._flush_pending_registration_warnings	removed	4	0	while-1				
+asy_notification_service.py	NotificationCoordinator._next_sleep_secs	removed	3	0	time-2				
+asy_notification_service.py	NotificationCoordinator._now	removed	5	0	try-1 time-2				
+asy_notification_service.py	NotificationCoordinator._reject_registration	removed	2	0					
+asy_notification_service.py	NotificationCoordinator._safe_local_time	removed	6	0	try-1				
+asy_notification_service.py	NotificationCoordinator._store_notif_data	removed	2	0					
+asy_notification_service.py	NotificationCoordinator._trigger_signal	removed	6	0	try-1				
+asy_notification_service.py	NotificationCoordinator.auto_led_override	removed	14	0	if-4 while-1 wait-1				
+asy_notification_service.py	NotificationCoordinator.finalize	removed	15	0	if-1				
+asy_notification_service.py	NotificationCoordinator.get_data	removed	4	0	if-1				
+asy_notification_service.py	NotificationCoordinator.get_dict_cfg	removed	4	0	if-1				
+asy_notification_service.py	NotificationCoordinator.get_dict_data	removed	3	0					
+asy_notification_service.py	NotificationCoordinator.get_error_counter	removed	4	0	if-1 log-1				
+asy_notification_service.py	NotificationCoordinator.get_override_led	removed	3	0					
+asy_notification_service.py	NotificationCoordinator.get_task_starters	removed	2	0					
+asy_notification_service.py	NotificationCoordinator.get_timer_starters	removed	2	0					
+asy_notification_service.py	NotificationCoordinator.monitor_loop	removed	42	0	if-6 while-1 time-1 wait-2				
+asy_notification_service.py	NotificationCoordinator.register	removed	14	0	if-3				
+asy_notification_service.py	NotificationCoordinator.reset_error_counter	removed	4	0	if-1				
+asy_notification_service.py	NotificationCoordinator.set_override_led	removed	2	0					
+asy_notification_service.py	NotificationCoordinator.setup	removed	4	0	if-1				
+asy_notification_service.py	NotificationCoordinator.start_asy_auto_override	removed	3	0	task-1				
+asy_notification_service.py	NotificationCoordinator.start_asy_notify_monitor	removed	3	0	task-1				
+asy_notification_service.py	NotificationService.__init__	new	0	36	if+1	_auto_active			
+asy_notification_service.py	NotificationService._check_one	new	0	28	try+1 isinstance+2 if+5 fatal+1 log+1		Exception		
+asy_notification_service.py	NotificationService._monitor_loop	new	0	47	if+7 while+1 time+1 wait+2				2000
+asy_notification_service.py	NotificationService._next_sleep_ms	new	0	2	time+2				1000
+asy_notification_service.py	NotificationService._pause_loop	new	0	12	if+3 while+1 wait+1	_auto_active			
+asy_notification_service.py	NotificationService._safe_local_time	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_notification_service.py	NotificationService._store_notif_data	new	0	2					
+asy_notification_service.py	NotificationService._trigger_signal	new	0	10	try+1 if+1 fatal+1 log+1		Exception		
+asy_notification_service.py	NotificationService.get_data	new	0	2					
+asy_notification_service.py	NotificationService.get_dict_cfg	new	0	2					
+asy_notification_service.py	NotificationService.get_dict_data	new	0	3					
+asy_notification_service.py	NotificationService.get_error_counter	new	0	2	log+1				
+asy_notification_service.py	NotificationService.get_override_led	new	0	2					
+asy_notification_service.py	NotificationService.get_task_starters	new	0	2					
+asy_notification_service.py	NotificationService.get_timer_starters	new	0	2					
+asy_notification_service.py	NotificationService.set_override_led	new	0	3					
+asy_notification_service.py	NotificationService.setup	new	0	6	while+1				
+asy_notification_service.py	NotificationService.start_asy_monitor	new	0	3	task+1				
+asy_notification_service.py	NotificationService.start_asy_pause	new	0	3	task+1				
+asy_notification_service.py	NotificationSignal.__init__	changed	18	14					
+asy_notification_service.py	_DefaultSignalSink.request_signal	changed	2	2					
+asy_notification_service.py	_in_window	new	0	4	if+1				
+asy_notification_service.py	_refusal	new	0	7	if+2				
+asy_ntp_client.py	<module-consts>	consts	22	43	+28 -7				
+asy_ntp_client.py	AsyNtpClient.__init__	removed	45	0	task-3				
+asy_ntp_client.py	AsyNtpClient._episode_log	removed	8	0	if-1				
+asy_ntp_client.py	AsyNtpClient._fetch_ntp_reply	removed	15	0	try-1 if-1 log-2				
+asy_ntp_client.py	AsyNtpClient._get_ntp_config	removed	6	0	if-1				
+asy_ntp_client.py	AsyNtpClient._handle_ntp_sync_failure	removed	21	0	try-1 if-2 task-1				
+asy_ntp_client.py	AsyNtpClient._handle_ntp_sync_success	removed	7	0					
+asy_ntp_client.py	AsyNtpClient._increment_last_sync_age	removed	6	0					
+asy_ntp_client.py	AsyNtpClient._now	removed	5	0	try-1 time-2				
+asy_ntp_client.py	AsyNtpClient._parse_ntp_reply	removed	22	0	try-1 if-3 time-1 log-3				
+asy_ntp_client.py	AsyNtpClient._reset_backoff	removed	3	0					
+asy_ntp_client.py	AsyNtpClient._resolve_ntp_server	removed	7	0	if-1 log-1				
+asy_ntp_client.py	AsyNtpClient._run_ntp_sync_attempt	removed	29	0	try-1 if-5 log-1				
+asy_ntp_client.py	AsyNtpClient._safe_get_dns_server	removed	6	0	try-1				
+asy_ntp_client.py	AsyNtpClient._set_last_sync_age	removed	3	0					
+asy_ntp_client.py	AsyNtpClient._set_synced	removed	3	0					
+asy_ntp_client.py	AsyNtpClient.asy_ntp_time	removed	17	0	try-2 if-1 while-1 wait-1				
+asy_ntp_client.py	AsyNtpClient.cettime	removed	29	0	try-1 if-5 time-7				
+asy_ntp_client.py	AsyNtpClient.get_data	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.get_dict_cfg	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.get_dict_data	removed	3	0					
+asy_ntp_client.py	AsyNtpClient.get_error_counter	removed	2	0	log-1				
+asy_ntp_client.py	AsyNtpClient.get_last_ntp_sync	removed	3	0					
+asy_ntp_client.py	AsyNtpClient.get_task_starters	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.get_timer_starters	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.ntp_force_sync	removed	7	0					
+asy_ntp_client.py	AsyNtpClient.ntp_issynced	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.ntp_time_hours_counter	removed	27	0	if-5 while-1 wait-1				
+asy_ntp_client.py	AsyNtpClient.start_asy_ntp_client	removed	3	0	task-1				
+asy_ntp_client.py	AsyNtpClient.start_asy_ntp_refresh	removed	3	0	task-1				
+asy_ntp_client.py	AsyNtpClient.start_asy_sync_age_counter	removed	3	0	task-1				
+asy_ntp_client.py	AsyNtpClient.start_counter_timer	removed	9	0	try-1 task-1				
+asy_ntp_client.py	AsyNtpClient.start_ntp_timer	removed	9	0	try-1 task-1				
+asy_ntp_client.py	AsyNtpClient.stop_counter_timer	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.stop_ntp_timer	removed	2	0					
+asy_ntp_client.py	AsyNtpClient.time_counter	removed	8	0	if-1 while-1 wait-1				
+asy_ntp_client.py	NTPClient.__init__	new	0	41	task+3	_clock_valid			
+asy_ntp_client.py	NTPClient._arm_check_timer	new	0	11	try+1 task+1		MemoryError,OSError		1000
+asy_ntp_client.py	NTPClient._fetch_ntp_reply	new	0	13	try+1 if+3				
+asy_ntp_client.py	NTPClient._get_ntp_config	new	0	13	if+3				
+asy_ntp_client.py	NTPClient._handle_ntp_sync_failure	new	0	21	try+1 if+2 task+1		MemoryError,OSError		1000
+asy_ntp_client.py	NTPClient._handle_ntp_sync_success	new	0	9		_clock_valid			
+asy_ntp_client.py	NTPClient._parse_ntp_reply	new	0	31	try+1 if+5 time+1		MemoryError,OSError		
+asy_ntp_client.py	NTPClient._rearm_failed_timers	new	0	12	if+4				
+asy_ntp_client.py	NTPClient._refresh_loop	new	0	33	if+5 while+1 wait+1				3600
+asy_ntp_client.py	NTPClient._reset_backoff	new	0	3					
+asy_ntp_client.py	NTPClient._resolve_ntp_server	new	0	12	if+3				
+asy_ntp_client.py	NTPClient._run_ntp_sync_attempt	new	0	30	try+1 if+5 fatal+1 log+1		Exception		
+asy_ntp_client.py	NTPClient._safe_get_dns_server	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_ntp_client.py	NTPClient._set_last_sync_age	new	0	3					
+asy_ntp_client.py	NTPClient._set_mgr_cfg	new	0	12	if+2				
+asy_ntp_client.py	NTPClient._set_synced	new	0	3					
+asy_ntp_client.py	NTPClient._sync_age_loop	new	0	8	if+1 while+1 wait+1				
+asy_ntp_client.py	NTPClient._sync_loop	new	0	14	if+3 while+1 wait+1				
+asy_ntp_client.py	NTPClient.cettime	new	0	25	if+5 time+7				
+asy_ntp_client.py	NTPClient.get_data	new	0	2					
+asy_ntp_client.py	NTPClient.get_dict_cfg	new	0	2					
+asy_ntp_client.py	NTPClient.get_dict_data	new	0	3					
+asy_ntp_client.py	NTPClient.get_error_counter	new	0	2	log+1				
+asy_ntp_client.py	NTPClient.get_last_ntp_sync	new	0	3					
+asy_ntp_client.py	NTPClient.get_task_starters	new	0	2					
+asy_ntp_client.py	NTPClient.get_timer_starters	new	0	2					
+asy_ntp_client.py	NTPClient.ntp_clock_valid	new	0	2					
+asy_ntp_client.py	NTPClient.ntp_force_sync	new	0	9		_clock_valid			
+asy_ntp_client.py	NTPClient.ntp_issynced	new	0	2					
+asy_ntp_client.py	NTPClient.start_asy_refresh	new	0	3	task+1				
+asy_ntp_client.py	NTPClient.start_asy_sync	new	0	3	task+1				
+asy_ntp_client.py	NTPClient.start_asy_sync_age	new	0	3	task+1				
+asy_ntp_client.py	NTPClient.start_check_timer	new	0	2					
+asy_ntp_client.py	NTPClient.start_sync_age_timer	new	0	2					
+asy_ntp_client.py	NTPClient.stop_check_timer	new	0	2					
+asy_ntp_client.py	NTPClient.stop_sync_age_timer	new	0	2					
+asy_ntp_client.py	_dns_fallback_ok	new	0	7	if+2				
+asy_ntp_client.py	_nearest_tick_s	new	0	2					
+asy_ntp_client.py	_ntp_host_ok	new	0	4	if+1				
+asy_print_log.py	<module-consts>	consts	11	16	+5 -0				
+asy_print_log.py	PrintLog.__init__	changed	4	5	if+1				
+asy_print_log.py	PrintLog._line	new	0	8	isinstance+1 if+2 log+1				
+asy_print_log.py	PrintLog.all	changed	3	2	if-1 log-1				
+asy_print_log.py	PrintLog.err	changed	3	2	if-1 log-1				
+asy_print_log.py	PrintLog.evt	changed	3	2	if-1 log-1				
+asy_print_log.py	PrintLog.get_level	removed	2	0					
+asy_print_log.py	PrintLog.level_err	removed	2	0					
+asy_print_log.py	PrintLog.level_event	removed	2	0					
+asy_print_log.py	PrintLog.level_info	removed	2	0					
+asy_print_log.py	PrintLog.level_off	removed	2	0					
+asy_print_log.py	PrintLog.level_once	removed	2	0					
+asy_print_log.py	PrintLog.level_warn	removed	2	0					
+asy_print_log.py	PrintLog.one	changed	3	2	if-1 log-1				
+asy_print_log.py	PrintLog.report_unretrieved	new	0	11	try+2 if+1 log+2		Exception		
+asy_print_log.py	PrintLog.set_level	changed	7	6	if-1				
+asy_print_log.py	PrintLog.wrn	changed	3	2	if-1 log-1				
+asy_print_log.py	PrintLogHistory.__init__	changed	10	19		_write_failing,restored			
+asy_print_log.py	PrintLogHistory._clear	new	0	6					
+asy_print_log.py	PrintLogHistory._count	new	0	6	if+1				
+asy_print_log.py	PrintLogHistory._keep	new	0	9	if+2				
+asy_print_log.py	PrintLogHistory._read	changed	2	2					
+asy_print_log.py	PrintLogHistory._since_counted	new	0	2					
+asy_print_log.py	PrintLogHistory._since_kept	new	0	3					
+asy_print_log.py	PrintLogHistory._store_err	changed	18	13	if-3				
+asy_print_log.py	PrintLogHistory._write_through	new	0	9	if+2	_write_failing			
+asy_print_log.py	PrintLogHistory.err_s	changed	4	3	if-1 log-1				
+asy_print_log.py	PrintLogHistory.get_log	changed	16	16					
+asy_print_log.py	PrintLogHistory.reset	changed	7	5	if-1	_write_failing			
+asy_print_log.py	PrintLogHistory.setup	changed	2	3					
+asy_print_log.py	PrintLogHistory.wrn_s	changed	4	3	if-1 log-1				
+asy_print_log.py	PrintLogHistoryStore.__init__	changed	10	17		_heap_failed	MemoryError		
+asy_print_log.py	PrintLogHistoryStore._pack_reset	new	0	5					
+asy_print_log.py	PrintLogHistoryStore._read	changed	14	19	if+2		MemoryError		
+asy_print_log.py	PrintLogHistoryStore._write	changed	11	25	if+4		MemoryError		
+asy_print_log.py	PrintLogHistoryStore.reset	new	0	32	try+1 if+5	_write_failing,initialized			
+asy_print_log.py	PrintLogHistoryStore.setup	changed	7	37	isinstance+1 if+7	restored			
+asy_print_log.py	console	new	0	5	if+1 log+2				
+asy_print_log.py	fatal_reported	new	0	2					
+asy_print_log.py	make_logger	changed	13	8					
+asy_print_log.py	report_if_fatal	new	0	4	isinstance+1 if+1				
+asy_scd30_driver.py	<module-consts>	consts	30	62	+40 -8				
+asy_scd30_driver.py	SCD30_DeviceSession.__init__	removed	3	0					
+asy_scd30_driver.py	SCD30_I2C.__init__	changed	7	9					
+asy_scd30_driver.py	SCD30_I2C._read_dev_register	changed	9	12	raise+2 if+2			I2C bus not initialized	
+asy_scd30_driver.py	SCD30_I2C._read_register	changed	3	3					
+asy_scd30_driver.py	SCD30_I2C._send_command	changed	3	3					
+asy_scd30_driver.py	SCD30_I2C._send_dev_command	changed	12	13	raise+1 if+1			CRC generation failed | I2C bus not initialized	
+asy_scd30_driver.py	SCD30_I2C.get_config_snapshot	changed	9	9					
+asy_scd30_driver.py	SCD30_I2C.read_measurement	changed	28	39	raise+2 if+2			I2C bus not initialized	100
+asy_scd30_driver.py	SCD30_I2C.reset	changed	3	3					
+asy_scd30_driver.py	SCD30_I2C.set_self_calibration_enabled	changed	4	4					
+asy_scd30_driver.py	SCD30_I2C.set_temperature_offset	changed	6	8					
+asy_scd30_driver.py	SCD30_I2C.setup	changed	5	7					
+asy_scd30_driver.py	SCD30_Reader.__init__	changed	27	44		_frc_cfg_ok,_frc_measuring			
+asy_scd30_driver.py	SCD30_Reader._capture_frc_config	new	0	9	if+2				
+asy_scd30_driver.py	SCD30_Reader._config_snapshot	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_scd30_driver.py	SCD30_Reader._frc_add	new	0	11	if+2				
+asy_scd30_driver.py	SCD30_Reader._frc_clear_window	new	0	5					
+asy_scd30_driver.py	SCD30_Reader._frc_close	new	0	15	if+2				
+asy_scd30_driver.py	SCD30_Reader._frc_not_measuring	new	0	3		_frc_measuring			
+asy_scd30_driver.py	SCD30_Reader._frc_reset	new	0	3					
+asy_scd30_driver.py	SCD30_Reader._frc_restart	new	0	4					
+asy_scd30_driver.py	SCD30_Reader._frc_step	new	0	22	if+6	_frc_measuring			
+asy_scd30_driver.py	SCD30_Reader._get_mgr_cfg	new	0	14	if+4				
+asy_scd30_driver.py	SCD30_Reader._init_scd	changed	10	16	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader._irq_loop	new	0	17	if+5 while+1 wait+1				
+asy_scd30_driver.py	SCD30_Reader._read_loop	new	0	11	if+2 while+1 wait+1				
+asy_scd30_driver.py	SCD30_Reader._read_scd	changed	13	26	if+3 time-2 fatal+1 log+1		ValueError		
+asy_scd30_driver.py	SCD30_Reader._read_sensor_dict	removed	10	0					
+asy_scd30_driver.py	SCD30_Reader._recover_device	new	0	10	try+1 fatal+1 log+1		Exception		
+asy_scd30_driver.py	SCD30_Reader._set_dict_cfg	removed	32	0	isinstance-1 if-4				
+asy_scd30_driver.py	SCD30_Reader._set_mgr_cfg	new	0	56	if+13	_frc_measuring			
+asy_scd30_driver.py	SCD30_Reader._store_scd	changed	14	16	if+2				
+asy_scd30_driver.py	SCD30_Reader.get_altitude	changed	6	7	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.get_ambient_pressure	changed	6	7	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.get_cfg_schema	changed	2	2					
+asy_scd30_driver.py	SCD30_Reader.get_dict_cfg	changed	6	2					
+asy_scd30_driver.py	SCD30_Reader.get_forced_recalibration_reference	changed	6	7	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.get_measurement_interval	changed	6	7	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.get_self_calibration_enabled	changed	6	7	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.get_task_starters	changed	2	2					
+asy_scd30_driver.py	SCD30_Reader.get_temperature_offset	changed	6	7	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.get_timer_starters	changed	2	2					
+asy_scd30_driver.py	SCD30_Reader.read_loop	removed	11	0	if-2 while-1 wait-1				
+asy_scd30_driver.py	SCD30_Reader.scd_init_irq	removed	8	0	if-2 while-1 wait-1				
+asy_scd30_driver.py	SCD30_Reader.set_altitude	changed	8	9	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.set_ambient_pressure	changed	8	9	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.set_forced_recalibration_reference	changed	8	9	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.set_measurement_interval	changed	8	9	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.set_self_calibration_enabled	changed	8	9	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.set_temperature_offset	changed	8	9	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.start_asy_init	removed	3	0	task-1				
+asy_scd30_driver.py	SCD30_Reader.start_asy_irq	new	0	3	task+1				
+asy_scd30_driver.py	SCD30_Reader.start_asy_read	changed	3	3					
+asy_scd30_driver.py	SCD30_Reader.start_timer	changed	13	13					
+asy_scd30_driver.py	SCD30_Reader.stop_continuous_measurement	changed	10	11	fatal+1 log+1				
+asy_scd30_driver.py	SCD30_Reader.stop_timer	changed	2	2					
+asy_scd30_driver.py	_snapshot_dict	new	0	9					
+asy_scd30_driver.py	_temp_offset_ticks	new	0	2					100
+asy_sgp40_driver.py	<module-consts>	consts	12	37	+32 -7				
+asy_sgp40_driver.py	SGP40_DeviceSession.__init__	removed	3	0					
+asy_sgp40_driver.py	SGP40_I2C.__init__	changed	8	9					
+asy_sgp40_driver.py	SGP40_I2C._celsius_to_ticks	changed	4	5					
+asy_sgp40_driver.py	SGP40_I2C._exchange	new	0	12	raise+3 if+3 wait+1			CRC check failed while reading data | I2C bus not initialized	
+asy_sgp40_driver.py	SGP40_I2C._measure_in_session	new	0	6	try+1				
+asy_sgp40_driver.py	SGP40_I2C._read_word	new	0	3					
+asy_sgp40_driver.py	SGP40_I2C._read_word_from_command	removed	21	0	raise-1 if-2 wait-1				
+asy_sgp40_driver.py	SGP40_I2C._read_words	new	0	3					
+asy_sgp40_driver.py	SGP40_I2C._relative_humidity_to_ticks	changed	4	5					
+asy_sgp40_driver.py	SGP40_I2C._reset	changed	7	10	raise+1 if+1			I2C bus not initialized	
+asy_sgp40_driver.py	SGP40_I2C.get_raw	changed	8	3	if-1				
+asy_sgp40_driver.py	SGP40_I2C.initialize	changed	18	14	raise-2 if-2			self test failed | serial number does not match	
+asy_sgp40_driver.py	SGP40_I2C.measure_index_and_raw	changed	23	20	if-1				
+asy_sgp40_driver.py	SGP40_I2C.measure_raw	changed	11	12					
+asy_sgp40_driver.py	SGP40_I2C.setup	changed	4	5					
+asy_sgp40_driver.py	SGP40_I2C.turn_heater_off	new	0	5	raise+1 if+1 wait+1			I2C bus not initialized	
+asy_sgp40_driver.py	SGP40_Reader.__init__	changed	53	54		_reset_pending,_restore_waiting,_voc_restored	MemoryError		
+asy_sgp40_driver.py	SGP40_Reader._check_storage	changed	27	34	if+3				
+asy_sgp40_driver.py	SGP40_Reader._compensation	new	0	9	try+1 fatal+1 log+1		Exception		
+asy_sgp40_driver.py	SGP40_Reader._init_sgp	changed	28	34	fatal+1 log+1	_restore_waiting			
+asy_sgp40_driver.py	SGP40_Reader._push_reset_voc	changed	5	3	isinstance-1 if-1				
+asy_sgp40_driver.py	SGP40_Reader._read_loop	new	0	15	if+3 while+1 wait+1				
+asy_sgp40_driver.py	SGP40_Reader._read_sgp	changed	72	74	try-1 raise+2 if+3 time-2 fatal+1 log+1	_reset_pending		raw signal not measured	
+asy_sgp40_driver.py	SGP40_Reader._recover_device	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_sgp40_driver.py	SGP40_Reader._run_backup	changed	39	39					
+asy_sgp40_driver.py	SGP40_Reader._run_restore	changed	30	48	try+1 if+3 fatal+1 log+1	_restore_waiting	Exception		
+asy_sgp40_driver.py	SGP40_Reader._store_sgp	changed	5	5					
+asy_sgp40_driver.py	SGP40_Reader._voc_state	new	0	11	if+4				
+asy_sgp40_driver.py	SGP40_Reader.get_dict_cfg	changed	2	2					
+asy_sgp40_driver.py	SGP40_Reader.get_mem_status	changed	2	2					
+asy_sgp40_driver.py	SGP40_Reader.get_task_starters	changed	2	2					
+asy_sgp40_driver.py	SGP40_Reader.get_timer_starters	changed	2	2					
+asy_sgp40_driver.py	SGP40_Reader.get_trigger_starters	new	0	2					
+asy_sgp40_driver.py	SGP40_Reader.read_loop	removed	13	0	if-2 while-1 wait-1				
+asy_sgp40_driver.py	SGP40_Reader.reset_voc	changed	7	7		_reset_pending			
+asy_sgp40_driver.py	SGP40_Reader.start_asy_read	changed	3	3					
+asy_sgp40_driver.py	SGP40_Reader.start_timer	changed	9	9					
+asy_sgp40_driver.py	SGP40_Reader.stop_timer	changed	2	2					
+asy_sgp40_driver.py	_DefaultHumiditySource.get_data	changed	2	2					
+asy_sgp40_driver.py	_DefaultTemperatureSource.get_data	changed	2	2					
+asy_sgp40_driver.py	_current_value	new	0	5	isinstance+1 if+1				
+asy_sgp40_driver.py	_verify_every	new	0	2					
+asy_spi_driver.py	<module-consts>	consts	1	1	+0 -0				
+asy_spi_driver.py	SPI.__init__	changed	4	4					
+asy_spi_driver.py	SPI.available	new	0	2					
+asy_spi_driver.py	SPI.configure	changed	13	14	raise-1			acquire the bus lock first	
+asy_spi_driver.py	SPI.deinit	changed	4	5					
+asy_spi_driver.py	SPI.readinto	changed	5	5					
+asy_spi_driver.py	SPI.write	changed	5	5					
+asy_spi_driver.py	SPI.write_readinto	changed	12	12					
+asy_spi_driver.py	SPIDevice.__aenter__	changed	10	10					
+asy_spi_driver.py	SPIDevice.__init__	changed	22	22					
+asy_spi_driver.py	SPIDevice.readinto	changed	2	2					
+asy_spi_driver.py	SPIDevice.readinto_sync	changed	2	2					
+asy_spi_driver.py	SPIDevice.session_begin	changed	16	18	if+1				
+asy_spi_driver.py	SPIDevice.session_end	changed	3	3					
+asy_spi_driver.py	SPIDevice.setup	changed	4	4					
+asy_spi_driver.py	SPIDevice.write	changed	2	2					
+asy_spi_driver.py	SPIDevice.write_readinto	changed	6	6					
+asy_spi_driver.py	SPIDevice.write_readinto_sync	changed	6	6					
+asy_spi_driver.py	SPIDevice.write_sync	changed	2	2					
+asy_system_service.py	<module-consts>	consts	9	48	+41 -2				
+asy_system_service.py	SystemService.__init__	changed	30	52	if-1 task-1	_feed_owned,_reset_armed,_reset_decided,_start_time_set,_tick_failed			
+asy_system_service.py	SystemService._apply_level	changed	6	7	fatal+1 log+1				
+asy_system_service.py	SystemService._charge_task_budget	new	0	2					
+asy_system_service.py	SystemService._flush_config_stores	new	0	20	try+1 if+3 fatal+1 log+1		Exception		
+asy_system_service.py	SystemService._log_dead_task	changed	7	13	fatal+1 log+1				
+asy_system_service.py	SystemService._ntp_boot_signature	changed	13	10	try-1 time-2 fatal+1 log+1				
+asy_system_service.py	SystemService._own_feed	new	0	3	if+1				
+asy_system_service.py	SystemService._reboot	changed	12	23	if+3 task+1	_reset_armed			
+asy_system_service.py	SystemService._request_shutdown	new	0	35	try+2 raise+1 if+6 task+1	_feed_owned,_reset_decided	BaseException,MemoryError		
+asy_system_service.py	SystemService._reset_when_due	new	0	8	try+1 wait+1 fatal+1 log+1		Exception		
+asy_system_service.py	SystemService._run_timer_starter	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_system_service.py	SystemService._set_dict_cfg	changed	12	11					
+asy_system_service.py	SystemService._shutdown_sequence	new	0	55	try+3 if+12 wait+1 fatal+2 log+2		CancelledError,Exception		
+asy_system_service.py	SystemService._start_task	changed	6	7	fatal+1 log+1				
+asy_system_service.py	SystemService._status_loop	new	0	29	if+7 while+1 time+2 wait+2	_start_time_set			1000
+asy_system_service.py	SystemService._supervise	new	0	56	try+2 if+9 while+1 wait+3 fatal+1 log+2	_force_watchdog_starve,_reset_decided	Exception,MemoryError,TimeoutError		
+asy_system_service.py	SystemService._timer_sequencer	removed	22	0	try-2 if-1 task-1				
+asy_system_service.py	SystemService.boot_phase	new	0	2					
+asy_system_service.py	SystemService.erase_fram	new	0	2					
+asy_system_service.py	SystemService.feed_watchdog	changed	3	3					
+asy_system_service.py	SystemService.get_boot_signature	changed	2	2					
+asy_system_service.py	SystemService.get_cfg_schema	changed	2	2					
+asy_system_service.py	SystemService.get_config_faults	new	0	2					
+asy_system_service.py	SystemService.get_config_unpersisted	new	0	2					
+asy_system_service.py	SystemService.get_debug_level	removed	2	0					
+asy_system_service.py	SystemService.get_dict_cfg	changed	3	3					
+asy_system_service.py	SystemService.get_error_sources	changed	2	2					
+asy_system_service.py	SystemService.get_last_task_end	new	0	4	if+1				
+asy_system_service.py	SystemService.get_reset_bits	new	0	2					
+asy_system_service.py	SystemService.get_reset_reason	new	0	2					
+asy_system_service.py	SystemService.get_task_starters	changed	2	2					
+asy_system_service.py	SystemService.get_timer_starters	changed	2	2					
+asy_system_service.py	SystemService.get_uptime	changed	3	2					
+asy_system_service.py	SystemService.is_reset_decided	new	0	2					
+asy_system_service.py	SystemService.pause_permanent_storage	changed	20	14	try-1 if+1 time+2 task-1				
+asy_system_service.py	SystemService.reboot_bootloader	changed	2	2					
+asy_system_service.py	SystemService.reboot_system	changed	2	2					
+asy_system_service.py	SystemService.reset_error_counter	changed	2	4	if+1				
+asy_system_service.py	SystemService.reset_to_defaults	new	0	2					
+asy_system_service.py	SystemService.run_setups	new	0	7					
+asy_system_service.py	SystemService.set_debug_level	removed	3	0					
+asy_system_service.py	SystemService.set_level_setters	removed	2	0					
+asy_system_service.py	SystemService.setup	changed	7	14	if+4				
+asy_system_service.py	SystemService.start_and_check_tasks	removed	33	0	if-5 while-1 wait-2 log-1				
+asy_system_service.py	SystemService.start_asy_status	new	0	3	task+1				
+asy_system_service.py	SystemService.start_asy_uptime_counter	removed	3	0	task-1				
+asy_system_service.py	SystemService.start_tasks	new	0	12	if+1 wait+1				1000
+asy_system_service.py	SystemService.start_timers	changed	6	17	try+1 time+4 wait+1 task+1		MemoryError,OSError		
+asy_system_service.py	SystemService.start_uptime_timer	changed	5	4	try-1 if+1 task-1				
+asy_system_service.py	SystemService.status_counter	removed	18	0	if-3 while-1 wait-1				
+asy_system_service.py	SystemService.stop_uptime_timer	removed	2	0					
+asy_system_service.py	SystemService.supervise_tasks	new	0	6	try+1 wait+1 task+1				
+asy_system_service.py	_purpose_name	new	0	8	if+3				
+asy_system_service.py	_write_region	new	0	5					
+asy_system_service.py	begin_boot	new	0	19	if+4				
+asy_system_service.py	record_loop_end	new	0	6	if+1				
+asy_system_service.py	write_reset_record	new	0	2					
+asy_uart_comm.py	<module-consts>	consts	64	65	+39 -38				
+asy_uart_comm.py	UARTComm.__init__	new	0	46	isinstance+2 if+3 time+1 log+1	_busy,_drain_bound_hit,_holdoff_active,_in_resync,initialized			
+asy_uart_comm.py	UARTComm._accept_set	new	0	34	try+1 isinstance+1 if+8		MemoryError		
+asy_uart_comm.py	UARTComm._allocate	new	0	22	try+1 if+2		MemoryError,OverflowError		
+asy_uart_comm.py	UARTComm._answer_get	new	0	19	isinstance+1 if+5				
+asy_uart_comm.py	UARTComm._await_write_gate	new	0	7	if+1 while+1 time+2 wait+1	_holdoff_active			
+asy_uart_comm.py	UARTComm._buffers_ready	new	0	8					
+asy_uart_comm.py	UARTComm._call	new	0	10	try+1 if+1 fatal+1 log+1		Exception		
+asy_uart_comm.py	UARTComm._check_buffer	new	0	5	isinstance+1 if+1				
+asy_uart_comm.py	UARTComm._check_cap	new	0	5	if+1				
+asy_uart_comm.py	UARTComm._check_cmd_id	new	0	5	isinstance+1 if+1				
+asy_uart_comm.py	UARTComm._check_size	new	0	8	isinstance+1 if+3				
+asy_uart_comm.py	UARTComm._chunk_count	new	0	5	if+1				
+asy_uart_comm.py	UARTComm._chunks_for	new	0	2					
+asy_uart_comm.py	UARTComm._dest_size	new	0	7	if+2				
+asy_uart_comm.py	UARTComm._drain	new	0	24	if+4 while+1 time+3	_drain_bound_hit			
+asy_uart_comm.py	UARTComm._err	new	0	2					
+asy_uart_comm.py	UARTComm._fault	new	0	3					
+asy_uart_comm.py	UARTComm._gate	new	0	10	if+3				
+asy_uart_comm.py	UARTComm._get_unlocked	new	0	36	try+1 if+9		MemoryError		
+asy_uart_comm.py	UARTComm._hold_off_writes	new	0	3	time+2	_holdoff_active			
+asy_uart_comm.py	UARTComm._listen_loop	new	0	15	try+1 if+2 while+1 wait+1 fatal+1 log+1		Exception		
+asy_uart_comm.py	UARTComm._listen_unlocked	new	0	22	if+4				
+asy_uart_comm.py	UARTComm._max_timeout	new	0	2					
+asy_uart_comm.py	UARTComm._min_rx_ring	new	0	10	if+1 while+1				
+asy_uart_comm.py	UARTComm._min_rxbuf	new	0	7	if+1				1000
+asy_uart_comm.py	UARTComm._min_timeout	new	0	5	if+1				
+asy_uart_comm.py	UARTComm._note_valid_frame	new	0	4	if+1				
+asy_uart_comm.py	UARTComm._over_cap	new	0	2					
+asy_uart_comm.py	UARTComm._pair	new	0	13	try+1 isinstance+1 if+3		IndexError,TypeError		
+asy_uart_comm.py	UARTComm._peek_discarded	new	0	2					
+asy_uart_comm.py	UARTComm._prepare_tx	new	0	23	if+7				
+asy_uart_comm.py	UARTComm._pull_chunk	new	0	13	isinstance+1 if+3				
+asy_uart_comm.py	UARTComm._read_answer_header	new	0	16	if+3				
+asy_uart_comm.py	UARTComm._read_frame	new	0	15	if+4				
+asy_uart_comm.py	UARTComm._ready	new	0	5	if+1				
+asy_uart_comm.py	UARTComm._recv_train	new	0	52	isinstance+1 if+13 while+1				
+asy_uart_comm.py	UARTComm._reject_wrn	new	0	3					
+asy_uart_comm.py	UARTComm._resync	new	0	23	try+1 if+6	_in_resync			
+asy_uart_comm.py	UARTComm._resync_window_ms	new	0	2					
+asy_uart_comm.py	UARTComm._run_get	new	0	16	try+1 if+3	_busy			
+asy_uart_comm.py	UARTComm._send_ack	new	0	5	if+1				
+asy_uart_comm.py	UARTComm._send_train	new	0	31	isinstance+2 if+7 while+1				
+asy_uart_comm.py	UARTComm._take_discarded	new	0	7	if+1				
+asy_uart_comm.py	UARTComm._validate	new	0	13	if+5				
+asy_uart_comm.py	UARTComm._validate_ack	new	0	6	if+2				
+asy_uart_comm.py	UARTComm._validate_config	new	0	4	if+1				
+asy_uart_comm.py	UARTComm._validate_data	new	0	13	if+4				
+asy_uart_comm.py	UARTComm._validate_link	new	0	16	isinstance+3 if+7				
+asy_uart_comm.py	UARTComm._validate_receive	new	0	10	isinstance+2 if+4				
+asy_uart_comm.py	UARTComm._validate_size_for_position	new	0	14	if+7				
+asy_uart_comm.py	UARTComm._write_frame_with_ack	new	0	28	if+6				
+asy_uart_comm.py	UARTComm.clear	new	0	9	if+3				
+asy_uart_comm.py	UARTComm.get_error_counter	new	0	2	log+1				
+asy_uart_comm.py	UARTComm.get_task_starters	new	0	4	if+1				
+asy_uart_comm.py	UARTComm.get_timer_starters	new	0	2					
+asy_uart_comm.py	UARTComm.reset_error_counter	new	0	3					
+asy_uart_comm.py	UARTComm.setup	new	0	20	if+4	initialized			
+asy_uart_comm.py	UARTComm.start_asy_listen	new	0	3	task+1				
+asy_uart_comm.py	UARTComm.uart_get	new	0	10	if+3				
+asy_uart_comm.py	UARTComm.uart_get_into	new	0	10	if+3				
+asy_uart_comm.py	UARTComm.uart_get_stream	new	0	8	if+2				
+asy_uart_comm.py	UARTComm.uart_listen	new	0	18	try+1 if+3	_busy,_holdoff_active			
+asy_uart_comm.py	UARTComm.uart_set	new	0	2					
+asy_uart_comm.py	UARTComm.uart_set_into	new	0	20	try+1 if+5	_busy			
+asy_uart_comm.py	UARTComm.uart_set_stream	new	0	17	try+1 if+4	_busy			
+asy_uart_comm.py	UART_Comm.__init__	removed	51	0	isinstance-2 if-3 time-1 log-1				
+asy_uart_comm.py	UART_Comm._accept_set	removed	37	0	try-2 isinstance-1 if-8				
+asy_uart_comm.py	UART_Comm._allocate	removed	22	0	try-1 if-2				
+asy_uart_comm.py	UART_Comm._answer_get	removed	19	0	isinstance-1 if-5				
+asy_uart_comm.py	UART_Comm._await_write_gate	removed	7	0	if-1 while-1 time-2 wait-1				
+asy_uart_comm.py	UART_Comm._buffers_ready	removed	9	0					
+asy_uart_comm.py	UART_Comm._call	removed	9	0	try-1 if-1				
+asy_uart_comm.py	UART_Comm._check_buffer	removed	12	0	isinstance-2 if-4				
+asy_uart_comm.py	UART_Comm._check_cmd_id	removed	5	0	isinstance-1 if-1				
+asy_uart_comm.py	UART_Comm._check_size	removed	8	0	isinstance-1 if-3				
+asy_uart_comm.py	UART_Comm._chunk_count	removed	5	0	if-1				
+asy_uart_comm.py	UART_Comm._clear_fault_state	removed	4	0					
+asy_uart_comm.py	UART_Comm._dest_size	removed	7	0	if-2				
+asy_uart_comm.py	UART_Comm._drain	removed	21	0	if-3 while-1 time-3				
+asy_uart_comm.py	UART_Comm._episode_wrn	removed	6	0	if-1				
+asy_uart_comm.py	UART_Comm._err	removed	8	0	if-1				
+asy_uart_comm.py	UART_Comm._fault	removed	3	0					
+asy_uart_comm.py	UART_Comm._fault_cleared	removed	4	0	if-1				
+asy_uart_comm.py	UART_Comm._gate	removed	10	0	if-3				
+asy_uart_comm.py	UART_Comm._get_unlocked	removed	34	0	try-1 if-8				
+asy_uart_comm.py	UART_Comm._hold_off_writes	removed	3	0	time-2				
+asy_uart_comm.py	UART_Comm._listen_loop	removed	14	0	try-1 if-2 while-1 wait-1				
+asy_uart_comm.py	UART_Comm._listen_unlocked	removed	20	0	if-4				
+asy_uart_comm.py	UART_Comm._min_rxbuf	removed	7	0	if-1				
+asy_uart_comm.py	UART_Comm._min_timeout	removed	5	0	if-1				
+asy_uart_comm.py	UART_Comm._note_valid_frame	removed	4	0					
+asy_uart_comm.py	UART_Comm._pair	removed	13	0	try-1 isinstance-1 if-3				
+asy_uart_comm.py	UART_Comm._prepare_tx	removed	23	0	if-7				
+asy_uart_comm.py	UART_Comm._pull_chunk	removed	13	0	isinstance-1 if-3				
+asy_uart_comm.py	UART_Comm._read_answer_header	removed	14	0	if-3				
+asy_uart_comm.py	UART_Comm._read_frame	removed	8	0	if-1				
+asy_uart_comm.py	UART_Comm._ready	removed	5	0	if-1				
+asy_uart_comm.py	UART_Comm._recv_train	removed	44	0	if-11 while-1				
+asy_uart_comm.py	UART_Comm._reject_wrn	removed	10	0	if-1				
+asy_uart_comm.py	UART_Comm._resync	removed	22	0	try-1 if-5				
+asy_uart_comm.py	UART_Comm._resync_window_ms	removed	2	0					
+asy_uart_comm.py	UART_Comm._run_get	removed	16	0	try-1 if-3				
+asy_uart_comm.py	UART_Comm._send_ack	removed	5	0	if-1				
+asy_uart_comm.py	UART_Comm._send_train	removed	25	0	if-5 while-1				
+asy_uart_comm.py	UART_Comm._validate	removed	13	0	if-5				
+asy_uart_comm.py	UART_Comm._validate_ack	removed	6	0	if-2				
+asy_uart_comm.py	UART_Comm._validate_config	removed	18	0	isinstance-2 if-8				
+asy_uart_comm.py	UART_Comm._validate_data	removed	13	0	if-4				
+asy_uart_comm.py	UART_Comm._validate_size_for_position	removed	12	0	if-6				
+asy_uart_comm.py	UART_Comm._write_frame_with_ack	removed	26	0	if-6				
+asy_uart_comm.py	UART_Comm.clear	removed	9	0	if-3				
+asy_uart_comm.py	UART_Comm.get_error_counter	removed	2	0	log-1				
+asy_uart_comm.py	UART_Comm.get_task_starters	removed	4	0	if-1 task-1				
+asy_uart_comm.py	UART_Comm.get_timer_starters	removed	2	0					
+asy_uart_comm.py	UART_Comm.reset_error_counter	removed	7	0					
+asy_uart_comm.py	UART_Comm.setup	removed	17	0	if-3				
+asy_uart_comm.py	UART_Comm.uart_get	removed	14	0	try-1 if-3				
+asy_uart_comm.py	UART_Comm.uart_get_into	removed	8	0	if-2				
+asy_uart_comm.py	UART_Comm.uart_get_stream	removed	6	0	if-1				
+asy_uart_comm.py	UART_Comm.uart_listen	removed	18	0	try-1 if-3				
+asy_uart_comm.py	UART_Comm.uart_set	removed	2	0					
+asy_uart_comm.py	UART_Comm.uart_set_into	removed	18	0	try-1 if-4				
+asy_uart_comm.py	UART_Comm.uart_set_stream	removed	17	0	try-1 if-4				
+asy_uart_driver.py	<module-consts>	consts	3	27	+24 -0				
+asy_uart_driver.py	UART.__init__	changed	32	43		_cancel,_rx_overrun_pending			512
+asy_uart_driver.py	UART._ack_cancel	changed	4	4		_cancel			
+asy_uart_driver.py	UART._active_uart	changed	4	4					
+asy_uart_driver.py	UART._arm_rx	new	0	20	if+1 while+1	_rx_overrun_pending			
+asy_uart_driver.py	UART._buffered	changed	5	12	if+2	_rx_overrun_pending	ValueError		
+asy_uart_driver.py	UART._count_discarded	new	0	4	if+1				
+asy_uart_driver.py	UART._line_failed	new	0	3	if+1				
+asy_uart_driver.py	UART._read_delimited	changed	36	53	if+4				
+asy_uart_driver.py	UART._rx_copy	new	0	18	try+1 if+3		OSError,ValueError		
+asy_uart_driver.py	UART._rx_copy_line	new	0	16	if+3				
+asy_uart_driver.py	UART._rx_discard	new	0	5					
+asy_uart_driver.py	UART._rx_drop	new	0	2					
+asy_uart_driver.py	UART._rx_level	new	0	15	try+1 if+3	_rx_overrun_pending	OSError,ValueError		
+asy_uart_driver.py	UART._rx_line_len	new	0	10	if+2				
+asy_uart_driver.py	UART._rx_peek	new	0	5	if+1				
+asy_uart_driver.py	UART._write_all	changed	12	22	if+3 time+3 wait+1				
+asy_uart_driver.py	UART.cancel_read_timeout	changed	13	14		_cancel			
+asy_uart_driver.py	UART.deinit	changed	13	21	try+1 isinstance+1 if+2		ValueError		
+asy_uart_driver.py	UART.init	changed	34	51	raise+1 if+3	_rx_overrun_pending		rx_ring is fixed once the ring is allocated	512
+asy_uart_driver.py	UART.read	changed	8	17	try+1 if+2		MemoryError		
+asy_uart_driver.py	UART.read_until_complete	changed	38	50	if+3				
+asy_uart_driver.py	UART.readinto	changed	8	11	if+1				
+asy_uart_driver.py	UART.readinto_until_complete	changed	30	37	if+3				
+asy_uart_driver.py	UART.readline	changed	7	18	try+1 if+2		MemoryError		
+asy_uart_driver.py	UART.readline_until_complete	changed	24	42	if+4				
+asy_uart_driver.py	UART.ready	changed	24	29	isinstance+1 if+3		OverflowError		
+asy_uart_driver.py	UART.setup_rx_ring	new	0	31	try+1 isinstance+2 if+5		MemoryError,OSError,ValueError		
+asy_uart_driver.py	UART.write	changed	14	17	if+1				
+asy_uart_driver.py	UART.writefrom	changed	13	15	if+1				
+asy_uart_link_driver.py	<module-consts>	consts	4	13	+9 -0				
+asy_uart_link_driver.py	UARTLinkDriver.__init__	new	0	31		_hazard_pending,initialized			
+asy_uart_link_driver.py	UARTLinkDriver._cross_both_ends	new	0	6					
+asy_uart_link_driver.py	UARTLinkDriver._exercise_loop	new	0	11	if+4 while+1 wait+1				
+asy_uart_link_driver.py	UARTLinkDriver._get_callback	new	0	9	if+3				
+asy_uart_link_driver.py	UARTLinkDriver._initiate	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_uart_link_driver.py	UARTLinkDriver._message_callback	new	0	3	if+1				
+asy_uart_link_driver.py	UARTLinkDriver._read_raw	new	0	6	if+1				
+asy_uart_link_driver.py	UARTLinkDriver._recover	new	0	8	while+1 wait+1				
+asy_uart_link_driver.py	UARTLinkDriver._run_hazards	new	0	15	try+1 if+2	_hazard_pending			
+asy_uart_link_driver.py	UARTLinkDriver._set_callback	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver._sweep_fields	new	0	16	if+2 wait+1				
+asy_uart_link_driver.py	UARTLinkDriver._two_initiations	new	0	10	try+1 if+1 task+2				
+asy_uart_link_driver.py	UARTLinkDriver._write_raw	new	0	6	if+1				
+asy_uart_link_driver.py	UARTLinkDriver.get_error_counter	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.get_error_sources	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.get_hazard_report	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.get_link_status	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.get_loggers	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.get_task_starters	new	0	5	if+1				
+asy_uart_link_driver.py	UARTLinkDriver.get_timer_starters	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.request_hazard_run	new	0	5	if+1	_hazard_pending			
+asy_uart_link_driver.py	UARTLinkDriver.reset_error_counter	new	0	2					
+asy_uart_link_driver.py	UARTLinkDriver.setup	new	0	4	if+1	initialized			
+asy_uart_link_driver.py	UARTLinkDriver.start_asy_exercise	new	0	2	task+1				
+asy_uart_link_driver.py	UartLinkExerciser.__init__	removed	34	0					
+asy_uart_link_driver.py	UartLinkExerciser._exercise_loop	removed	8	0	if-1 while-1 wait-1				
+asy_uart_link_driver.py	UartLinkExerciser._get_callback	removed	6	0	if-2				
+asy_uart_link_driver.py	UartLinkExerciser._message_callback	removed	3	0	if-1				
+asy_uart_link_driver.py	UartLinkExerciser._set_callback	removed	2	0					
+asy_uart_link_driver.py	UartLinkExerciser.get_error_counter	removed	2	0					
+asy_uart_link_driver.py	UartLinkExerciser.get_error_sources	removed	2	0					
+asy_uart_link_driver.py	UartLinkExerciser.get_link_status	removed	2	0					
+asy_uart_link_driver.py	UartLinkExerciser.get_loggers	removed	2	0					
+asy_uart_link_driver.py	UartLinkExerciser.get_task_starters	removed	5	0	if-1 task-1				
+asy_uart_link_driver.py	UartLinkExerciser.get_timer_starters	removed	2	0					
+asy_uart_link_driver.py	UartLinkExerciser.reset_error_counter	removed	4	0					
+asy_uart_link_driver.py	UartLinkExerciser.setup	removed	2	0					
+asy_udp_socket.py	<module-consts>	consts	2	4	+3 -1				
+asy_udp_socket.py	AsyUDPSocket.__aenter__	removed	2	0					
+asy_udp_socket.py	AsyUDPSocket.__aexit__	removed	8	0					
+asy_udp_socket.py	AsyUDPSocket.__init__	removed	22	0	raise-4 isinstance-5 if-5				
+asy_udp_socket.py	AsyUDPSocket._connect	removed	25	0	try-2 if-3 while-1 wait-2				
+asy_udp_socket.py	AsyUDPSocket._disconnect_locked	removed	18	0	try-2 if-2				
+asy_udp_socket.py	AsyUDPSocket.disconnect	removed	3	0					
+asy_udp_socket.py	AsyUDPSocket.ready	removed	18	0	try-1 if-4 while-1 time-3 wait-1				
+asy_udp_socket.py	AsyUDPSocket.recvfrom	removed	7	0	try-1 if-1				
+asy_udp_socket.py	AsyUDPSocket.sendto	removed	12	0	try-1 if-1				
+asy_udp_socket.py	AsyUDPSocket.write	removed	7	0	try-1 if-1				
+asy_udp_socket.py	AsyUDPSocket.write_and_recvfrom	removed	17	0	try-1 if-1				
+asy_udp_socket.py	UDPSocket.__init__	new	0	9	raise+1 isinstance+3 if+1	connected			
+asy_udp_socket.py	UDPSocket._connect	new	0	21	try+1 isinstance+1 if+4 wait+1	connected	MemoryError,OSError,TypeError		
+asy_udp_socket.py	UDPSocket._disconnect_locked	new	0	22	try+2 isinstance+2 if+4	connected	MemoryError,OSError		
+asy_udp_socket.py	UDPSocket._poll	new	0	12	if+3 while+1 time+3 wait+1				
+asy_udp_socket.py	UDPSocket.disconnect	new	0	3					
+asy_udp_socket.py	UDPSocket.ready	new	0	10	try+1 isinstance+1 if+2		MemoryError,OSError		
+asy_udp_socket.py	UDPSocket.recvfrom	new	0	8	try+1 isinstance+1 if+2		MemoryError,OSError		
+asy_udp_socket.py	UDPSocket.sendto	new	0	13	try+1 isinstance+1 if+2		MemoryError,OSError,TypeError		
+asy_udp_socket.py	UDPSocket.write	new	0	8	try+1 isinstance+1 if+2		MemoryError,OSError		
+asy_webserver_service.py	<module-consts>	consts	4	28	+24 -0				
+asy_webserver_service.py	SettingsGroup.__init__	changed	11	11					
+asy_webserver_service.py	WebserverService.__init__	changed	70	50					1000
+asy_webserver_service.py	WebserverService._apply_settings_groups	changed	21	20	isinstance-1 if-1				
+asy_webserver_service.py	WebserverService._build_status_pieces	changed	23	23					
+asy_webserver_service.py	WebserverService._close_writer	changed	9	11	fatal+2 log+2				
+asy_webserver_service.py	WebserverService._dispatch_notification_led	changed	9	17	if+1 fatal+1 log+1				
+asy_webserver_service.py	WebserverService._dispatch_notification_pause	changed	12	13	isinstance-1 fatal+1 log+1				
+asy_webserver_service.py	WebserverService._dispatch_system_cmd	changed	9	5	try-1 isinstance-1				
+asy_webserver_service.py	WebserverService._get_measurements	changed	5	5					
+asy_webserver_service.py	WebserverService._get_networking	changed	2	2					
+asy_webserver_service.py	WebserverService._get_notification	changed	2	2					
+asy_webserver_service.py	WebserverService._get_sensors	changed	5	5					
+asy_webserver_service.py	WebserverService._get_settings_flat	changed	8	10	if+1				
+asy_webserver_service.py	WebserverService._get_static	removed	2	0					
+asy_webserver_service.py	WebserverService._get_static_index	removed	2	0					
+asy_webserver_service.py	WebserverService._get_status	changed	2	2					
+asy_webserver_service.py	WebserverService._get_system	changed	5	5					
+asy_webserver_service.py	WebserverService._handle_unhandled_exception	changed	3	4	fatal+1 log+1				
+asy_webserver_service.py	WebserverService._note_drop	new	0	3					
+asy_webserver_service.py	WebserverService._print_exception	new	0	9	isinstance+1 if+2 fatal+1 log+1				
+asy_webserver_service.py	WebserverService._put_networking	changed	6	5					
+asy_webserver_service.py	WebserverService._put_notification	changed	10	11					
+asy_webserver_service.py	WebserverService._put_sensors	changed	11	12					
+asy_webserver_service.py	WebserverService._put_status	changed	9	27	isinstance+2 if+4 task+1 fatal+1 log+1				
+asy_webserver_service.py	WebserverService._put_system	changed	8	8					
+asy_webserver_service.py	WebserverService._run	removed	4	0					
+asy_webserver_service.py	WebserverService._run_status_cmd	new	0	8	try+1 fatal+1 log+1		Exception		
+asy_webserver_service.py	WebserverService._run_system_cmd	new	0	10	try+1 if+1 fatal+1 log+1		Exception		
+asy_webserver_service.py	WebserverService._serve	changed	27	45	try+1 raise+1 if+3 fatal+2 log+2				
+asy_webserver_service.py	WebserverService._serve_loop	new	0	17	try+1 raise+1 if+2 while+1 wait+1		MemoryError,OSError		
+asy_webserver_service.py	WebserverService._serve_static	removed	16	0	try-1 if-2				
+asy_webserver_service.py	WebserverService._start_serving	removed	3	0	task-1				
+asy_webserver_service.py	WebserverService._trace_before_close	new	0	5	try+1 wait+1		TimeoutError		
+asy_webserver_service.py	WebserverService._write_errcount_entry	changed	8	9	fatal+1 log+1				
+asy_webserver_service.py	WebserverService._write_guarded	changed	8	9	fatal+1 log+1				
+asy_webserver_service.py	WebserverService._write_status_source	changed	6	6					
+asy_webserver_service.py	WebserverService.add_status_command	new	0	2					
+asy_webserver_service.py	WebserverService.get_dropped_count	new	0	2					
+asy_webserver_service.py	WebserverService.get_error_sources	changed	2	2					
+asy_webserver_service.py	WebserverService.get_task_starters	changed	2	2					
+asy_webserver_service.py	WebserverService.get_timer_starters	changed	2	2					
+asy_webserver_service.py	WebserverService.reset_error_counter	changed	2	3					
+asy_webserver_service.py	WebserverService.setup	new	0	3					
+asy_webserver_service.py	WebserverService.start_asy_serve	new	0	3	task+1				
+asy_webserver_service.py	_PieceWriter.__init__	changed	5	5					
+asy_webserver_service.py	_PieceWriter.add	changed	7	8					
+asy_webserver_service.py	_PieceWriter.add_value	changed	16	18	isinstance+1 if+1				
+asy_webserver_service.py	_PieceWriter.flush	changed	5	5					
+asy_webserver_service.py	_StaticRoutes.__init__	new	0	3					
+asy_webserver_service.py	_StaticRoutes.get	new	0	2					
+asy_webserver_service.py	_StaticRoutes.get_index	new	0	2					
+asy_webserver_service.py	_StaticRoutes.serve	new	0	18	try+1 if+2		OSError		404
+asy_webserver_service.py	_TimeoutStreamProxy.__init__	changed	6	25		_length_seen			
+asy_webserver_service.py	_TimeoutStreamProxy._bounded	changed	2	6	try+1 raise+1		TimeoutError		
+asy_webserver_service.py	_TimeoutStreamProxy._bounded_read	changed	9	10	wait+1				
+asy_webserver_service.py	_TimeoutStreamProxy._check_head_line	new	0	33	try+2 if+9	_length_seen	UnicodeError,ValueError		
+asy_webserver_service.py	_TimeoutStreamProxy._refuse	new	0	3	raise+1				
+asy_webserver_service.py	_TimeoutStreamProxy.awrite	changed	10	14	try+1 raise+1		OSError		
+asy_webserver_service.py	_TimeoutStreamProxy.hold	new	0	2					
+asy_webserver_service.py	_TimeoutStreamProxy.readexactly	changed	2	11	try+1 if+1		EOFError		
+asy_webserver_service.py	_TimeoutStreamProxy.readline	changed	2	15	if+2 while+1				
+asy_webserver_service.py	_TimeoutStreamProxy.release	new	0	4	if+1				
+asy_webserver_service.py	_body_as_dict	changed	6	9	raise+1 fatal+1 log+1		MemoryError		
+asy_webserver_service.py	_cfg_values	new	0	4					
+asy_webserver_service.py	_flatten_cfg_values	removed	8	0	isinstance-1 if-1				
+asy_webserver_service.py	_index_by_name	changed	5	5					
+asy_webserver_service.py	_index_pairs	changed	2	2					
+asy_webserver_service.py	_mark_connection_close	changed	3	3					
+asy_webserver_service.py	_pieces_response	changed	6	5					
+asy_webserver_service.py	_shape_errcount_entry	changed	10	10					
+asy_webserver_service.py	_shaped_error_handler	changed	4	4					
+asy_webserver_service.py	_shaped_error_handler.handler	changed	2	2					
+asy_webserver_service.py	_stream_dict_response	changed	10	10					
+asy_wifi_service.py	<module-consts>	consts	18	59	+51 -10				
+asy_wifi_service.py	AsyConnTime.__init__	removed	49	0	task-2				
+asy_wifi_service.py	AsyConnTime._activate_hotspot_ap	removed	6	0	try-1				
+asy_wifi_service.py	AsyConnTime._apply_initial_led_config	removed	8	0	if-1				
+asy_wifi_service.py	AsyConnTime._attempt_sta_connect	removed	14	0	if-3				
+asy_wifi_service.py	AsyConnTime._configure_hotspot_ap	removed	12	0	if-2 task-1				
+asy_wifi_service.py	AsyConnTime._deactivate_wlan_permanently	removed	11	0	try-1 wait-1				
+asy_wifi_service.py	AsyConnTime._disconnect_sta_and_wait	removed	14	0	try-1 if-1 wait-1				
+asy_wifi_service.py	AsyConnTime._episode_wrn	removed	5	0					
+asy_wifi_service.py	AsyConnTime._flash_led_off	removed	10	0	try-1 while-1 wait-2				
+asy_wifi_service.py	AsyConnTime._get_hotspot_stations	removed	13	0	try-1 wait-1				
+asy_wifi_service.py	AsyConnTime._handle_reconnect_trigger	removed	17	0	if-3 wait-2				
+asy_wifi_service.py	AsyConnTime._handle_sta_connection_result	removed	5	0	if-1				
+asy_wifi_service.py	AsyConnTime._hotspot_client_absent	removed	15	0	try-1 if-2 task-2				
+asy_wifi_service.py	AsyConnTime._hotspot_client_connected	removed	9	0	if-1				
+asy_wifi_service.py	AsyConnTime._leave_hotspot_mode	removed	8	0	if-1				
+asy_wifi_service.py	AsyConnTime._led_off	removed	6	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime._led_on	removed	6	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime._led_toggle	removed	6	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime._locked_wlan_status	removed	6	0	try-1				
+asy_wifi_service.py	AsyConnTime._manage_hotspot_stations	removed	7	0	if-1				
+asy_wifi_service.py	AsyConnTime._mask_pw	removed	2	0					
+asy_wifi_service.py	AsyConnTime._now	removed	5	0	try-1 time-2				
+asy_wifi_service.py	AsyConnTime._on_sta_connected	removed	7	0	log-1				
+asy_wifi_service.py	AsyConnTime._on_sta_disconnected	removed	9	0	if-1 wait-1				
+asy_wifi_service.py	AsyConnTime._poll_sta_connect_status	removed	30	0	try-1 if-7 wait-1				
+asy_wifi_service.py	AsyConnTime._print_wlan_diagnostics	removed	9	0	try-1				
+asy_wifi_service.py	AsyConnTime._push_wifi_led	removed	4	0	isinstance-1 if-1				
+asy_wifi_service.py	AsyConnTime._radio_values	removed	11	0	if-1				
+asy_wifi_service.py	AsyConnTime._read_wifi_led_cfg	removed	5	0	if-1				
+asy_wifi_service.py	AsyConnTime._register_sta_connection_failure	removed	11	0	if-2				
+asy_wifi_service.py	AsyConnTime._release_wifi_lock	removed	5	0	try-1				
+asy_wifi_service.py	AsyConnTime._reset_wlan_connect_state	removed	19	0	try-1 if-3				
+asy_wifi_service.py	AsyConnTime._run_hotspot_mode	removed	6	0	if-1				
+asy_wifi_service.py	AsyConnTime._run_sta_mode	removed	8	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime._select_wifi_mode	removed	6	0	try-1				
+asy_wifi_service.py	AsyConnTime._set_mgr_cfg	removed	11	0					
+asy_wifi_service.py	AsyConnTime._start_hotspot	removed	16	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime._switch_wlan_mode	removed	16	0	try-1 wait-3				
+asy_wifi_service.py	AsyConnTime._trigger_sta_connect	removed	13	0	try-1				
+asy_wifi_service.py	AsyConnTime._update_wifi_snapshot	removed	10	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime._wait_for_sta_disconnect	removed	9	0	try-1				
+asy_wifi_service.py	AsyConnTime._watch_hotspot_timeout	removed	4	0	while-1 wait-1				
+asy_wifi_service.py	AsyConnTime._wlan_isconnected_or_false	removed	6	0	try-1				
+asy_wifi_service.py	AsyConnTime._wlan_status_or_none	removed	6	0	try-1				
+asy_wifi_service.py	AsyConnTime.get_data	removed	2	0					
+asy_wifi_service.py	AsyConnTime.get_dict_cfg	removed	4	0					
+asy_wifi_service.py	AsyConnTime.get_dict_data	removed	3	0					
+asy_wifi_service.py	AsyConnTime.get_dns_server_ip	removed	3	0					
+asy_wifi_service.py	AsyConnTime.get_error_counter	removed	2	0	log-1				
+asy_wifi_service.py	AsyConnTime.get_error_sources	removed	2	0					
+asy_wifi_service.py	AsyConnTime.get_loggers	removed	2	0	log-1				
+asy_wifi_service.py	AsyConnTime.get_task_starters	removed	2	0					
+asy_wifi_service.py	AsyConnTime.get_timer_starters	removed	2	0					
+asy_wifi_service.py	AsyConnTime.get_wifi_mode_lock	removed	2	0					
+asy_wifi_service.py	AsyConnTime.get_wifi_uptime	removed	3	0					
+asy_wifi_service.py	AsyConnTime.get_wlan_ifconfig	removed	11	0	try-1 if-2				
+asy_wifi_service.py	AsyConnTime.get_wlan_rssi	removed	9	0	try-1 if-1				
+asy_wifi_service.py	AsyConnTime.is_hotspot_active	removed	2	0					
+asy_wifi_service.py	AsyConnTime.network_available	removed	2	0					
+asy_wifi_service.py	AsyConnTime.reconnect_wifi	removed	7	0	if-1				
+asy_wifi_service.py	AsyConnTime.set_ext_led	removed	2	0					
+asy_wifi_service.py	AsyConnTime.set_wifi_led	removed	11	0	if-3				
+asy_wifi_service.py	AsyConnTime.start_asy_uptime_counter	removed	3	0	task-1				
+asy_wifi_service.py	AsyConnTime.start_asy_wlan_connect	removed	3	0	task-1				
+asy_wifi_service.py	AsyConnTime.start_counter_timer	removed	9	0	try-1 task-1				
+asy_wifi_service.py	AsyConnTime.start_hotspot_timeout_watcher	removed	3	0	task-1				
+asy_wifi_service.py	AsyConnTime.stop_counter_timer	removed	2	0					
+asy_wifi_service.py	AsyConnTime.time_counter	removed	18	0	try-1 if-2 while-1 wait-1				
+asy_wifi_service.py	AsyConnTime.wlan_connect	removed	23	0	if-4 while-1 wait-1				
+asy_wifi_service.py	AsyConnTime.wlan_isconnected	removed	4	0	if-1				
+asy_wifi_service.py	WifiService.__init__	new	0	44	task+2	_ap_selected,_hotspot_started_once,_hotspot_timer_running,_hw_op_failed,_reconn_wifi,_reconnect_fresh,_silent_attempt_due,_wifi_connected			60000
+asy_wifi_service.py	WifiService._activate_hotspot_ap	new	0	7	try+1 fatal+1 log+1	_hw_op_failed	Exception		
+asy_wifi_service.py	WifiService._apply_initial_led_config	new	0	8	if+1				
+asy_wifi_service.py	WifiService._arm_hotspot_timer	new	0	12	try+1 task+1	_hotspot_timer_running	MemoryError,OSError		
+asy_wifi_service.py	WifiService._attempt_sta_connect	new	0	16	if+3				
+asy_wifi_service.py	WifiService._bring_up_hotspot_ap	new	0	11	if+1				
+asy_wifi_service.py	WifiService._cfg_overlay	new	0	11	if+2				
+asy_wifi_service.py	WifiService._configure_hotspot_ap	new	0	12	if+2 task+1				
+asy_wifi_service.py	WifiService._connect_loop	new	0	30	if+7 while+1 wait+1	_hw_op_failed			
+asy_wifi_service.py	WifiService._disconnect_sta_and_wait	new	0	15	try+1 if+1 wait+1 fatal+1 log+1	_hw_op_failed	Exception		
+asy_wifi_service.py	WifiService._flash_led	new	0	10	try+1 while+1 wait+2 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._get_hotspot_stations	new	0	12	try+1 wait+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._handle_reconnect_trigger	new	0	22	if+4 wait+2	_hotspot_started_once,_hotspot_timer_running,_reconn_wifi,_reconnect_fresh			
+asy_wifi_service.py	WifiService._handle_sta_connection_result	new	0	5	if+1				
+asy_wifi_service.py	WifiService._hotspot_client_absent	new	0	7	if+2	_hw_op_failed			
+asy_wifi_service.py	WifiService._hotspot_client_connected	new	0	5		_hotspot_timer_running			
+asy_wifi_service.py	WifiService._hotspot_timeout_loop	new	0	7	if+1 while+1 wait+1	_silent_attempt_due			
+asy_wifi_service.py	WifiService._leave_hotspot_mode	new	0	8	if+1				
+asy_wifi_service.py	WifiService._led_off	new	0	7	try+1 if+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._led_on	new	0	7	try+1 if+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._led_toggle	new	0	7	try+1 if+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._locked_wlan_status	new	0	3					
+asy_wifi_service.py	WifiService._manage_hotspot_stations	new	0	11	if+2				
+asy_wifi_service.py	WifiService._on_hotspot_window_end	new	0	7	if+1	_hotspot_timer_running,_reconn_wifi			
+asy_wifi_service.py	WifiService._on_sta_connected	new	0	6	log+1				
+asy_wifi_service.py	WifiService._on_sta_disconnected	new	0	10	if+2				
+asy_wifi_service.py	WifiService._poll_sta_connect_status	new	0	33	try+1 if+7 wait+1 fatal+1 log+1	_hw_op_failed	Exception		
+asy_wifi_service.py	WifiService._print_wlan_diagnostics	new	0	10	try+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._push_wifi_led	new	0	4	isinstance+1 if+1				
+asy_wifi_service.py	WifiService._radio_values	new	0	10	if+1				
+asy_wifi_service.py	WifiService._read_wifi_led_cfg	new	0	5	if+1				
+asy_wifi_service.py	WifiService._recover_device	new	0	4	if+1				
+asy_wifi_service.py	WifiService._register_sta_connection_failure	new	0	17	if+3	_silent_attempt_due			
+asy_wifi_service.py	WifiService._reset_wlan_connect_state	new	0	20	try+1 if+3 fatal+1 log+1	_hotspot_started_once,_hotspot_timer_running,_reconn_wifi	Exception		
+asy_wifi_service.py	WifiService._run_hotspot_mode	new	0	9	if+2				
+asy_wifi_service.py	WifiService._run_led_pattern	new	0	9	if+3 task+1				
+asy_wifi_service.py	WifiService._run_silent_mode	new	0	14	if+4	_hotspot_timer_running,_hw_op_failed,_silent_attempt_due			
+asy_wifi_service.py	WifiService._run_sta_mode	new	0	9	if+3 wait+1				
+asy_wifi_service.py	WifiService._select_wifi_mode	new	0	3					
+asy_wifi_service.py	WifiService._set_mgr_cfg	new	0	9					
+asy_wifi_service.py	WifiService._start_hotspot	new	0	4		_hotspot_started_once			
+asy_wifi_service.py	WifiService._switch_wlan_mode	new	0	21	try+1 wait+3 fatal+1 log+1	_ap_selected,_hw_op_failed	Exception		
+asy_wifi_service.py	WifiService._trigger_sta_connect	new	0	14	try+1 fatal+1 log+1	_hw_op_failed	Exception		
+asy_wifi_service.py	WifiService._update_wifi_snapshot	new	0	26	try+2 if+3 fatal+2 log+2		Exception		
+asy_wifi_service.py	WifiService._uptime_loop	new	0	22	if+5 while+1 wait+1	_wifi_connected			
+asy_wifi_service.py	WifiService._value_in_use	new	0	2					
+asy_wifi_service.py	WifiService._wait_for_sta_disconnect	new	0	6					
+asy_wifi_service.py	WifiService._wlan_isconnected_or_false	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService._wlan_status_or_none	new	0	7	try+1 fatal+1 log+1		Exception		
+asy_wifi_service.py	WifiService.get_data	new	0	2					
+asy_wifi_service.py	WifiService.get_dict_cfg	new	0	4					
+asy_wifi_service.py	WifiService.get_dict_data	new	0	3					
+asy_wifi_service.py	WifiService.get_dns_server_ip	new	0	2					
+asy_wifi_service.py	WifiService.get_error_counter	new	0	2	log+1				
+asy_wifi_service.py	WifiService.get_error_sources	new	0	2					
+asy_wifi_service.py	WifiService.get_loggers	new	0	2	log+1				
+asy_wifi_service.py	WifiService.get_task_starters	new	0	2					
+asy_wifi_service.py	WifiService.get_timer_starters	new	0	2					
+asy_wifi_service.py	WifiService.get_wifi_mode_lock	new	0	2					
+asy_wifi_service.py	WifiService.get_wifi_uptime	new	0	2					
+asy_wifi_service.py	WifiService.is_hotspot_active	new	0	2					
+asy_wifi_service.py	WifiService.network_available_locked	new	0	2					
+asy_wifi_service.py	WifiService.reconnect_wifi	new	0	3		_reconnect_fresh			
+asy_wifi_service.py	WifiService.set_wifi_led	new	0	8	if+2				
+asy_wifi_service.py	WifiService.setup	new	0	4					
+asy_wifi_service.py	WifiService.start_asy_connect	new	0	3	task+1				
+asy_wifi_service.py	WifiService.start_asy_hotspot_timeout	new	0	3	task+1				
+asy_wifi_service.py	WifiService.start_asy_uptime	new	0	3	task+1				
+asy_wifi_service.py	WifiService.start_uptime_timer	new	0	2					
+asy_wifi_service.py	WifiService.stop_uptime_timer	new	0	2					
+asy_wifi_service.py	_country_ok	new	0	2					
+asy_wifi_service.py	_radio_bytes_ok	removed	5	0	if-1				
+asy_wifi_service.py	_radio_value_ok	new	0	11	if+4				
+asy_wifi_service.py	_with_default	changed	7	5	if-1				
+math_helpers.py	<module-consts>	consts	25	30	+7 -2				
+math_helpers.py	abs_humidity	changed	15	15					237.3
+math_helpers.py	altitude_baro	removed	9	0	try-1 if-2				
+math_helpers.py	chromaticity_xy	changed	7	7					
+math_helpers.py	dew_point	changed	17	17					
+math_helpers.py	pressure_at_height	new	0	9	try+1 if+2		ArithmeticError,ValueError		273.15
+math_helpers.py	rel_humidity	changed	16	18	if+1				237.3
+math_helpers.py	rgb_to_hsb	changed	17	17					
+math_helpers.py	rgb_to_xyz	changed	9	9					
+math_helpers.py	wet_bulb_temperature	changed	15	17	if+1				
+voc_algorithm.py	<module-consts>	consts	36	36	+3 -3				
+voc_algorithm.py	DFRobot_vocalgorithmParams.pack_into	changed	43	43			OverflowError,TypeError,ValueError		
+voc_algorithm.py	DFRobot_vocalgorithmParams.unpack_from	changed	40	46	if+1		OverflowError,ValueError		
+voc_algorithm.py	VOCAlgorithm.__init__	changed	14	49					100.0,1440.0
+voc_algorithm.py	VOCAlgorithm._fix16_div	changed	34	34					
+voc_algorithm.py	VOCAlgorithm._fix16_exp	changed	19	19					
+voc_algorithm.py	VOCAlgorithm._fix16_mul	changed	25	25					
+voc_algorithm.py	VOCAlgorithm._fix16_sqrt	changed	27	27					
+voc_algorithm.py	VOCAlgorithm._vocalgorithm__adaptive_lowpass__process	changed	33	31					
+voc_algorithm.py	VOCAlgorithm._vocalgorithm__mean_variance_estimator___calculate_gamma	changed	99	99					
+voc_algorithm.py	VOCAlgorithm._vocalgorithm__mean_variance_estimator___sigmoid__process	changed	13	13					
+voc_algorithm.py	VOCAlgorithm._vocalgorithm__mean_variance_estimator__process	changed	72	72					
+voc_algorithm.py	VOCAlgorithm._vocalgorithm__mox_model__process	changed	10	10					
+voc_algorithm.py	VOCAlgorithm._vocalgorithm__sigmoid_scaled__process	changed	37	37					
+voc_algorithm.py	VOCAlgorithm.vocalgorithm_process	changed	21	21					
+voc_algorithm.py	_int32	new	0	5	if+1				2147483648,4294967295,4294967296

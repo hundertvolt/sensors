@@ -1,0 +1,21 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+________ test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout _________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24w1')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8355/test_a_file_killed_at_the_hard0')
+
+    def test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout(repo_root: Path, tmp_path: Path) -> None:
+        # 137 past the timeout is a timeout that ignored the interrupt: the standing retry applies to it as to 124.
+        ignores = "trap '' INT\nwhile :; do sleep 0.1; done"
+        results = _run_file_job(repo_root, tmp_path, ignores, "exit 0", limits=_JobLimits(attempts=2, kill_after_s=1))
+>       assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/2\n"
+E       AssertionError: assert 'FAIL\n' == 'RETRIED-PASS 2/2\n'
+E         
+E         - RETRIED-PASS 2/2
+E         + FAIL
+
+tests_scripts/test_test_sh.py:1396: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout
+1 failed, 1 passed, 129 deselected in 4.29s

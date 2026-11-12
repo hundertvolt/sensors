@@ -15,6 +15,15 @@ import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 const SAMPLES = /** @type {import("../js/definitions.js").MockSamples} */ (samples);
 
 /**
+ * Every field of every field group of `defs`.
+ * @param {SiteDefinitions} defs
+ * @returns {FieldDef[]}
+ */
+function fieldsOf(defs) {
+    return defs.sections.flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])));
+}
+
+/**
  * @param {string} device
  * @returns {SiteDefinitions}
  */
@@ -46,8 +55,33 @@ function groupValues(sectionKey, group, data) {
         }
         return /** @type {Record<string, unknown>} */ (data.status[/** @type {"networking" | "system" | "notification"} */ (group.key)] ?? {});
     }
-    return /** @type {Record<string, unknown>} */ (data[/** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${sectionKey}Config`)]);
+    // A section the composed data keeps no config for (dev's UART link: a command only) reads as empty, as the mock serves it.
+    return /** @type {Record<string, unknown>} */ (data[/** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${sectionKey}Config`)] ?? {});
 }
+
+/**
+ * The generated module's `LastTaskEnd` once a task has ended (buildgen/codegen.py's _system_status()).
+ * @param {unknown} value
+ * @returns {boolean} an object of exactly a string `Task` and an integer `Uptime`
+ */
+function isTaskEndRecord(value) {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+    const { Task: task, Uptime: uptime, ...rest } = /** @type {Record<string, unknown>} */ (value);
+    return typeof task === "string" && Number.isInteger(uptime) && Object.keys(rest).length === 0;
+}
+
+/**
+ * Each readonly format's check of a composed value: one row per format a generated definitions file uses (a test
+ * below holds that), so a format a device takes up cannot pass here unjudged.
+ * @type {Record<string, (field: FieldDef, value: unknown) => string | null>}
+ */
+const FORMAT_PROBLEMS = {
+    epoch: (field, value) => (typeof value === "number" || (field.specialValues ?? []).some((special) => special.value === value) ? null : "neither a timestamp nor one of its special values"),
+    gmtimestruct: (_field, value) => (typeof value === "object" && value !== null ? null : "not a time struct"),
+    lasttaskend: (_field, value) => (value === null || isTaskEndRecord(value) ? null : "neither null nor a task-end record"),
+};
 
 /**
  * What is wrong with one field's composed value, or null: a command carries none, an always-executed
@@ -76,10 +110,11 @@ function valueProblem(field, values) {
     if (field.kind === "enum") {
         return (field.options ?? []).some((option) => option.value === value) ? null : "not one of its options";
     }
-    if (field.format === "gmtimestruct") {
-        return typeof value === "object" && value !== null ? null : "not a time struct";
+    if (field.format !== undefined) {
+        const check = Object.hasOwn(FORMAT_PROBLEMS, field.format) ? FORMAT_PROBLEMS[field.format] : undefined;
+        return check === undefined ? `format ${field.format} has no check of its own` : check(field, value);
     }
-    return null; // readonly: present is all a value of any shape needs
+    return null; // readonly without a format: present is all a value of any shape needs
 }
 
 /**
@@ -199,9 +234,8 @@ describe.each(DEVICE_IDS)("%s's composed mock data", (device) => {
     });
 
     it("holds only codes the definitions' code tables describe", () => {
-        const tables = errcountGroups(defs).map((g) => g.codes ?? { E: {}, W: {} });
-        expect(tables.length).toBeGreaterThan(0);
-        expect(undescribedCodes(tables, data)).toEqual([]);
+        expect(errcountGroups(defs).length).toBeGreaterThan(0);
+        expect(undescribedCodes([defs.errcountCodes ?? { E: {}, W: {} }], data)).toEqual([]);
     });
 });
 
@@ -213,6 +247,13 @@ describe("composeMockData", () => {
             sections: [{ key: "measurements", label: "Measurements", rest: { get: "/measurements" }, pollGroup: /** @type {const} */ ("live"), groups: [{ key: "GHOST", label: "Ghost", fields: [] }] }],
         };
         expect(() => composeMockData(ghost, SAMPLES)).toThrow('mock samples: no sample for group "measurements/GHOST"');
+    });
+
+    it("throws for an errcount module no sample matches, never composing a healthy zero for it", () => {
+        const defs = definitionsOf(DEVICE_IDS[0] ?? "");
+        const errcount = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "GHOST", label: "Ghost" }] };
+        const ghost = { ...defs, sections: [{ key: "status", label: "Status", rest: { get: "/status" }, pollGroup: /** @type {const} */ ("live"), groups: [errcount] }] };
+        expect(() => composeMockData(ghost, SAMPLES)).toThrow('mock samples: no sample for module "status/errcount/GHOST"');
     });
 
     it("composes a maintenance field by its path: an instance's entry under its own name, from its driver's sample", () => {
@@ -243,5 +284,32 @@ describe("composeMockData", () => {
         body.Stray = 1;
         expect(fieldProblems(defs, data)).toContain(`measurements/${groupKey}/${fieldKey}: no value`);
         expect(strayKeys(defs, data)).toContain(`measurements.${groupKey}.Stray`);
+    });
+
+    it("takes a task-end field as null or a {Task, Uptime} record and reports any other value", () => {
+        const field = { key: "LastTaskEnd", label: "Task Last Ended", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("lasttaskend") };
+        expect(valueProblem(field, { LastTaskEnd: null })).toBeNull();
+        expect(valueProblem(field, { LastTaskEnd: { Task: "SCD30.start_asy_read", Uptime: 3600 } })).toBeNull();
+        const wrong = [
+            0, "SCD30.start_asy_read", { Task: "SCD30.start_asy_read" }, { Task: 7, Uptime: 3600 }, { Task: "SCD30.start_asy_read", Uptime: 1.5 },
+            { Task: "SCD30.start_asy_read", Uptime: 3600, Extra: 1 },
+        ];
+        expect(wrong.map((value) => valueProblem(field, { LastTaskEnd: value }))).toEqual(wrong.map(() => "neither null nor a task-end record"));
+    });
+
+    it("takes an epoch field as a timestamp or one of its special values and reports any other value", () => {
+        const field = {
+            key: "TS", label: "Last Cycle Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("epoch"),
+            specialValues: [{ value: null, meaning: "never" }],
+        };
+        expect([1_700_000_000, null].map((value) => valueProblem(field, { TS: value }))).toEqual([null, null]);
+        const wrong = ["1700000000", { s: 1 }, false];
+        expect(wrong.map((value) => valueProblem(field, { TS: value }))).toEqual(wrong.map(() => "neither a timestamp nor one of its special values"));
+    });
+
+    it("judges a readonly value by a check of its own for every format a generated definitions file uses", () => {
+        const formats = [...GENERATED_DEFINITIONS.values()].flatMap((defs) => fieldsOf(defs)).flatMap((field) => (field.format === undefined ? [] : [field.format]));
+        expect(formats.length).toBeGreaterThan(0);
+        expect(formats.filter((format) => !Object.hasOwn(FORMAT_PROBLEMS, format)), "formats the compose check has no check for").toEqual([]);
     });
 });

@@ -1,0 +1,15 @@
+test_bench_no_task_ended_completeness: 1 failed, 7 passed in 0.22s
+test_bench_restores_serving: 9 passed in 0.05s
+test_ceiling_probe: 14 passed in 10.42s
+test_device_script_config_flush: 5 passed in 0.40s
+test_device_script_config_schemas: 7 passed in 0.66s
+test_device_script_gc_threshold: 12 passed in 0.23s
+test_exception_handler_contract: 1 failed, 59 passed in 4.05s
+test_hardware_verdict: 26 passed in 3.47s
+test_level_containment: 22 passed in 0.74s
+test_persistence_write_marker_completeness: 16 passed in 2.23s
+test_request_timeout_ceiling: 19 passed in 2.28s
+test_tests_hardware_conftest_constants: 2 failed, 3 passed in 0.08s
+test_tests_hardware_persistence_write_gating: 9 passed in 3.80s
+test_tests_hardware_run_record: 3 passed in 1.30s
+test_twin_never_needs_tests_on_its_path: 53 passed in 0.57s

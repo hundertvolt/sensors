@@ -1,0 +1,43 @@
+PASS test_a_deinitialised_bus_fails_the_read_without_checking_a_stale_buffer
+PASS test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp
+PASS test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms
+PASS test_a_failing_snapshot_fails_every_key_and_writes_nothing
+PASS test_a_forced_recalibration_while_settling_is_still_carried_out
+PASS test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float
+PASS test_a_held_boot_bus_is_reported_once_at_setup
+PASS test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no_error
+PASS test_a_put_during_the_recovery_completes_after_it
+PASS test_a_raising_reset_logs_one_chip_set_and_no_recovery_warning
+PASS test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak
+PASS test_a_repeated_put_of_a_stored_chip_value_is_unchanged_and_writes_nothing
+PASS test_a_reversed_body_writes_in_the_fixed_order
+PASS test_a_store_interleaved_with_a_republish_keeps_the_fresh_sample
+PASS test_altitude_matches_datasheet_example
+PASS test_ambpres_and_forcecalref_always_write
+PASS test_ambpres_with_contmeas_false_ends_stopped_in_either_key_order
+PASS test_asc_deactivate_matches_datasheet_example
+PASS test_bus_busy_timeout_propagates_as_oserror
+PASS test_concurrent_read_and_write_never_interleave_on_the_wire_byte_exact
+PASS test_contmeas_rejects_an_int_and_a_string
+PASS test_every_two_decimal_temperature_offset_is_sent_as_typed
+PASS test_fault_injected_read_half_failure_after_a_successful_write_half
+PASS test_five_not_ready_reads_warn_once_and_new_data_clears
+PASS test_frc_counters_saturate_at_their_targets
+ABORT test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 121, in run
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/w2/kh/test_asy_scd30_driver.py", line 1207, in test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/w2/kh/test_asy_scd30_driver.py", line 1194, in _stored_file
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/w2/kh/_async_harness.py", line 222, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/w2/kh/_async_harness.py", line 77, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/w2/kh/_async_harness.py", line 123, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_config_manager.py", line 480, in flush_pending
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/w2/kh/_async_harness.py", line 48, in _await_each
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_config_manager.py", line 385, in _flush_staged
+CancelledError: 
+25/125 passed, 1 failed, 0 skipped - aborted at test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip, later tests not run

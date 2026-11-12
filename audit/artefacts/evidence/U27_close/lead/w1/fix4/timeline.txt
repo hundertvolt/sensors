@@ -1,0 +1,3 @@
+10:52:54 test_setter_microdot_integration_-1 rc=0 0.5s mem=0 34/34 passed, 0 failed, 0 skipped
+10:52:56 test_setter_microdot_integration_32768 rc=0 1.4s mem=0 34/34 passed, 0 failed, 0 skipped
+10:52:56 done

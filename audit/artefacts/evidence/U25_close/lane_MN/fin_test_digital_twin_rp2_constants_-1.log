@@ -1,0 +1,10 @@
+PASS test_mem_backup_region_sizes
+PASS test_neopixel_colour_order
+PASS test_network_link_codes_and_power_on_seeds
+PASS test_pin_modes
+PASS test_pin_pulls_alternate_function_and_edges
+PASS test_spi_bit_order_and_dma_threshold
+PASS test_uart_stream_and_buffer_bounds
+PASS test_watchdog_timer_and_reset_causes
+8/8 passed, 0 failed, 0 skipped
+RC=0 WALL=.043798462 FILE=tests/test_digital_twin_rp2_constants.py STAGE=-1

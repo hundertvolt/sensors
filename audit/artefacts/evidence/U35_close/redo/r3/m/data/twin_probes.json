@@ -1,0 +1,491 @@
+{
+ "bmp3xx_conformance_probe": {
+  "silicon": {
+   "A01_chip_id": "50",
+   "A02_calibration": "0e6cc84af4f30087f71efd0c625c75f3038e3e1ac5",
+   "A03_err_reg": "00",
+   "B01_status_after_reset": "10",
+   "B02_pwr_ctrl_after_reset": "00",
+   "B03_pwr_ctrl_during_forced": "13",
+   "B04_status_after_conversion": "70",
+   "B05_pwr_ctrl_after_conversion": "03",
+   "B06_data": "00486900447e",
+   "B07_status_after_data_read": "10",
+   "C01_osr_config_written": "0b04",
+   "C02_osr_config_after_softreset": "0000",
+   "C03_por_after_softreset": "1",
+   "C04_por_after_second_read": "0",
+   "DONE": "1"
+  },
+  "-1": {
+   "twin": {
+    "A01_chip_id": "60",
+    "A02_calibration": "6c6b5014fd9065a041ec05381868101ef4e0fc03fe",
+    "A03_err_reg": "00",
+    "B01_status_after_reset": "10",
+    "B02_pwr_ctrl_after_reset": "00",
+    "B03_pwr_ctrl_during_forced": "00",
+    "B04_status_after_conversion": "70",
+    "B05_pwr_ctrl_after_conversion": "00",
+    "B06_data": "8ac8511c40ab",
+    "B07_status_after_data_read": "70",
+    "C01_osr_config_written": "0b04",
+    "C02_osr_config_after_softreset": "0200",
+    "C03_por_after_softreset": "1",
+    "C04_por_after_second_read": "0",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "B03_pwr_ctrl_during_forced: real chip '13', twin '00'",
+    "B05_pwr_ctrl_after_conversion: real chip '03', twin '00'",
+    "B07_status_after_data_read: real chip '10', twin '70'",
+    "C02_osr_config_after_softreset: real chip '0000', twin '0200'"
+   ],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "A01_chip_id": "60",
+    "A02_calibration": "6c6b5014fd9065a041ec05381868101ef4e0fc03fe",
+    "A03_err_reg": "00",
+    "B01_status_after_reset": "10",
+    "B02_pwr_ctrl_after_reset": "00",
+    "B03_pwr_ctrl_during_forced": "00",
+    "B04_status_after_conversion": "70",
+    "B05_pwr_ctrl_after_conversion": "00",
+    "B06_data": "be8555823ac5",
+    "B07_status_after_data_read": "70",
+    "C01_osr_config_written": "0b04",
+    "C02_osr_config_after_softreset": "0200",
+    "C03_por_after_softreset": "1",
+    "C04_por_after_second_read": "0",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "B03_pwr_ctrl_during_forced: real chip '13', twin '00'",
+    "B05_pwr_ctrl_after_conversion: real chip '03', twin '00'",
+    "B07_status_after_data_read: real chip '10', twin '70'",
+    "C02_osr_config_after_softreset: real chip '0000', twin '0200'"
+   ],
+   "tail": ""
+  }
+ },
+ "fram_conformance_probe": {
+  "silicon": {
+   "A01_miso_idle_byte": "00",
+   "A02_rdid": "047f4803",
+   "B01_status": "02",
+   "B02_wel_after_wren": "1",
+   "B03_wel_after_wrdi": "0",
+   "C01_round_trip": "yes",
+   "C02_wel_after_write": "1",
+   "C03_write_without_wel_ignored": "yes",
+   "C04_found_bytes_restored": "yes",
+   "DONE": "1"
+  },
+  "-1": {
+   "twin": {
+    "A01_miso_idle_byte": "00",
+    "A02_rdid": "047f4803",
+    "B01_status": "00",
+    "B02_wel_after_wren": "1",
+    "B03_wel_after_wrdi": "0",
+    "C01_round_trip": "yes",
+    "C02_wel_after_write": "0",
+    "C03_write_without_wel_ignored": "yes",
+    "C04_found_bytes_restored": "yes",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "B01_status: real chip '02', twin '00'",
+    "C02_wel_after_write: real chip '1', twin '0'"
+   ],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "A01_miso_idle_byte": "00",
+    "A02_rdid": "047f4803",
+    "B01_status": "00",
+    "B02_wel_after_wren": "1",
+    "B03_wel_after_wrdi": "0",
+    "C01_round_trip": "yes",
+    "C02_wel_after_write": "0",
+    "C03_write_without_wel_ignored": "yes",
+    "C04_found_bytes_restored": "yes",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "B01_status: real chip '02', twin '00'",
+    "C02_wel_after_write: real chip '1', twin '0'"
+   ],
+   "tail": ""
+  }
+ },
+ "isl29125_mock_conformance_probe": {
+  "silicon": {
+   "A01_device_id": "7d",
+   "A02_id_burst_2_c1_is_25": "7d25",
+   "A03_config_before_reset": "3fbf1f",
+   "A04_config_after_reset": "000000",
+   "A05_thresholds_after_reset": "0000ffff",
+   "B01_status_first_read": "00",
+   "B02_status_second_read": "00",
+   "B03_status_after_write_00": "00",
+   "B04_status_reserved_bits_set": "no",
+   "B05_green_low_byte_now": "03",
+   "B05_status_burst_2": "1203",
+   "B06_status_burst_2_second_byte_is_data": "yes",
+   "C01_config1_ff_readback": "3f",
+   "C02_config2_ff_readback": "bf",
+   "C03_config3_ff_readback": "1f",
+   "C04_config_after_reset_2": "000000",
+   "C05_read_reg_0f": "00",
+   "C06_read_reg_10": "00",
+   "C07_write_reg_0f": "accepted",
+   "C08_read_reg_0f_after_write": "00",
+   "C09_read_8_from_0x0d_rollover": "4cff000000000000",
+   "D01_config_burst_readback": "052809",
+   "D02_config_after_single_c2_write": "051509",
+   "D03_config_partial_read_from_c2": "1509",
+   "D04_threshold_roundtrip": "3412cdab",
+   "E01_counts_16bit_hi_range": "16208,9869,18044",
+   "E02_data_partial_read_from_0x0b": "8d267c46",
+   "E03_data_burst_8_past_end": "503f8d267c460000",
+   "E04_counts_16bit_lo_range": "65095,65409,65083",
+   "E05_counts_12bit_lo_range": "4095,3769,4060",
+   "E06_12bit_within_4095": "yes",
+   "F01_powerdown_holds_data": "yes",
+   "F02_standby_holds_data": "yes",
+   "G01_config1_restart_stale_window": "yes",
+   "G02_config1_restart_new_after_cycle": "yes",
+   "H01_int_idle_level": "1",
+   "H02_int_asserted_low": "yes",
+   "H03_int_assert_ms_bucket": "fast<400",
+   "H04_status_rgbthf_set_when_int": "yes",
+   "H05_int_released_by_status_read": "1",
+   "H06_status_rgbthf_cleared_by_read": "yes",
+   "H07_prst4_ms": "1067",
+   "H08_prst4_unit": "rgb_cycles",
+   "J01_cycle_12bit_ms_series": "7,6,8,7,6,6,9,6",
+   "J02_cycle_12bit_series_complete": "yes",
+   "I01_final_config": "000000",
+   "DONE": "1"
+  },
+  "-1": {
+   "twin": {
+    "A01_device_id": "7d",
+    "A02_id_burst_2_c1_is_25": "7d25",
+    "A03_config_before_reset": "3fbf1f",
+    "A04_config_after_reset": "000000",
+    "A05_thresholds_after_reset": "0000ffff",
+    "B01_status_first_read": "00",
+    "B02_status_second_read": "00",
+    "B03_status_after_write_00": "00",
+    "B04_status_reserved_bits_set": "no",
+    "B05_green_low_byte_now": "ff",
+    "B05_status_burst_2": "22ff",
+    "B06_status_burst_2_second_byte_is_data": "yes",
+    "C01_config1_ff_readback": "3f",
+    "C02_config2_ff_readback": "bf",
+    "C03_config3_ff_readback": "1f",
+    "C04_config_after_reset_2": "000000",
+    "C05_read_reg_0f": "00",
+    "C06_read_reg_10": "00",
+    "C07_write_reg_0f": "accepted",
+    "C08_read_reg_0f_after_write": "00",
+    "C09_read_8_from_0x0d_rollover": "ffff000000000000",
+    "D01_config_burst_readback": "052809",
+    "D02_config_after_single_c2_write": "051509",
+    "D03_config_partial_read_from_c2": "1509",
+    "D04_threshold_roundtrip": "3412cdab",
+    "E01_counts_16bit_hi_range": "30069,30069,30069",
+    "E02_data_partial_read_from_0x0b": "75757575",
+    "E03_data_burst_8_past_end": "7575757575750000",
+    "E04_counts_16bit_lo_range": "65535,65535,65535",
+    "E05_counts_12bit_lo_range": "4095,4095,4095",
+    "E06_12bit_within_4095": "yes",
+    "F01_powerdown_holds_data": "yes",
+    "F02_standby_holds_data": "yes",
+    "G01_config1_restart_stale_window": "yes",
+    "G02_config1_restart_new_after_cycle": "yes",
+    "H01_int_idle_level": "1",
+    "H02_int_asserted_low": "yes",
+    "H03_int_assert_ms_bucket": "fast<400",
+    "H04_status_rgbthf_set_when_int": "yes",
+    "H05_int_released_by_status_read": "1",
+    "H06_status_rgbthf_cleared_by_read": "yes",
+    "H07_prst4_ms": "1143",
+    "H08_prst4_unit": "rgb_cycles",
+    "J01_cycle_12bit_ms_series": "19,19,19,20,19,19,19,19",
+    "J02_cycle_12bit_series_complete": "yes",
+    "I01_final_config": "000000",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "A01_device_id": "7d",
+    "A02_id_burst_2_c1_is_25": "7d25",
+    "A03_config_before_reset": "3fbf1f",
+    "A04_config_after_reset": "000000",
+    "A05_thresholds_after_reset": "0000ffff",
+    "B01_status_first_read": "00",
+    "B02_status_second_read": "00",
+    "B03_status_after_write_00": "00",
+    "B04_status_reserved_bits_set": "no",
+    "B05_green_low_byte_now": "ff",
+    "B05_status_burst_2": "22ff",
+    "B06_status_burst_2_second_byte_is_data": "yes",
+    "C01_config1_ff_readback": "3f",
+    "C02_config2_ff_readback": "bf",
+    "C03_config3_ff_readback": "1f",
+    "C04_config_after_reset_2": "000000",
+    "C05_read_reg_0f": "00",
+    "C06_read_reg_10": "00",
+    "C07_write_reg_0f": "accepted",
+    "C08_read_reg_0f_after_write": "00",
+    "C09_read_8_from_0x0d_rollover": "ffff000000000000",
+    "D01_config_burst_readback": "052809",
+    "D02_config_after_single_c2_write": "051509",
+    "D03_config_partial_read_from_c2": "1509",
+    "D04_threshold_roundtrip": "3412cdab",
+    "E01_counts_16bit_hi_range": "22557,22557,22557",
+    "E02_data_partial_read_from_0x0b": "1d581d58",
+    "E03_data_burst_8_past_end": "1d581d581d580000",
+    "E04_counts_16bit_lo_range": "65535,65535,65535",
+    "E05_counts_12bit_lo_range": "4095,4095,4095",
+    "E06_12bit_within_4095": "yes",
+    "F01_powerdown_holds_data": "yes",
+    "F02_standby_holds_data": "yes",
+    "G01_config1_restart_stale_window": "yes",
+    "G02_config1_restart_new_after_cycle": "yes",
+    "H01_int_idle_level": "1",
+    "H02_int_asserted_low": "yes",
+    "H03_int_assert_ms_bucket": "fast<400",
+    "H04_status_rgbthf_set_when_int": "yes",
+    "H05_int_released_by_status_read": "1",
+    "H06_status_rgbthf_cleared_by_read": "yes",
+    "H07_prst4_ms": "1142",
+    "H08_prst4_unit": "rgb_cycles",
+    "J01_cycle_12bit_ms_series": "19,19,19,19,20,19,19,19",
+    "J02_cycle_12bit_series_complete": "yes",
+    "I01_final_config": "000000",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [],
+   "tail": ""
+  }
+ },
+ "scd30_conformance_probe": {
+  "silicon": {
+   "A01_firmware_version_word": "0342f3",
+   "A02_interval_word": "0002e3",
+   "B01_data_ready_word": "0001b0",
+   "B02_data_ready_within_interval": "yes",
+   "B03_measurement": "448eeeb2b9fe419cb888d1a0427bc376fab9",
+   "B04_data_ready_after_read": "000081",
+   "C01_soft_reset_acked": "yes",
+   "C02_soft_reset_recovery_ms": "50",
+   "C03_read_before_a_command": "dddddd",
+   "DONE": "1"
+  },
+  "-1": {
+   "twin": {
+    "A01_firmware_version_word": "0342f3",
+    "A02_interval_word": "0002e3",
+    "B01_data_ready_word": "0001b0",
+    "B02_data_ready_within_interval": "yes",
+    "B03_measurement": "44200d2a288c41bd0ff2a9344225a2a15c89",
+    "B04_data_ready_after_read": "000081",
+    "C01_soft_reset_acked": "yes",
+    "C02_soft_reset_recovery_ms": "25",
+    "C03_read_before_a_command": "000000",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "C03_read_before_a_command: real chip 'dddddd', twin '000000'"
+   ],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "A01_firmware_version_word": "0342f3",
+    "A02_interval_word": "0002e3",
+    "B01_data_ready_word": "0001b0",
+    "B02_data_ready_within_interval": "yes",
+    "B03_measurement": "44ac0a2fee1a41d29a824a9d4206777a6a34",
+    "B04_data_ready_after_read": "000081",
+    "C01_soft_reset_acked": "yes",
+    "C02_soft_reset_recovery_ms": "30",
+    "C03_read_before_a_command": "000000",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "C03_read_before_a_command: real chip 'dddddd', twin '000000'"
+   ],
+   "tail": ""
+  }
+ },
+ "sgp40_conformance_probe": {
+  "silicon": {
+   "A01_serial": "000081030b46c40de4",
+   "A02_serial_stable": "yes",
+   "B01_self_test": "d400c6",
+   "C01_raw_signal": "7676be",
+   "D01_heater_off_acked": "yes",
+   "DONE": "1"
+  },
+  "-1": {
+   "twin": {
+    "A01_serial": "0000815ad5794b89e0",
+    "A02_serial_stable": "no",
+    "B01_self_test": "d400c6",
+    "C01_raw_signal": "7feefd",
+    "D01_heater_off_acked": "yes",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "A02_serial_stable: real chip 'yes', twin 'no'"
+   ],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "A01_serial": "000081aea3bc9b4a30",
+    "A02_serial_stable": "no",
+    "B01_self_test": "d400c6",
+    "C01_raw_signal": "7cd4ce",
+    "D01_heater_off_acked": "yes",
+    "DONE": "1"
+   },
+   "error": "",
+   "divergences": [
+    "A02_serial_stable: real chip 'yes', twin 'no'"
+   ],
+   "tail": ""
+  }
+ },
+ "timer_alarm_pool_exhaustion": {
+  "silicon": {
+   "constructed": "16",
+   "raised": "true",
+   "errno": "12"
+  },
+  "-1": {
+   "twin": {
+    "constructed": "16",
+    "raised": "true",
+    "errno": "12"
+   },
+   "error": "",
+   "divergences": [],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "constructed": "16",
+    "raised": "true",
+    "errno": "12"
+   },
+   "error": "",
+   "divergences": [],
+   "tail": ""
+  }
+ },
+ "scheduler_saturation_drop": {
+  "silicon": {
+   "n_timers": "12",
+   "depth": "8",
+   "arming_span_us": "1456",
+   "counts_busy": "[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+   "counts_heal": "[500, 500, 501, 500, 500, 500, 500, 500, 500, 499, 499, 499]",
+   "dropped": "11",
+   "all_self_healed": "true"
+  },
+  "-1": {
+   "twin": {
+    "n_timers": "12",
+    "depth": "8",
+    "arming_span_us": "47",
+    "counts_busy": "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+    "counts_heal": "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+    "dropped": "12",
+    "all_self_healed": "false"
+   },
+   "error": "",
+   "divergences": [
+    "all_self_healed: real chip 'true', twin 'false'",
+    "arming_span_us: real chip '1456', twin '47'",
+    "counts_busy: real chip '[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]', twin '[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'",
+    "counts_heal: real chip '[500, 500, 501, 500, 500, 500, 500, 500, 500, 499, 499, 499]', twin '[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'",
+    "dropped: real chip '11', twin '12'"
+   ],
+   "tail": ""
+  },
+  "32768": {
+   "twin": {
+    "n_timers": "12",
+    "depth": "8",
+    "arming_span_us": "45",
+    "counts_busy": "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+    "counts_heal": "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]",
+    "dropped": "12",
+    "all_self_healed": "false"
+   },
+   "error": "",
+   "divergences": [
+    "all_self_healed: real chip 'true', twin 'false'",
+    "arming_span_us: real chip '1456', twin '45'",
+    "counts_busy: real chip '[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]', twin '[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'",
+    "counts_heal: real chip '[500, 500, 501, 500, 500, 500, 500, 500, 500, 499, 499, 499]', twin '[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'",
+    "dropped: real chip '11', twin '12'"
+   ],
+   "tail": ""
+  }
+ },
+ "wifi_country_code_reaction": {
+  "silicon": {
+   "country_before": "\"XX\"",
+   "value_0": "{\"radio_on\": true, \"value\": \"ZZ\", \"readback\": \"ZZ\", \"set\": true, \"scan_count\": 5}",
+   "value_1": "{\"radio_on\": true, \"value\": \"12\", \"readback\": \"12\", \"set\": true, \"scan_count\": 7}",
+   "value_2": "{\"radio_on\": true, \"value\": \"\\u0001\\u0002\", \"readback\": \"\\u0001\\u0002\", \"set\": true, \"scan_count\": 6}",
+   "restored": "\"ok\""
+  },
+  "-1": {
+   "twin": {},
+   "error": "HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(-1) failed (exit 1):",
+   "divergences": [
+    "country_before: real chip '\"XX\"', twin '<absent>'",
+    "restored: real chip '\"ok\"', twin '<absent>'",
+    "value_0: real chip '{\"radio_on\": true, \"value\": \"ZZ\", \"readback\": \"ZZ\", \"set\": true, \"scan_count\": 5}', twin '<absent>'",
+    "value_1: real chip '{\"radio_on\": true, \"value\": \"12\", \"readback\": \"12\", \"set\": true, \"scan_count\": 7}', twin '<absent>'",
+    "value_2: real chip '{\"radio_on\": true, \"value\": \"\\\\u0001\\\\u0002\", \"readback\": \"\\\\u0001\\\\u0002\", \"set\": true, \"scan_count\": 6}', twin '<absent>'"
+   ],
+   "tail": "twin run of wifi_country_code_reaction.py at gc.threshold(-1) failed (exit 1):\nFACT country_before=\"XX\"\nFACT restored=\"ok\"\nTraceback (most recent call last):\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/digital_twin/run_device_script.py\", line 130, in main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/wifi_country_code_reaction.py\", line 124, in <module>\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/wifi_country_code_reaction.py\", line 110, in _main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/wifi_country_code_reaction.py\", line 96, in _attempt\nAttributeError: 'WLAN' object has no attribute 'scan'\n"
+  },
+  "32768": {
+   "twin": {},
+   "error": "HardwareTestFailureError: twin run of wifi_country_code_reaction.py at gc.threshold(32768) failed (exit 1):",
+   "divergences": [
+    "country_before: real chip '\"XX\"', twin '<absent>'",
+    "restored: real chip '\"ok\"', twin '<absent>'",
+    "value_0: real chip '{\"radio_on\": true, \"value\": \"ZZ\", \"readback\": \"ZZ\", \"set\": true, \"scan_count\": 5}', twin '<absent>'",
+    "value_1: real chip '{\"radio_on\": true, \"value\": \"12\", \"readback\": \"12\", \"set\": true, \"scan_count\": 7}', twin '<absent>'",
+    "value_2: real chip '{\"radio_on\": true, \"value\": \"\\\\u0001\\\\u0002\", \"readback\": \"\\\\u0001\\\\u0002\", \"set\": true, \"scan_count\": 6}', twin '<absent>'"
+   ],
+   "tail": "twin run of wifi_country_code_reaction.py at gc.threshold(32768) failed (exit 1):\nFACT country_before=\"XX\"\nFACT restored=\"ok\"\nTraceback (most recent call last):\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/digital_twin/run_device_script.py\", line 130, in main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/wifi_country_code_reaction.py\", line 124, in <module>\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/wifi_country_code_reaction.py\", line 110, in _main\n  File \"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-r3/build/device_scripts/wifi_country_code_reaction.py\", line 96, in _attempt\nAttributeError: 'WLAN' object has no attribute 'scan'\n"
+  }
+ }
+}

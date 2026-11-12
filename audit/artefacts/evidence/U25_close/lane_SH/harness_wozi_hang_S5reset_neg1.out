@@ -1,0 +1,19 @@
+== a_hung_shutdown_step_is_ended_by_the_watchdog: Each controlled-shutdown step hung from outside: the command answers Valid, no reset follows, the watchdog engages.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 20830 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/wozi_hang_S5reset_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/wozi_hang_S5reset_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/wozi_hang_S5reset_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/wozi_hang_S5reset_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/config/ --gc-threshold -1 --test-shutdown-hang S5reset (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/wozi_hang_S5reset_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/twin_01.log)
+FAILED: a_hung_shutdown_step_is_ended_by_the_watchdog - RuntimeError: the twin exited before ever serving: exit code 1 (exit code 1); twin 1 ended on its own mid-scenario: exit code 1 (exit code 1) (0.3s)
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: f676468 (uncommitted changes)
+Levels: L2 (wozi)
+GC stage: -1
+Counts (scenarios): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - a_hung_shutdown_step_is_ended_by_the_watchdog: RuntimeError: the twin exited before ever serving: exit code 1 (exit code 1); twin 1 ended on its own mid-scenario: exit code 1 (exit code 1) (0.3s)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
+rc=1 wall=0s

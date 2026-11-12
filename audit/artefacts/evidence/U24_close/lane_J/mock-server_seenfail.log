@@ -1,0 +1,257 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/mock-server.test.js (138 tests | 5 failed) 653ms
+   ❯ installMockFetch (138)
+     ✓ runs on fixture definitions the site's own validator accepts 5ms
+     ✓ answers GET /sensors from the fixture 2ms
+     ✓ passes non-REST paths through to the real fetch 10ms
+     ✓ validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged 3ms
+     ✓ marks an in-range changed value as Valid and persists it for the next GET 1ms
+     ✓ compares a number with a resolution in its steps and stores the value rounded to one, as the device reads it back 2ms
+     ✓ answers PUT /sensors' TempOffset: 50 with Valid and reads back 50 1ms
+     ✓ answers PUT /sensors' TempOffset: true with Invalid and reads back 12.35 1ms
+     ✓ answers PUT /sensors' MeasInterval: 5.5 with Invalid and reads back 5 1ms
+     ✓ answers PUT /sensors' MeasInterval: 6 with Valid and reads back 6 1ms
+     ✓ answers PUT /sensors' MeasInterval: true with Invalid and reads back 5 1ms
+     ✓ answers Invalid for a readonly key and stores nothing, as for any key no writable field lists 2ms
+     ✓ resets error counters and refills history with no-error placeholders (real reset() never shrinks it) 1ms
+     ✓ leaves error counters untouched when ResetErrors is absent 1ms
+     ✓ answers ResetErrors: false with Invalid and resets nothing, as _put_status() does 1ms
+     ✓ answers ResetErrors: 1 with Invalid and resets nothing, as _put_status() does 1ms
+     ✓ answers ResetErrors: "true" with Invalid and resets nothing, as _put_status() does 1ms
+     ✓ answers ResetErrors: null with Invalid and resets nothing, as _put_status() does 1ms
+     ✓ validates PUT /networking against the networking group's own field defs 1ms
+     ✓ finds a fixture field for every shape the shared corpus names 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorNode" with Valid, as the server's shape check does 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorStation7" with Valid, as the server's shape check does 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a" with Valid, as the server's shape check does 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-b" with Valid, as the server's shape check does 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "A1-b2" with Valid, as the server's shape check does 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "" with Invalid, as the server's shape check does 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "-a" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-" with Invalid, as the server's shape check does 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a b" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a.b" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a_b" with Invalid, as the server's shape check does 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a\u0000b" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostLabel field (Hostname) PUT of "ä" with Invalid, as the server's shape check does 0ms
+     ✓ answers a countryCode field (Country) PUT of "DE" with Valid, as the server's shape check does 1ms
+     ✓ answers a countryCode field (Country) PUT of "XX" with Valid, as the server's shape check does 0ms
+     ✓ answers a countryCode field (Country) PUT of "de" with Invalid, as the server's shape check does 1ms
+     ✓ answers a countryCode field (Country) PUT of "D1" with Invalid, as the server's shape check does 0ms
+     ✓ answers a countryCode field (Country) PUT of "ZZZ" with Invalid, as the server's shape check does 0ms
+     ✓ answers a countryCode field (Country) PUT of "Z" with Invalid, as the server's shape check does 0ms
+     ✓ answers a countryCode field (Country) PUT of "D\u0000" with Invalid, as the server's shape check does 1ms
+     ✓ answers a countryCode field (Country) PUT of "DÉ" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does 0ms
+     ✓ answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does 1ms
+     ✓ answers a hostName field (NTPHost) PUT of "-a.b" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostName field (NTPHost) PUT of "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" with Invalid, as the server's shape check does 1ms
+     ✓ answers a hostName field (NTPHost) PUT of "a..b" with Invalid, as the server's shape check does 0ms
+     ✓ answers a hostName field (NTPHost) PUT of "a b" with Invalid, as the server's shape check does 0ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does 2ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does 1ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does 0ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does 0ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8," with Invalid, as the server's shape check does 0ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "a.b.c.d" with Invalid, as the server's shape check does 0ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1" with Invalid, as the server's shape check does 1ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8 ,1.1.1.1" with Invalid, as the server's shape check does 0ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "256.1.1.1" with Invalid, as the server's shape check does 0ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 1ms
+     ✓ bounds a byte-bounded string in UTF-8 bytes, not characters 1ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "reboot" answers Valid 1ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "bootloader" answers Valid 0ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "mempause" answers Valid 1ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "resetconfig" answers Valid 0ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "erasefram" answers Valid 0ms
+     ✓ answers Valid for every SystemCmd option device arzi's generated definitions offer 3ms
+     ✓ answers Valid for every SystemCmd option device dev's generated definitions offer 3ms
+     ✓ answers Valid for every SystemCmd option device grkizi's generated definitions offer 2ms
+     ✓ answers Valid for every SystemCmd option device klkizi's generated definitions offer 2ms
+     ✓ answers Valid for every SystemCmd option device schlafzi's generated definitions offer 1ms
+     ✓ answers Valid for every SystemCmd option device wozi's generated definitions offer 2ms
+     ✓ answers the SystemCmd near miss "Reboot" with Invalid: only the whole word runs a command 1ms
+     ✓ answers the SystemCmd near miss "reboot " with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss " reboot" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "reb" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "rebootx" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "ResetConfig" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "reset_config" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "resetconfig " with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "EraseFRAM" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss "erase_fram" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss " erasefram" with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss 1 with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss null with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss ["reboot"] with Invalid: only the whole word runs a command 0ms
+     ✓ answers the SystemCmd near miss {} with Invalid: only the whole word runs a command 1ms
+     ✓ derives SystemCmd's words from its options, not a hand-kept list 1ms
+     ✓ answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included 1ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 1ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 2ms
+     ✓ derives PauseTime's bounds from its field and writes it where its statusPath points 1ms
+     ✓ writes a dispatched number without a statusPath nowhere 1ms
+     ✓ derives LightCmdLED's members and bounds from its subFields 3ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 4ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 2ms
+     ✓ dispatches PUT /sensors' ForceCalRef: range-validated, never Unchanged, and GET reads back the last reference applied (400 on a fresh mock) 1ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 1ms
+     ✓ dispatches PUT /sensors' ContMeas as a command: bool-only, never persisted or reported by GET 1ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 1ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 1ms
+     ✓ masks every field the definitions mark mask: true, not a fixed list 0ms
+     ✓ sets each measurement TS to the clock, jitters a plain number, and leaves a time key and a non-number leaf untouched 1ms
+     ✓ answers GET /status' UnixTime and WifiTS from the clock 1ms
+     × writes no clock value into a /status system source sent as the unavailable marker; the networking source still gets its WifiTS 192ms
+     × writes no clock value into a /status networking source sent as the unavailable marker; the system source still gets its UnixTime 87ms
+     ✓ steps SysUptime and WifiUptime by one per GET /status and saturates both at COUNTER_CAP 1ms
+     ✓ serves every other /status value as stored: LocalTime is the same over ten GETs 1ms
+     ✓ answers at once with no timer when controls.delayMs is unset 1ms
+     ✓ delays every answer by controls.delayMs, a fixed time 2ms
+     ✓ jitters a nested measurement sub-object's leaves too, not just the top level 2ms
+     ✓ never jitters a non-negative measurement leaf into a negative one 1ms
+     ✓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC 1ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 0ms
+     ✓ never composes a sensor sample's command value, so GET /sensors never echoes a command as a setting 0ms
+     ✓ answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally 0ms
+     ✓ answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map 0ms
+     ✓ answers a PUT /sensors entry null that is not an object with Invalid in place of its field map 0ms
+     ✓ answers a PUT /sensors entry [1] that is not an object with Invalid in place of its field map 0ms
+     ✓ answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map 0ms
+     ✓ rejects DELETE /sensors, a method its route does not take, with make_response(405) and HTTP 405 1ms
+     ✓ rejects POST /status, a method its route does not take, with make_response(405) and HTTP 405 1ms
+     ✓ rejects PUT /measurements, a method its route does not take, with make_response(405) and HTTP 405 0ms
+     ✓ intercepts only the routes the definitions declare, passing every other path through 1ms
+     ✓ injects exactly one network failure via controls.nextFailure, then serves normally again 2ms
+     ✓ injects exactly one HTTP error status via controls.nextFailure, then serves normally again 1ms
+     ✓ answers an injected status the catalog does not list with make_response()'s Unknown error 0ms
+     ✓ injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly 0ms
+     ✓ injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission 1ms
+     ✓ injects an empty-body failure: HTTP 200 with a zero-length body 0ms
+     ✓ answers PUT /sensors with the body nope by make_response(1), HTTP 200 1ms
+     ✓ answers PUT /sensors with the body [1,2] by make_response(1), HTTP 200 1ms
+     ✓ answers PUT /networking with the body "text" by make_response(1), HTTP 200 0ms
+     ✓ answers PUT /system with the body null by make_response(1), HTTP 200 0ms
+     ✓ answers PUT /status with the body 5 by make_response(1), HTTP 200 0ms
+     ✓ answers PUT /notification with the body { by make_response(1), HTTP 200 0ms
+     × answers a PUT with no Content-Type by make_response(1), HTTP 200, and applies nothing 95ms
+     × answers a PUT with text/plain by make_response(1), HTTP 200, and applies nothing 78ms
+     × answers a PUT with a differently cased type by make_response(1), HTTP 200, and applies nothing 76ms
+     ✓ accepts the JSON type with a parameter, as Microdot reads only the type before the first ";" (guard) 1ms
+     ✓ injects a group-failure on the next PUT: every attempted key answers Failed in an OK envelope, then once only 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > writes no clock value into a /status system source sent as the unavailable marker; the networking source still gets its WifiTS
+AssertionError: expected { error: 'unavailable', …(1) } to deeply equal { error: 'unavailable' }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---writes-no-clock-value-into-a--status-system-source-sent-as-the-unavailable-marker--the-networking-source-still-gets-its-WifiTS.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[31m+   "UnixTime": 1791871200,[39m
+[2m    "error": "unavailable",[22m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:710:36
+    708|             uninstall = installMockFetch(DEFS, { ...DATA, status });
+    709|             const body = await getJson("/status");
+    710|             expect(body[degraded]).toEqual({ error: "unavailable" });
+       |                                    ^
+    711|             expect(body[healthy][clockKey]).toBe(Math.floor(Date.now()…
+    712|         },
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > writes no clock value into a /status networking source sent as the unavailable marker; the system source still gets its UnixTime
+AssertionError: expected { error: 'unavailable', …(1) } to deeply equal { error: 'unavailable' }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---writes-no-clock-value-into-a--status-networking-source-sent-as-the-unavailable-marker--the-system-source-still-gets-its-UnixTime.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[31m+   "WifiTS": 1791871200,[39m
+[2m    "error": "unavailable",[22m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:710:36
+    708|             uninstall = installMockFetch(DEFS, { ...DATA, status });
+    709|             const body = await getJson("/status");
+    710|             expect(body[degraded]).toEqual({ error: "unavailable" });
+       |                                    ^
+    711|             expect(body[healthy][clockKey]).toBe(Math.floor(Date.now()…
+    712|         },
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT with no Content-Type by make_response(1), HTTP 200, and applies nothing
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT with text/plain by make_response(1), HTTP 200, and applies nothing
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT with a differently cased type by make_response(1), HTTP 200, and applies nothing
+AssertionError: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT-with-no-Content-Type-by-make_response-1---HTTP-200--and-applies-nothing.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT-with-text-plain-by-make_response-1---HTTP-200--and-applies-nothing.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT-with-a-differently-cased-type-by-make_response-1---HTTP-200--and-applies-nothing.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": 1,[39m
+[32m-   "descr": "Invalid JSON request",[39m
+[32m-   "res": "ERR",[39m
+[32m-   "result": {},[39m
+[31m+   "code": 0,[39m
+[31m+   "descr": "Command executed",[39m
+[31m+   "res": "OK",[39m
+[31m+   "result": {[39m
+[31m+     "Hostname": "Valid",[39m
+[31m+   },[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:962:43
+    960|             const response = await fetch("/networking", { method: "PUT…
+    961|             expect(response.status).toBe(200);
+    962|             expect(await response.json()).toEqual({ res: "ERR", code: …
+       |                                           ^
+    963|             expect((await getJson("/networking")).Hostname).toBe("fixt…
+    964|         },
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 133 passed (138)
+   Start at  15:42:31
+   Duration  2.22s (tests 64%, worker 20%, import 15%, setup 1%)
+
+== Summary: npm test ==
+Commit: e75d363 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 133 · failed 5 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-server.test.js > installMockFetch > writes no clock value into a /status system source sent as the unavailable marker; the networking source still gets its WifiTS: expected { error: 'unavailable', …(1) } to deeply equal { error: 'unavailable' }
+  - tests_js/mock-server.test.js > installMockFetch > writes no clock value into a /status networking source sent as the unavailable marker; the system source still gets its UnixTime: expected { error: 'unavailable', …(1) } to deeply equal { error: 'unavailable' }
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT with no Content-Type by make_response(1), HTTP 200, and applies nothing: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT with text/plain by make_response(1), HTTP 200, and applies nothing: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT with a differently cased type by make_response(1), HTTP 200, and applies nothing: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

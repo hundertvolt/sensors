@@ -1,0 +1,63 @@
+PASS test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step
+BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+BMP3XX Error counter increased to 1
+BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+BMP3XX Error counter increased to 2
+BMP3XX Soft reset failed: [Errno 5] EIO: no ACK from device
+BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+BMP3XX Error counter increased to 3
+BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+BMP3XX Error counter increased to 4
+BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+BMP3XX Error counter increased to 5
+BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+BMP3XX Error counter increased to 6
+BMP3XX Maximum error count reached!
+SYSTEM Task BMP3XX.start_asy_read ended: returned
+ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+ISL29125 Error counter increased to 1
+ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+ISL29125 Error counter increased to 2
+ISL29125 Error re-applying configuration: [Errno 5] EIO: no ACK from device
+ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+ISL29125 Error counter increased to 3
+ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+ISL29125 Error counter increased to 4
+ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+ISL29125 Error counter increased to 5
+ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+ISL29125 Error counter increased to 6
+ISL29125 Maximum error count reached!
+SYSTEM Task ISL29125.start_asy_read ended: returned
+SCD30 Read failed: [Errno 5] EIO: no ACK from device
+SCD30 Error counter increased to 1
+SCD30 Read failed: [Errno 5] EIO: no ACK from device
+SCD30 Error counter increased to 2
+SCD30 Soft reset failed: [Errno 5] EIO: no ACK from device
+SCD30 Read failed: [Errno 5] EIO: no ACK from device
+SCD30 Error counter increased to 3
+SCD30 Read failed: [Errno 5] EIO: no ACK from device
+SCD30 Error counter increased to 4
+SCD30 Read failed: [Errno 5] EIO: no ACK from device
+SCD30 Error counter increased to 5
+SCD30 Read failed: [Errno 5] EIO: no ACK from device
+SCD30 Error counter increased to 6
+SCD30 Maximum error count reached!
+SYSTEM Task SCD30.start_asy_read ended: returned
+SGP40 Read failed: [Errno 5] EIO: no ACK from device
+SGP40 Error counter increased to 1
+SGP40 Read failed: [Errno 5] EIO: no ACK from device
+SGP40 Error counter increased to 2
+SGP40 Heater-off failed: [Errno 5] EIO: no ACK from device
+SGP40 Read failed: [Errno 5] EIO: no ACK from device
+SGP40 Error counter increased to 3
+SGP40 Read failed: [Errno 5] EIO: no ACK from device
+SGP40 Error counter increased to 4
+SGP40 Read failed: [Errno 5] EIO: no ACK from device
+SGP40 Error counter increased to 5
+SGP40 Read failed: [Errno 5] EIO: no ACK from device
+SGP40 Error counter increased to 6
+SGP40 Maximum error count reached!
+SYSTEM Task SGP40.start_asy_read ended: returned
+PASS test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot
+2/2 passed, 0 failed, 0 skipped

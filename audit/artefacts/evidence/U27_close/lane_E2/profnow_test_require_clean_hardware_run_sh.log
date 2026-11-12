@@ -1,0 +1,24 @@
+...................                                                      [100%]
+============================== slowest durations ===============================
+0.27s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_not_clean_reason_reaches_the_verdict
+0.25s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_nonzero_pytest_exit_is_propagated_unchanged
+0.23s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_the_log_and_the_record_land_in_the_evidence_archive
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[last-of-several]
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_failing_verdict_fails_the_wrapper_although_pytest_exited_0
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_the_verdict_gets_the_record_the_exit_code_the_runner_and_the_levels
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_the_archive_is_named_after_the_runner_sanitised
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[floor-only]
+0.21s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_without_a_floor_the_callers_last_marker_expression_is_the_selection
+0.21s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_pytest_sees_the_evidence_directory_exported
+0.21s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[attached-form]
+0.20s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[narrowed]
+0.20s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_clean_run_exits_0_with_the_verdicts_block
+0.20s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_pytest_runs_once_with_the_record_plugin_and_the_callers_arguments_before_v
+0.19s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_every_uv_call_runs_without_an_implicit_sync
+0.01s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_marker_flag_without_its_expression_is_a_usage_error_before_any_run[floor]
+0.01s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_marker_flag_without_its_expression_is_a_usage_error_before_any_run[caller-m]
+0.01s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_help_prints_usage_and_runs_nothing
+0.01s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_missing_runner_or_levels_is_a_usage_error_before_any_run
+
+(38 durations < 0.005s hidden.  Use -vv to show these durations.)
+19 passed in 3.59s

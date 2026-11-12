@@ -1,0 +1,21 @@
+U25 lane G: twin bus hazards, FRAM crash points, timer pool, hot re-plug, wiring, auto-range
+
+Bus-hazard tier on devices from data: the twin SGP40 takes the general call, the
+erase racing a logger write (every unit written, no rollover), the erase at bus
+speed feeding the watchdog, the storage pause gates, and no SCD30 write while a
+system command runs; the two API-burst tests leave.
+
+New tests/test_digital_twin_fram_crash_points.py: power lost after every SPI
+transaction of a logger write, a timestamped backup write (per FRAM size) and the
+erase; a restored history is the old, the new, or blank with its trace. A cut
+that wrote nothing since the last checked one reuses its verdict.
+
+New tests/test_digital_twin_timer_pool.py (per device): an empty alarm pool
+degrades each reader and tick timer in place and re-arms once it frees. New
+tests/test_digital_twin_hot_replug.py: every bus-attached driver recovers from an
+unplug without a reboot. Wiring tests on per-device plans (RDID per size,
+one-shot RDID, single-instance persistence); auto-range adds the fixed-range and
+settling scenes. Helpers follow D.15 member order.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

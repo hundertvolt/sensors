@@ -1,0 +1,81 @@
+FAIL test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 377, in test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync
+  File "tests/test_zz_base_ntpfram.py", line 76, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpfram.py", line 365, in scenario
+AssertionError: 
+FAIL test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 331, in test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock
+  File "tests/test_zz_base_ntpfram.py", line 76, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpfram.py", line 327, in scenario
+  File "tests/test_zz_base_ntpfram.py", line 265, in sync_real_ntp_chain
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+FAIL test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_timestamp:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 525, in test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_timestamp
+  File "tests/test_zz_base_ntpfram.py", line 76, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpfram.py", line 520, in before_reboot
+  File "tests/test_zz_base_ntpfram.py", line 265, in sync_real_ntp_chain
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+FAIL test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 295, in test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced
+  File "tests/test_zz_base_ntpfram.py", line 76, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpfram.py", line 292, in scenario
+  File "tests/test_zz_base_ntpfram.py", line 265, in sync_real_ntp_chain
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_fram_write_into_require_ntp_refuses_when_the_real_ntp_chain_has_never_synced
+FAIL test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_independently:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 446, in test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_independently
+  File "tests/test_zz_base_ntpfram.py", line 76, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpfram.py", line 438, in scenario
+  File "tests/test_zz_base_ntpfram.py", line 265, in sync_real_ntp_chain
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_never_syncs
+FAIL test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 402, in test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced
+  File "tests/test_zz_base_ntpfram.py", line 76, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpfram.py", line 396, in scenario
+  File "tests/test_zz_base_ntpfram.py", line 265, in sync_real_ntp_chain
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+FAIL test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpfram.py", line 499, in test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable
+AssertionError: 
+FAIL test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up: left a task parked on the scheduler
+FAIL test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_up: left a task parked on the scheduler
+FAIL test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up: left a task parked on the scheduler
+2/12 passed, 10 failed, 0 skipped

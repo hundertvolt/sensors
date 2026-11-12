@@ -1,0 +1,34 @@
+.FF.                                                                     [100%]
+=================================== FAILURES ===================================
+___________ test_no_rendered_script_sleeps_longer_than_one_feed_step ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9209/test_no_rendered_script_sleeps0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ffb64452d90>
+
+    def test_no_rendered_script_sleeps_longer_than_one_feed_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        found = {name: sleeps for name, source in _rendered_sources(tmp_path, monkeypatch).items() if (sleeps := _long_sleeps(source))}
+>       assert not found, f"a wait longer than {_MAX_STEP_MS} ms goes through fed_sleep_ms()/fed_wait_ms(): {found}"
+E       AssertionError: a wait longer than 2000 ms goes through fed_sleep_ms()/fed_wait_ms(): {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling.py': ['line 76: sleep(_BOOT_WAIT_S)'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)'], 'sgp40_sample_cadence.py': ['line 64: sleep(_WINDOW_S)']}
+E       assert not {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling...'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)'], 'sgp40_sample_cadence.py': ['line 64: sleep(_WINDOW_S)']}
+
+tests_scripts/test_device_script_watchdog.py:80: AssertionError
+_______ test_a_script_run_longer_than_one_watchdog_period_arms_and_feeds _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9209/test_a_script_run_longer_than_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ffb6441fb10>
+
+    def test_a_script_run_longer_than_one_watchdog_period_arms_and_feeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        rendered = _rendered_sources(tmp_path, monkeypatch)
+        modules = sorted(p for p in _TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts)
+        runs = _long_runs(modules, set(rendered))
+        assert runs, "no host run_isolated() call names a script with a timeout_s - the scan reads nothing"
+        unfed = {name: timeout for name, timeout in runs.items() if timeout > _WATCHDOG_PERIOD_S and name not in _STARVATION_SCRIPTS and not _arms_and_feeds(rendered[name])}
+>       assert not unfed, f"allowed more than {_WATCHDOG_PERIOD_S} s yet never arms and feeds the watchdog (script: timeout_s): {unfed}"
+E       AssertionError: allowed more than 8 s yet never arms and feeds the watchdog (script: timeout_s): {'bus_deinit_is_a_noop_on_real_hardware.py': 60.0, 'scd30_real_irq_edge.py': 30.0}
+E       assert not {'bus_deinit_is_a_noop_on_real_hardware.py': 60.0, 'scd30_real_irq_edge.py': 30.0}
+
+tests_scripts/test_device_script_watchdog.py:112: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_watchdog.py::test_no_rendered_script_sleeps_longer_than_one_feed_step
+FAILED tests_scripts/test_device_script_watchdog.py::test_a_script_run_longer_than_one_watchdog_period_arms_and_feeds
+2 failed, 2 passed in 0.64s
