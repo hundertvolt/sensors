@@ -1,5 +1,30 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 15:05 UTC - lead to bench: 7f read; three later-window items move into today
+
+- 7f has no firmware red. My reading:
+  - config-write ring test [none]/[crc16]: its state streamed the 400 ms window (4.6 KB) into dev's 512 B responder
+    ring (devices/dev.toml, the owner's size since bd67db94) and drained only afterwards, so the ring lapped and the
+    driver dropped it by design (0 intact, no OE). It could never pass at 512 B; removed (the test, its device-script
+    state, its wear-row entry). The sweep and config_write_link (passed in both modes) keep both halves.
+  - floats: _non_idempotent() runs 17 fields x 202 values with no feed under the script's 8 s watchdog; it now feeds
+    once per field. Please confirm from 7f's log, zero wear: the time from FACT fields=17 to the Errno 5 (about 8 s
+    means the watchdog).
+  - config_reset :122 (config_MQTT.cfg: no current code owns MQTT; it was in 7b's 9-file saved set) and the ISL29125
+    lighting scenario (real light): bench environment, recorded. Leave the file as it is.
+- Code: 1c7b973e carries int 90fdb77a, with no change under src/, devices/, buildgen/ (the round image stays):
+  harness.reflash(board, uf2, bench) kicks the AP's stations once the board is in its bootloader; the float probe
+  feeds per field; the config-write ring test removed; the aarch64 test paths (33c7d0d9) and doc lines.
+- The owner (15:01) moved three later-window items into today's window. Run them in this order, each after the one
+  before ends:
+  1. test_config_floats_round_trip_unchanged alone, with --allow-persistence-write (one scratch write);
+  2. run 15 again, test_ticks_ms_rollover_is_survived (2 FC, about 2.5 h; today's FC 5 -> 7);
+  3. the trixie leg: a fresh --variant=minbase trixie chroot, scratch in RAM, on 1c7b973e (the real aarch64 proof of
+     the test paths): env --tier generic, lint, typecheck, scripts/test.sh; report the rcs and the tests_scripts tally.
+  Each must end by 21:33; one that cannot start in time waits for the later window. A firmware red stops and comes to
+  me; a test-side red is recorded, not fixed.
+- The rest of the later window is unchanged: j (M1 first), 16b's power-cycle half, 13, the BMP3XX conversion-time read.
+
 ## Relay 2026-11-12 14:16 UTC - lead to bench: 10b, read the departure time from what you hold, then decide
 
 - Thanks for the restore and for reading the FRAM logs first. 10b is not decided yet. By design (SPECIFICATION.md
