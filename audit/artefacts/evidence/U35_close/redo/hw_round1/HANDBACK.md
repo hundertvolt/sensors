@@ -43671,3 +43671,25 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - 8f (13:12:52-13:18:56, 370 s, rc 0): `test_real_uf2_reflash_and_boot_smoke_test` PASSED; NOT CLEAN only for the
   lower levels it skips by design. Recovery passes 2 (harness-side). WEAR.txt: passed: 8f. Flash cycles today: 1.
 - 8b started 13:19:22. Host load at its start 3.79 (the 8f reflash's own build).
+
+## Bench 2026-11-12 13:37 UTC - 8b red on the stale-station trap after its CRC-16 checks passed; the board recovered by itself
+
+- 8b (13:19:22-13:29:13, 591 s, rc 1, PYTEST_K=test_uart_link_crc16): `test_the_link_suite_runs_on_a_crc16_image`
+  FAILED in its finally block, plus a teardown error. The CRC-16 image was built and flashed (13:24), served, matched
+  its record and passed all three link checks (healthy under load, transfers under load, overload corrupts nothing).
+  The round image flashed back then did not serve within the test's 120 s, nor in the teardown's 90 s. Flash cycles: 2
+  (today 3).
+- What happened (host journal, wpa_supplicant on wlan0, and the board's console): the CRC-16 image joined the bench AP
+  at 13:24:34, and the AP dropped its station only at 13:26:58, after the reflash. Between 13:26:58 and 13:34:37 the AP
+  saw no association. The board logged WIFI W38 WLAN_CONNECT_FAILED (counter 6 with W79), then W79 WLAN_TO_HOTSPOT;
+  at uptime ~544 s it switched the hotspot off, retried STA and joined at 13:34:37. It served at 13:35:31.
+- Reading: the round image's first STA attempts met the AP's stale station entry, the trap bench_control.py:211's
+  kick_client() works around ("a stale AP-side station entry survives the DUT's reset and blocks its
+  reassociation"). The harness kicked before 8f's reflash (13:19-13:20, iw station del in the journal) but nothing
+  kicked before this finally-block reflash. A hypothesis from the timing, not a measurement of the DUT's attempts.
+- Firmware: per design. Connect failed, hotspot fallback, a later STA retry, joined. ResetReason 2 (the reflash boot),
+  no task ended, ConfigFaults [], DebugLevel 5, MemFree 73904; SGP40 W33/W35 (no timestamp at restore and backup
+  before NTP), WEBSERVER W60 (the test's declared overload). Console and /status saved
+  (console_1334.txt, status_after_8b_1335.json).
+- Not rerun, not fixed. Under 13:11's rule (go on after a red on test-side causes alone) the wear goes on: 10b, 15
+  (if it ends by 21:33), then 7f. If you read this red as firmware, say so and I stop after the step that is running.
