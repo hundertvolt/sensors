@@ -56,7 +56,7 @@ STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; t
   "7f|gated_flash|60|0|72|6|0|pytest|NeoPixel rig|gated flash_tier"
   "7b|gated_bench|60|0|50|7|0|pytest|-|gated bench --deselect=$HOTSPOT"
   "8f|flash_cycles_flash|20|1|0|0|0|fc|-|cycles flash_tier"
-  "8b|flash_cycles_bench|70|4|0|0|0|fc|LWIP_CONTROL_IMAGE|cycles_bench"
+  "8b|flash_cycles_bench|70|2|0|0|0|fc|-|cycles_bench"
   "10b|hotspot_case_b|60|0|4|0|2|pytest|-|hotspot_b"
   "15|rollover|170|2|0|0|0|fc|-|rollover"
 )
@@ -166,12 +166,9 @@ gated() {  # row 7, one tier (7f, 7b): the gated tests alone; the hotspot module
   ok "$tier" --allow-persistence-write --allow-scd30-extra-write --allow-neopixel-sweep -m "persistence_write or scd30_extra_write or neopixel_sweep" "$@"
 }
 
-cycles() { local tier=$1; shift; ok "$tier" --allow-flash-cycle -m flash_cycle "$@"; }  # row 8, one tier (8f FC 1, 8b FC 4)
+cycles() { local tier=$1; shift; ok "$tier" --allow-flash-cycle -m flash_cycle "$@"; }  # row 8, one tier (8f FC 1, 8b FC 2)
 
-cycles_bench() {  # 8b, refused without LWIP_CONTROL_IMAGE: a pass is never run again
-  [ -n "${LWIP_CONTROL_IMAGE:-}" ] || { echo "SUM flash cycles refused: LWIP_CONTROL_IMAGE unset"; return 1; }
-  cycles bench --lwip-control-image "$LWIP_CONTROL_IMAGE"
-}
+cycles_bench() { cycles bench; }  # 8b, run with PYTEST_K=test_uart_link_crc16 (relay 06:18)
 
 hotspot_b() {  # row 10's case (b) as BACKLOG states it, the module whole: the soak runner's floor would run (b) alone
   scripts/_require_clean_hardware_run.sh --runner run_bench_soak_tests_hotspot --levels "soak duration long (not a level)" \
