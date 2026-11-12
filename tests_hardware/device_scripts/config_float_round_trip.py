@@ -17,6 +17,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    import machine
     from _shared.facts import done, errors, fact
     from _shared.watchdog import arm
     from bench_facts import BenchFacts
@@ -36,7 +37,7 @@ async def _main() -> None:
             fact("leftover_remove_errno", e.errno)
     try:
         fact("fields", len(BENCH["float_fields"]))
-        bad = _non_idempotent()
+        bad = _non_idempotent(wdt)
         errors("non_idempotent", len(bad), bad)
         wdt.feed()
         key, (lo, hi) = min(BENCH["float_fields"].items())
@@ -62,10 +63,11 @@ async def _main() -> None:
         done()
 
 
-def _non_idempotent() -> "list[str]":
-    # Every probed value whose stored form changes when stored again.
+def _non_idempotent(wdt: "machine.WDT") -> "list[str]":
+    # Every probed value whose stored form changes when stored again; fed per field, as the whole probe can outlast the watchdog.
     found: list[str] = []
     for key, (lo, hi) in sorted(BENCH["float_fields"].items()):
+        wdt.feed()
         for i in range(_STEPS + 2):
             v = lo if i == 0 else hi if i == _STEPS + 1 else lo + (hi - lo) * i / (_STEPS + 1)
             once = cm._stored_float(v)
