@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 19:13 UTC - lead to bench: delete the stray config_MQTT.cfg; keep the trixie chroot
+
+- The owner, 2026-11-12 19:12:23 UTC: "It's okay to just delete it" (asked: copy config_MQTT.cfg to the Pi, then
+  delete it from the board). So, no copy:
+  - Delete config_MQTT.cfg from the bench board. Do not open or print it.
+  - Remove it from the saved pre-session file set on the Pi too, so no restore brings it back.
+  - List the board's files: the config files should now be the build's 8. Record the delete in the wear record as
+    one filesystem write.
+  - Do not rerun config_reset today; it reruns with the later window's runs.
+- Trixie leg read: all green, and the 20 aarch64 reds are gone on the real Pi4. Keep the trixie chroot (reused
+  chroots are the agreed form).
+- Nothing else starts today; STOP at 21:33 as planned. The later-window items are unchanged.
+
 ## Relay 2026-11-12 15:05 UTC - lead to bench: 7f read; three later-window items move into today
 
 - 7f has no firmware red. My reading:
