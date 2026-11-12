@@ -2505,7 +2505,9 @@ past it (at most six admitted connections and three closing pcbs) the arena stil
 override stays. The shipped 1,600 B is chosen on silicon (agent, 2026-11-11, on the owner's "decide
 on the measurements"): 20 full page loads take 0.648/0.720/0.801 s (median/p90/max) against 6,400 B's
 0.580/0.684/0.702 s, `GET /status` 0.671/0.758/0.833 s against 0.599/0.725/0.741 s, and a page load
-beside five clients that stopped reading 0.547 s (dev, 2026-11-11).
+beside five clients that stopped reading 0.547 s (dev, 2026-11-11). At 6,400 B one such run also left the
+board silent for over 90 s until a reset (2026-11-11); at 1,600 B a six-hour HTTP soak saw no silence
+(6 of 39,132 GETs failed, 2026-11-12).
 `tests_hardware/bench/test_modlwip_send_stall.py` holds a page load beside `max_connections` - 1
 such clients, and `GET /status` beside it, to 3 s.
 

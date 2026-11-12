@@ -15,16 +15,6 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
   that form, where the FRAM chain carries no pass-through helper (SPECIFICATION.md F.1); within the
   C-stack bound. Recorded only, no code change.
 
-## Open questions (need owner input or further investigation)
-
-- **The board not answering for more than 90 s, seen once at `TCP_SND_BUF` 6,400 B** — one
-  send-stall run on `dev` (2026-11-11) left the board not answering for more than 90 s, its loop
-  alive and its link reading connected, until a reset. Nothing in `src/` or modlwip holds longer
-  than 15 s; a CYW43 TX flow-control stall (`lib/cyw43-driver/src/cyw43_ll.c:651-692`, v1.29.0) is
-  the hypothesis, unconfirmed. Not seen at the shipped 1,600 B: the send-stall test passes, its page
-  load 0.51-0.63 s. The check is the six-hour HTTP soak below
-  (`bench/test_memory_stress_bench.py::test_http_soak_stays_live`).
-
 ## Real-hardware work still owed
 
 Folded in from the retired `REAL_HARDWARE_TEST_QUEUE.md` and `HARDWARE_TEST_HANDOVER.md` after the
