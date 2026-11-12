@@ -1,7 +1,7 @@
 # The whole-project audit: final report (draft; W3a 2026-11-10 at 51c9c75f; lead update 2026-11-12 at 67e47fa6)
 
 Pre-audit tree `25caf528` (2026-09-25). Final tree `67e47fa6` unless the bench's last steps change code
-(`<BENCH: 10g, k, wear>`; P01: `<gate66 on 67e47fa6>`, CI run 43167146357 on snapshot 65 `4d4d8a60`),
+(10g PASS 2026-11-12; `<BENCH: k, wear>`; P01: `<gate66 on 67e47fa6>`, CI run 43167146357 on snapshot 65 `4d4d8a60`),
 merged into `main` as release 2.0 with the owner's agreement (release number: owner, 2026-11-10, "It's 2.0").
 The audit's records (`audit/`, `PROJECT_AUDIT_PLAN.md`) are deleted at D. Every record stays reachable from three
 branches that are never deleted (owner, 2026-11-10 21:55:27): `claude/u35-audit-archive` at `<D: sha>`, the last
@@ -11,7 +11,8 @@ commit holding them; `claude/u35-bench-campaign`, the bench's evidence; `claude/
 Volume at 67e47fa6, outside `audit/` and `arduino/`: 1,327 commits (1,197 without merges), 929 files
 (+204,547 / -163,742 lines). `src/` keeps 28 modules (seven now carry the `asy_` prefix), 13,214 -> 14,738 lines;
 `buildgen/` 3,681 -> 5,755; `tests/` 62,532 -> 101,776 lines; files: `tests_scripts/` 65 -> 213, `tests_hardware/`
-98 -> 178, `scripts/` 20 -> 52, `fakes/` new (6). Image and free-flash figures per device: `<BENCH: P01's firmware builds>`.
+98 -> 178, `scripts/` 20 -> 52, `fakes/` new (6). Images at 7c142edd (of 1,228,800 B before the filesystem): dev 1,157,508 B (94.2 %, 71,292 B free); arzi,
+grkizi, klkizi and schlafzi 1,096,580-1,096,604 B (89.2 %, about 132,200 B free); wozi 1,106,864 B (90.1 %).
 - **Errors and logs.** One global error catalog; one entry per fault per level (an error at its level, a warning
   at the level that degrades); every module's history under `GET /status` `errcount`, FRAM-backed for the FRAM
   wired modules; one history slot per repeat (the newest-entry rule).
@@ -50,13 +51,15 @@ Volume at 67e47fa6, outside `audit/` and `arduino/`: 1,327 commits (1,197 withou
 ## 2. Open findings at their terminal state (audit/sweeps/open_findings.md; W3A/N01.tsv)
 73 rows open or partly closed at 51c9c75f: DONE 35, PLACED 13, TO PLACE 9, DROPPED 8, BENCH 7, OWNER 1. The five
 rows whose state cell was never filled: DONE 3, TO PLACE 2. OF-16's record and DECREV 4's ninth place are one
-item: done in code (87c14760, SPECIFICATION.md N.2), its two record lines corrected before the archive commit `<D>`.
+item: done in code (87c14760, SPECIFICATION.md N.2); its two record lines state it since `7f47edbe` (2026-11-12).
 - TO PLACE: W3b (f3c4fe9f, 67e47fa6) placed the firmware facts: the `WaitTimeNTP` 0 wording (DEVICE_REFERENCE.md;
   no warning is logged, as code and legacy show) and the stage-only wipe's root (build_device_websites.sh). The
   test, twin and tooling lines (H.4 mock, Edge keyring, UART soak root, twin fidelity row, feed-gap hold,
   flash-stall model, `_unix_port.sh check`, two unfilled rows) stay in the archived record: firmware facts only.
-- BENCH: `<BENCH: each row's step result>` (VOC stretch, serving heap at the ceiling, lwIP send stall, the two
-  ResetErrors refusals, the SGP40 raw walk, the owed-hardware rows; the FRAM pull and the crossover pull, step j).
+- BENCH, on the final image (11-11, bench notes 14:30-20:35): the serving heap at the ceiling, the lwIP send stall
+  (page 0.508-0.63 s) and the two ResetErrors refusals pass in the bench tier; the SGP40 now matches the twin (step
+  d's A). Still owed: the VOC stretch `<BENCH>`, and the owed-hardware rows with the FRAM and crossover pulls (j,
+  a later window).
 - OWNER: `disallow_any_unimported` in the three mypy passes (one site left), a question the audit planned and
   never put.
 
@@ -80,15 +83,21 @@ item: done in code (87c14760, SPECIFICATION.md N.2), its two record lines correc
 62 credits on 60 lines at eb8a214e (2026-11-06 28, 11-07 9, 11-09 15, 11-10 10), in eleven topics: rules of method
 6, FRAM and logging synchronous 15, bounds and their sources 6, UART module layout 2, the reset sequence 1, test
 tiers 5, the E.6.6 tier allow-list 10, bench and flash test design 14, website 1, Wi-Fi 1, `/status` streaming 1.
-Accept a topic whole or overrule a line. The two lines W3a flagged at 51c9c75f are settled in the tree (eb8a214e):
-`verify_present()` is back, and the error-log reset order's test comment credits the owner, as the code does.
+The two lines W3a flagged at 51c9c75f are settled in the tree (eb8a214e): `verify_present()` is back, and the
+error-log reset order's test comment credits the owner, as the code does. **Reviewed by the owner 2026-11-12
+07:45-08:40: all eleven topics accepted whole, no line overruled.** Two follow-ups: the BMP3XX conversion wait's
+owed bench check (SPEC's BMP3XX timing row) goes to the later bench window as a read-only measurement; the
+README's "next bench run settles the `REDIRECT`" sentence is dropped, the final-image run having settled it.
+OF-239 (`disallow_any_unimported`): not adopted, the lead's decision under the owner's 2026-11-11 rules (tooling
+only, no firmware effect); told to the owner 2026-11-12.
 
 ## 5. Load-limit coverage (W3A/LOAD.md)
-The cells, re-read at 51c9c75f, are committed with the close's records in `audit/b3/load.md` (`<W3b>`; before,
-that file held a header only and the cells lived in two lane scratch files).
+The cells, re-read at 51c9c75f, are committed in `audit/b3/load.md` (2026-11-12, `7f47edbe`; before, that file
+held a header only and the cells lived in two lane scratch files).
 Every finite shared resource at each level: 13 resources x 4 levels, 52 cells; at 51c9c75f 43 still right,
 8 corrected (renamed or removed tests, the FRAM write queue gone with synchronous writes, the alarm pool used by
-the sensor triggers and the reset timer only), 1 owed: a captive-DNS flood on silicon (`<D: justified or a gap>`).
+the sensor triggers and the reset timer only), 1 owed, justified 2026-11-12: a captive-DNS flood on silicon holds at most the pinned modlwip's 4-datagram UDP queue
+(`extmod/modlwip.c:299`, `:456-460`), the rest freed on arrival; the answering logic is L1's and L2's.
 One entry per new load test (gap, load, limit, degradation, recovery):
 1. Full soft-callback queue (L2): 64 callbacks lost back to back; rp2's depth-8 queue; every callback in the spell
    lost, nothing logged, no reset; every periodic timer fires again and every reader reads again.
@@ -101,12 +110,20 @@ One entry per new load test (gap, load, limit, degradation, recovery):
 5. The UART link under API load with FRAM writes and a config flush (L4): every read answered, no link failure or
    entry, the config store silent, the value read back.
 6. Concurrent `/status` builds (L1): four readers; one response held at a time; all four answered.
-Silicon results of 3-5 and of every L3/L4 cell: `<BENCH: step d, both images>`.
+Silicon, final image (11-11; 6,400 B image in step d, 1,600 B image from 14:14): flash tier 90 passed, 2 failed (the
+C-stack and heap bounds the owner replaced that day; both nodes pass under the new bounds); bench tier 110 passed,
+1 failed (invalid_record: the script's missing USB flush, test-side, passes after the fix) and 10 teardown log
+checks (SGP40 W33-W35, NTP E71 from two silent pool servers, WEBSERVER W51 on a reclaim during a WLAN reconnect,
+the bootloader node's FRAM E46+W63 harness cut, clean on rerun); 5h rc 0. Entries 3-5 pass in call; entry 5's
+teardown keeps WEBSERVER W51. The GC control image's arm: 5g 108 passed, 3 failed, 11 errors (known items, 20:04).
 
 ## 6. Do-not-reopen decisions at their doc sites (W3A/DNR.md)
 271 rows: 244 present and current, 6 superseded by a later ruling the docs carry, 5 moot (their subject left the
-tree), 1 contradicted at 51c9c75f and restored at eb8a214e (V14, `verify_present()`), 11 not located by search (a
-reading before D), 4 not read (repo-text filter).
+tree), 1 contradicted at 51c9c75f and restored at eb8a214e (V14, `verify_present()`), 11 not located by search, 4 not
+read (repo-text filter). Of the 11, read 2026-11-12: the five firmware-side ones stand under other wording (A24
+SPECIFICATION.md:8096, L11 :6223, L21 :1294/:6333, L27 HEAP_FRAGMENTATION_MEASUREMENTS.md M7, L70
+`src/asy_uart_comm.py:1136` and J.3); the six test and twin rows (A51, E09, V54, V61, L24, L61) stay in the
+archived record.
 
 ## 7. Build environment (BACKLOG.md's chroot entry)
 Last satisfied: noble 2026-11-07 (bench Pi4, arm64 ports mirror; lint, typecheck, `env --tier generic`, test.sh
@@ -118,20 +135,30 @@ GC mark-stack and qstr variant header, bounded network steps, one apt install wi
 Since then also `TCP_SND_BUF` 1,600 in `toolchain/versions.toml` [lwip].
 Final legs: `<BENCH: step k, 2026-11-12>`.
 
-## 8. The last round (filled after the bench)
-- Two-image GC proof (the shipped threshold against a control image without it, default flash and bench tiers):
-  `<BENCH>`.
-- Heap: the post-load largest free block under 6/6/6/2 readers on both images, and whether any UART receive needs
-  one block above 11.4 KB; the C-stack margin (about 2.3 KB on snapshot 58): `<BENCH>`.
-- FRAM chunk timing with no CS settle (F.3 rows), the boot stretch, ring peak, DNS idle poll, ResetErrors budget,
-  general call per chip, BMP3XX calibration bytes, the country scan, the long soaks, the FRAM and crossover pulls,
-  the wear steps last: `<BENCH>`.
-- Twin corrections from silicon: the SGP40 raw walk, the general call per chip, the SCD30's argument reaction,
-  ISL29125 CONFIG1, the BMP3XX calibration block (the SGP40 unknown-command timeout already follows silicon):
-  `<BENCH>`.
-- Coverage of the final tree (unexecuted lines, deleted or loosened tests, owner-row trace): `<BENCH>`.
-- Re-verification (lint, three mypy passes, test.sh at both stages, coverage, the twin on every device, npm,
-  every firmware build, `tests_hardware --collect-only`): `<BENCH: pass n of at most 3, all green>`.
+## 8. The last round (bench 2026-11-11 and 11-12, dev image at 67e47fa6's src/)
+- **Two-image GC proof** (11-11, FC 4+5): with the shipped `gc.threshold(32768)` the largest free block after a
+  collect in operation is 20,288-57,792 B; the control image without it holds 3,456-7,632 B (the reactive default's
+  known placement). The control's reds were test-side or the two known teardown log checks; no firmware verdict.
+- **Heap** (dev): build survivors 35,936-36,176 B against the owner's bound 41,000 B (2026-11-11); largest free block
+  after the build 35,136 B against 32,768 B; in operation 81,984-82,400 B free after one collect against dev's
+  serving demand 68,790 B at the connection ceiling (about 13.2 KB margin); 14,000-15,616 B minimum under 6 readers.
+- **C stack** (dev): quiet setup peak 4,796 B, provoked end 6,060 B of 7,936 B (1,876 B left; the owner's reserve
+  1,024 B, 2026-11-11), after the FRAM path went from 13 to 10 pass-through levels.
+- **Send stall** (11-11): two clients that stop reading blocked every route at `TCP_SND_BUF` 6,400 B (page closed at
+  5.3 s); at 1,600 B (lead, under the owner's 13:24:56 and 13:38:57 delegation) five fit the 12,000 B pool, the
+  send-stall test passes (page 0.508-0.63 s, five at zero window), the page costs 36-99 ms more (median 0.648 s
+  against 0.580 s, max 0.801 s against 0.702 s). One failure on the GC control under host load 5-7, the dev rerun passed. Open: one 90 s silence
+  at 6,400 B, checked by the 6 h HTTP soak (10g, 2026-11-12 05:54-11:56, final image): PASS, 6 of 39,132 GETs
+  failed (bound 0.1 %), no silence (one of 90 s would fail ~160), no reboot or task end, every FRAM error log 0
+  after it, MemFree 76,192 B. The BACKLOG question closed (5d7759cb), its fact kept in SPEC B.14.2.
+- **Boot NTP E71** (step d): two pool servers never replied (tcpdump: one request, reply in 46 ms when it came);
+  external, not product. **12d** (11-12): 15 `ResetErrors` answered 200 in 0.62-0.91 s, every log 0.
+- **Wear** (11-12, after the owner's clearance, 06:14): `<BENCH: 7b, 8f, 8b (CRC-16), 10b, 15; 7f if it fits>`.
+  Later window: j (M1, the FRAM and RUN-pin manual items), 16b's power-cycle half, 13 (an AP on channel 13).
+- **Re-verification (P01)**: gate66 on 67e47fa6 green (unit at both GC stages, twins at both, web tier); CI on
+  snapshot 65 26/27, the coverage job's one twin-test timing defect fixed (7c142edd, test only); CI on snapshot 66
+  `503c9c83`: green (run 43175368651, 2026-11-12 07:52); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
+  the opt-in gates), no collection error.
 
 ## 9. D
 `PROJECT_AUDIT_PLAN.md` and `audit/` deleted after every finding with forward value sits in the docs or BACKLOG;

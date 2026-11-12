@@ -1595,3 +1595,95 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-12 06:31:47 UTC - NeoPixel rig prepared (relayed by the bench, ~06:16 UTC, bench note 524a0d8c)
 "Neopixel rig is prepared" (relayed)
 (The owner reports the NeoPixel rig for 7f's light-program tests is set up; read by the lead at 06:31, after relay 06:18 had held 7f back for j.)
+
+## 2026-11-12 07:29:54 UTC - what else now (question)
+"what else can you do already now?"
+(The owner asks which further steps the lead can do now, before the bench results and the close-out agreement.)
+
+## 2026-11-12 07:45:00 UTC - O4 review start
+"start with the grouped topics"
+(The owner starts the O4 review now: the 62 agent-decision credits, topic by topic.)
+
+## 2026-11-12 07:48:29 UTC - O4 topic A
+"accept A, next topic"
+(The owner accepts O4 topic A, rules of method, as a whole: six lines, no change in the tree; next topic.)
+
+## 2026-11-12 08:01:12 UTC - O4 review: too much detail
+"honestly, you are cluttering me with details i cannot understand"
+(The O4 questions are too detailed to follow: put each topic in plain words, what it means for the device, and the recommendation; no internals.)
+
+## 2026-11-12 08:02:26 UTC - O4 topic B
+"accept B, next topic, similarly condensed"
+(The owner accepts O4 topic B, FRAM and logging, as a whole; next topic, put as briefly and plainly as B's second version.)
+
+## 2026-11-12 08:20:28 UTC - O4 topic C
+"accept C, next topic"
+(The owner accepts O4 topic C, timing limits and their sources, as a whole, with the BMP3XX conversion-wait bench check added to the later bench window as a read-only measurement; next topic.)
+
+## 2026-11-12 08:22:26 UTC - O4 topic D
+"accept D, next topic"
+(The owner accepts O4 topic D, the UART module layout, as a whole; next topic.)
+
+## 2026-11-12 08:23:03 UTC - O4 topic E
+"accept E, next topic"
+(The owner accepts O4 topic E, the reset sequence's forward-only phases, as a whole; next topic.)
+
+## 2026-11-12 08:23:46 UTC - O4 topic F
+"accept F, next topic"
+(The owner accepts O4 topic F, the test-setup choices, as a whole; next topic.)
+
+## 2026-11-12 08:25:46 UTC - O4 topic G
+"accept G, next topic"
+(The owner accepts O4 topic G, the simulator-only test list, as a whole; next topic.)
+
+## 2026-11-12 08:35:17 UTC - O4 topic H
+"accept H, next topic"
+(The owner accepts O4 topic H, the real-board test design choices, as a whole, with the README's "next bench run settles the REDIRECT" wording dropped since the final-image run settled it; next topic.)
+
+## 2026-11-12 08:37:04 UTC - O4 topic I: question
+"this only means "if the uart link is added, the website and the config file get parts for it, but only if it is really included through the TOML, otherwise there is no trace of it"?"
+(A question, not a ruling: checks the plain meaning of topic I, the UART Link section's read route.)
+
+## 2026-11-12 08:37:40 UTC - O4 topic I
+"accept I, next topic"
+(The owner accepts O4 topic I, the UART Link section's read route, as confirmed in plain words; next topic.)
+
+## 2026-11-12 08:39:11 UTC - O4 topic J: why ask
+"which detail of that is not plain common sense, which made you ask this question?"
+(A question, not a ruling: topic J looks like plain common sense; why was it put to the owner at all.)
+
+## 2026-11-12 08:40:37 UTC - O4 topics J and K
+"accept J and K"
+(The owner accepts O4 topics J, the Wi-Fi console line's placement, and K, /status error histories sent whole; the O4 review is closed, all eleven topics accepted.)
+
+## 2026-11-12 08:46:50 UTC - steps left
+"Which steps are left for the whole audit now?"
+(A question, not a ruling: list the steps remaining until the audit is finished.)
+
+## 2026-11-12 08:50:16 UTC - bench-independent work
+"do you have anything, especially longer duration work, which is independent from the bench?"
+(A question: is there work, longer runs especially, that does not depend on the bench and can run now.)
+
+## 2026-11-12 11:14:55 UTC - ultrareview: info only
+"Only for info - can I start an ultrareview here on the cloud, or does it need the Claude code harness?"
+(A question for information, not a ruling: whether an ultrareview can be started in this cloud session or needs the local Claude Code CLI.)
+
+## 2026-11-12 11:34:13 UTC - ultrareview: was it ultra
+"I tried, with the ultra option, and a subagent - only one, to my surprise - started without any comment. You surely can see it, does it say if it's actually "ultra"?"
+(A question for information: the owner ran /code-review ultra here, saw one subagent start with no comment, and asks whether that run was really the cloud ultrareview.)
+
+## 2026-11-12 11:41:14 UTC - ultrareview: this is a cloud session
+"You are within a cloud session, actually"
+(A correction of the lead's wording: this session itself runs in the cloud, so "local" and "cloud" need separating.)
+
+## 2026-11-12 11:44:46 UTC - ultrareview: findings' scope
+"So mainly test and doc findings, nothing on the code, if I get it correctly?"
+(A question for information: whether the review's 15 findings concern only tests and documentation, none the code.)
+
+## 2026-11-12 11:49:22 UTC - ultrareview: why not a diff to main
+"Why?it's supposed to do a diff to main, in my understanding?"
+(A question for information: the review should compare against main, so why did it review only one old commit.)
+
+## 2026-11-12 12:01:40 UTC - ultrareview on the audit branch
+"I will do an ultrareview on that branch. Bring it up to date"
+(The owner will run an ultrareview on the release branch claude/whole-project-audit-plan (#107): push a snapshot carrying the current integration head.)
