@@ -43642,3 +43642,24 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   without a round1.sh change: `run 7b 8f`, `run 8b 8b` with PYTEST_K=test_uart_link_crc16, `run 10b 10b`, `run 15 15`.
   Each part runs only if the one before passed, and each starts only if it ends by 21:33. Started 12:57:12.
   Flash cycles planned: 8f 1, 8b 2, 15 2 = 5. Ends about 18:45 by the table's times; then 7f (60 min) fits by 21:33.
+
+## Bench 2026-11-12 13:09 UTC - 7b red: three test-side reds, every firmware check held; the wear stopped before 8f
+
+- 7b (12:57:14-13:08:44, 690 s, rc 1, image BuildDate 2026-11-11T19:54:26Z): 13 passed, 1 failed, 2 teardown errors,
+  121 deselected. run_range stopped there; 8f, 8b, 10b and 15 have not started. Flash cycles today: 0.
+- Red 1, `test_config_reset_over_rest_brings_back_the_defaults` FAILED in its finally block, after every check of the
+  reset had passed (Valid, ResetReason 7, ConfigFaults [], the defaults back, every store's file written once, serving
+  1.2 s after the reply). The restore wrote the same 9 files, but config_files_restore.py reports them in the order it
+  wrote them, and the test compares that list with `sorted(saved)` (test_system_commands_over_rest.py:180).
+  Test-side: an unsorted list against a sorted one.
+- Red 2, the same test's teardown: CFGMGR_{BMP3XX,ISL29125,NOTIFY,NTP,SGP40,...} W22 CFG_FILE_UNREADABLE. That is the
+  firmware's specified "not found" warning, logged once per store where an absent file's defaults are written
+  (asy_config_manager.py:561; SPECIFICATION.md, "An absent file persists one warning, CFG_FILE_UNREADABLE"). A config
+  reset deletes every file, so the test provokes it but does not declare it in provokes_log. Test-side.
+- Red 3, `test_garbage_ssid_via_rest_config_is_handled_gracefully` passed; its teardown found WIFI W81
+  WLAN_NO_VERDICT ("connect attempt ended without a verdict", asy_wifi_service.py:629). Its provokes_log names NO_AP,
+  AUTH_FAILED, TO_HOTSPOT and SILENT but not NO_VERDICT, which a garbage SSID can also end in. Test-side.
+- After the step: GET /status serves, all FRAM error logs 0 (the harness clears them per window), LastTaskEnd null,
+  ConfigFaults [], MemFree 66080. ResetReason 21 is the harness's console Ctrl-C.
+- Not rerun and not fixed, as a red in a wear step goes to the lead. Waiting for your relay: whether 7b counts with
+  these three recorded, and whether 8f, 8b, 10b and 15 go on. 15 (170 min) must start by 18:43 to end by 21:33.
