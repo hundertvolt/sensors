@@ -43814,3 +43814,17 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   MemFree 77184. Error logs: the CFGMGR W22 entries are the earlier config reset's; no new entry.
 - FC 2 (today 7, as planned). WEAR.txt: `passed: 15 2026-11-12 17:13:30`.
 - 3. The trixie leg starts now; fits 21:33 at about 3 h.
+
+## Bench 2026-11-12 18:27 UTC - 3. the trixie leg: all green
+
+- A fresh `--variant=minbase` trixie chroot (Debian GNU/Linux 13), /tmp on tmpfs (peak 173M of 3.9G), source a clone of
+  4bc80014 (1c7b973e's code), uv 0.13.7 as pyproject pins it (pip-installed), node v26.13.1 per .nvmrc,
+  gcc (Debian 14.2.0-19) 14.2.0, ruff 0.17.4, mypy 2.4.1. Debootstrap 17:14:57, workflow 17:28:41, end 18:26:36.
+- RCs: env --tier generic 0 (18:02:52, "All verification checks passed"); lint 0 (7/7); typecheck 0 (10/10);
+  scripts/test.sh 0 (18:26:35, TEST_PARALLELISM=4).
+- test.sh tallies: files passed 121, failed 0, skipped 29, deselected 4; MicroPython tests passed 5261, failed 0;
+  **tests_scripts 6564 passed, 0 failed, 6 skipped** (pytest's own line: "6564 passed, 6 skipped, 1 warning in
+  1201.22s"; the run prints no skip reasons). Noble's 20 aarch64 reds are gone on this head.
+- The chroot stays at /home/nico/chroots/trixie (5.0G, no mounts left) until you say to remove it.
+- Today's plan and the three 15:05 items are done. The board is idle on the round image; nothing more starts today.
+  STOP at 21:33.
