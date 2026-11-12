@@ -139,10 +139,11 @@ colonised *before* the boot ran.
 4. A derived threshold's first silicon run can fail; **that is a finding, not automatically a
    regression** — it says something the derivation assumed is untrue.
 
-`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000 B used, nothing
-newly placed in and ≥ 16,384 B free above the top survivor, a ≥ 32,768 B run), deliberately not
-lowered to the new 2,048 B worst case. A gate between measured rungs (`_MAX_ROUTE_NEED`, §M6) sits
-*between* two rungs, because a rung's effective size wanders within it.
+`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 41,000 B kept by the build
+and its setups over the heap in use before them, nothing newly placed in and ≥ 16,384 B free above
+the top survivor, a ≥ 32,768 B run), not lowered to the 2,048 B worst case. A gate between measured
+rungs (`_MAX_ROUTE_NEED`, §M6) sits *between* two rungs, because a rung's effective size wanders
+within it.
 
 ---
 
@@ -243,12 +244,10 @@ quota, because an unthrottled twin is optimistic near the wall (`SPECIFICATION.m
 ### M4.3 When calibration is impossible, measure something heap-size independent
 
 `scripts/test.sh` runs every file at a fixed `-X heapsize=16M` and a test cannot change its own heap.
-Shrinking it would also make the suppressed arm's churn force collections and stop being suppressed.
 So the committed twin guard (`tests_scripts/test_digital_twin_boot_contiguity.py`) asserts
 **placement relative to each list's own seam** — reach above it and median depth below it — which
-is byte-identical at 8M and 16M, and it runs a suppressed control arm, on `dev`, that must *violate*
-the batch-depth, reach and high-band bounds, or the guard is not a guard. The probe keeps the fakes'
-call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.md` I.4(f.1)). Its bounds are twin bounds; none is ever copied to the board.
+is byte-identical at 8M and 16M. The probe keeps the fakes' call logs empty, so only the firmware's
+own blocks are measured (`SPECIFICATION.md` I.4(f.1)). Its bounds are twin bounds; none is ever copied to the board.
 
 ### M4.4 A faithful frozen twin
 
@@ -270,7 +269,7 @@ call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.
 | instrument | what it measures |
 | --- | --- |
 | `tests_hardware/heap_map.py` (+ `tests_scripts/test_heap_map_parser.py`) | parses `mem_info(1)` captures; `HeapDelta`, `new_above()`, `free_above_top_survivor`, largest run |
-| `tests/_boot_contiguity_probe.py` + `tests_scripts/test_digital_twin_boot_contiguity.py` | the twin placement guard: a `gc` stand-in dumps the seam map at `run_setups()`'s first collect and forwards to the real collect only on the live arm — one instrument, both arms, no second image |
+| `tests/_boot_contiguity_probe.py` + `tests_scripts/test_digital_twin_boot_contiguity.py` | the twin placement guard: a wrapped `run_setups()` dumps the seam map right before the setup list's first unit, then the probe maps after the batch and after the starter loop — one instrument, no second image |
 | `tests/test_asy_fram_allocation_budget.py` | the FRAM path's allocation budget, one per binary |
 | `tests/test_asy_fram_wire_trace.py` | the FRAM path's chip-select/transfer trace, held byte-identical across any restructure |
 | `device_scripts/heap_headroom_after_full_system_build.py` | flash-tier layout after `build_system()` and the setup list: before/after maps, probe with `retained=`, a control reading at the unchanged threshold |
@@ -310,7 +309,7 @@ Scratchpad tools, rebuilt from these descriptions when needed (names from the ar
 
 | shape | how it works |
 | --- | --- |
-| layout probe (`probe.py`) | imports the real device module, builds the graph, dumps maps at the seam and after the batch; modes wrap `SystemService.feed_watchdog()` (the call `run_setups()` makes after every setup unit) to add or suppress collects, `GCTHRESH=` applies a threshold where the boot entry does, and a synthetic injector adds churn/survivors at chosen size classes |
+| layout probe (`probe.py`) | imports the real device module, builds the graph, dumps maps at the seam and after the batch; modes wrap `SystemService.feed_watchdog()` (the call `run_setups()` makes after every setup unit) to add collects, `GCTHRESH=` applies a threshold where the boot entry does, and a synthetic injector adds churn/survivors at chosen size classes |
 | per-object placement probe | a runtime-built tuple (one allocation; `id()` is its address), allocated first and dumped after; the pre-state is rebuilt by freeing the probe's own blocks, because the dump itself allocates |
 | call-graph pricing (`fgraph.py` / `fprice.py`) | wrap every method of the path under test for exact counts and edges (the wrapper's own bytes are discarded), then price each node alone in a collection-free window |
 | wire-identity prototype (`proto.py`) | record every CS edge and transfer on the fake `SPI`/`Pin`, assert a restructured path's trace equals the current one, then price both with the fakes' own allocations removed |

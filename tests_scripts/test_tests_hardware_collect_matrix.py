@@ -84,7 +84,7 @@ def test_every_option_combination_collects_with_nothing_attached(repo_root: Path
     combos += [[*_BOOLEANS, *soak] for soak in [[], *soaks]]
     absent = str(tmp_path / "absent")  # a path nothing has written: collection must not read it
     valued = [["--bench-device", name] for name in DEVICE_NAMES]
-    valued += [["--image-record", absent], ["--device", "/dev/no-such-board"], ["--dut-ip", "192.0.2.1"], ["--lwip-control-image", absent], ["--rollover-image", absent]]
+    valued += [["--image-record", absent], ["--device", "/dev/no-such-board"], ["--dut-ip", "192.0.2.1"], ["--rollover-image", absent]]
     combos += [[*_BOOLEANS, *option] for option in valued]
     failed = [r for r in _collect_all(repo_root, combos) if r["code"] != 0 or not r["items"]]
     assert not failed, f"collection failed or found nothing under these options: {failed[:5]} ({len(failed)} in all)"
