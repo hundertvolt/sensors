@@ -885,6 +885,9 @@ never run here. Environment: `MPREMOTE_DEVICE` (default: the one MicroPython boa
 `scripts/run_bench_hardware_suite.sh [options] [pytest args]`: L0-L2, then the flash tier (L3) as its
 own step, which must pass before the bench tier (L4) runs.
 - `--skip-lower-levels`: skip L0-L2; for debugging, never reported clean (exit 4)
+- `--scope NAME`: run only the flash and bench tests `tests_hardware/run_scopes.py` lists for NAME, the
+  ones one change reaches; never reported clean (exit 4), never with test paths, and never with the
+  global `--allow-persistence-write` (name the groups instead: `--allow-persistence-write-to=GROUP`)
 - `-h`, `--help`: print the help
 
 Other arguments go to pytest; a `-m` you pass narrows the selection, and soak and rollover tests

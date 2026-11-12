@@ -714,13 +714,16 @@ check.
 ## The MQTT client on the bench (`bench/test_mqtt_broker_faults.py`)
 
 The client (SPECIFICATION.md Part A.12) is built into the bench device only and is off until enabled.
-This module drives it against a real `mosquitto` on this host. The broker binds this host's own address
+This module drives it against a real `mosquitto` on this host. Its traffic is the bench device's link
+exerciser (`mqtt_link`): a QoS 1 echo probe every `mqtt_link.exercise_period_ms` on `<base>/link/echo`,
+read back through `GET /status`'s `MQTTLINK` (`Transfers`, `Failures`), and the `<base>/cmd/#` messages
+this host publishes, counted as its `Commands`; the client itself sends no sensor values. The broker binds this host's own address
 toward the DUT (`br0`'s) on port **18883**, so a distribution broker on 1883 is never involved; the
 package comes from `toolchain/versions.toml`'s `apt_packages`, which `env --tier bench` installs.
 
 **Before the run**: the board must carry the round's image of the bench device, which wires the client
 (`scripts/build_firmware.py`, the session's image check in `bench/conftest.py`). A board without the
-client fails the module with that instruction instead of skipping. The fixture's own `ResetErrors` goes
+client or its exerciser fails the module with that instruction instead of skipping. The fixture's own `ResetErrors` goes
 through `reset_all_error_logs()`, which saves the verbatim `/status` to the run's evidence first.
 
 **Writes**: one `PUT /networking` enables the client and points it here, and one switches it off at the
@@ -743,17 +746,19 @@ wrong password its `MQTT_REFUSED`; an unresolvable name its `MQTT_DNS`; the AP o
 entries `test_network_resilience.py`'s outage names too. Any other entry fails the test.
 
 **Order matters**, the module runs top to bottom on one enabled client:
-- connect and the online status; strict-JSON measurements per sensor; an inbound command;
+- connect and the online status; the exerciser's echo probes counted back as transfers; an inbound
+  command counted;
 - broker SIGKILL and restart; SIGSTOP stall; silent path loss; a reset path; a client-id takeover
   bounded by the backoff;
-- a 3000-message QoS 0 flood, a 500-message QoS 1 burst and an oversized message;
+- a 3000-message QoS 0 flood, a 500-message QoS 1 burst (counted by the exerciser's `Commands`, since
+  `MQTTRxMsgs` also counts its probes) and an oversized message;
 - the broker found through this host's own `.local` name, answered by its Avahi (`env --tier bench`
   installs `avahi-daemon` when missing);
 - a checkpoint (no task ended, only the expected MQTT codes);
 - a password broker with the right and with a wrong password; an unresolvable `.invalid` and `.local`
-  name; the stall sweep at four offsets after a connect;
+  name; the stall sweep at four offsets after an echo probe reached this host;
 - the AP outage; a reboot; the faults again under `device_scripts/mqtt_at_default_gc.py` at
-  `gc.threshold(-1)`, with a host thread driving them;
+  `gc.threshold(-1)`, with a host thread driving them after the exerciser's first transfer;
 - the status topic and will settings across a reboot; a persistent session across a reboot; a changed
   client id retiring the old session;
 - switching the client off, which must publish a retained `offline`.

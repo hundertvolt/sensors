@@ -52,7 +52,7 @@ The owner's answers that shape it (`mqtt_poc/RESEARCH.md` §8.0, 2026-10-07):
 | Who pays the permanent TCP connection? | "Web connections 6->5" |
 | Broker credentials? | "Optional, masked (Recommended)" |
 | What may received messages do? | "They may trigger behaviours or contain values (e.g. external measurements)"; no flash writes from them |
-| What does it publish? | "Also measurements JSON" |
+| What does it publish? | "Also measurements JSON" (superseded 2026-11-12: no module sends sensor values, DESIGN.md §17) |
 | Which broker for tests? | "mosquitto in CI", installed as an "apt package (Recommended)" |
 | May an MQTT loss trigger WiFi recovery? | "Never (Recommended)" |
 | When does it merge? | "After audit closes" |
@@ -71,7 +71,8 @@ And on 2026-10-08:
   `0103283` (U22: the LED re-check, the Wi-Fi silent mode and the fresh-boot settings change). It merges only
   after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
-- **Verified on the host** (`46671ce`, the ping interval and the publisher as settings), each tier run on its own:
+- **Verified on the host** (`46671ce`, the ping interval and the publisher as settings; the 2026-11-12 restructure
+  came after it, and the runner's lower levels run every host tier on the head first), each tier run on its own:
   - lint and all three typecheck passes;
   - `scripts/test.sh` at both GC stages: 96 files, 4,984 MicroPython tests, zero memory errors;
   - the full `tests_scripts/` tier: 4,275 tests passed, 11 skipped;
@@ -88,24 +89,26 @@ And on 2026-10-08:
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
   100,000 B tripwire. That bound holds for the final version and is a topic for after the audit (owner,
   2026-10-08, DESIGN.md §14). Changed after both runs, so the next run is the first to see them on the board:
-  the publish cadence and the `online` timing (`43b5373`, section 8), the memory layout (DESIGN.md §5:
-  one stream per outbound slot, each measurement written into its slot a key or scalar at a time, the
+  the `online` timing (`43b5373`), the memory layout (DESIGN.md §5: one stream per outbound slot, the
   settings and topics born at boot), and the audit's U20 to U22 (merged in `1efe566`): a controlled shutdown
   for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
   override (SPECIFICATION.md B.14.4). The client is now built before the UART links. Since 2026-10-13 the will
   and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
-  three bench tests of their own (section 5); so is the ping interval (180 s, or off), every message now gets
-  a ping of its own, and the measurement publisher is off by default (DESIGN.md §16). The bench module sets
-  its 10 s publish interval itself, so the stall sweep now follows those rounds.
+  three bench tests of their own (section 5); so is the ping interval (180 s, or off), and every message now gets
+  a ping of its own (DESIGN.md §16). Since 2026-11-12 (DESIGN.md §17) the client is one self-contained file with
+  no publisher, and `dev` carries a link exerciser whose echo probe every 10 s is the bench module's traffic: the
+  measurement checks are gone, and the stall sweep times its offsets from a probe.
 
 ### 1.4 The client in brief
 
 `mqtt_poc/DESIGN.md` is the full design; SPECIFICATION.md Part A.12 its permanent form.
 
 - **Files**:
-  - `src/mqtt_codec.py`: MQTT 3.1.1 packets.
-  - `src/asy_mqtt_client.py`: `MQTTClient`. A keeper task is the only writer; a reader task per connection;
-    a publisher. QoS 0 and 1, clean session, every buffer allocated once.
+  - `src/asy_mqtt_client.py`: `MQTTClient`, the whole transport, the MQTT 3.1.1 packet codec included. A keeper
+    task is the only writer; a reader task per connection. QoS 0 and 1, a clean or persistent session, every
+    buffer allocated once. No interval of its own but the keep-alive: it sends what a wired module hands it.
+  - `src/asy_mqtt_link_driver.py`: `MQTTLinkDriver`, `dev`'s exerciser (driver `mqtt_link`): one QoS 1 echo
+    probe every 10 s on `<base>/link/echo`, counted back as a transfer, and `<base>/cmd/#` counted as commands.
   - `src/asy_dns_client.py` learned one-shot mDNS for `.local` names, for `NTPHost` too.
 - **Never blocking**:
   - an IPv4 broker address is used as it is;
@@ -121,14 +124,14 @@ And on 2026-10-08:
   doubling to 60 s and reset after a 30 s stable session. MQTT never touches WiFi.
 - **Settings**, `PUT /networking`: `MQTTEnable` (default off), `MQTTHost`, `MQTTPort` (1883), `MQTTUser`,
   `MQTTPW` (masked), `MQTTClientId` (default the hostname, `SensorStationDev`), `MQTTPrefix` (`sensors`),
-  `MQTTPubInterval` (off by default, 10 to 3600 s), `MQTTPingInterval` (180 s, 10 to 3600 s, or off), and the
-  status and session settings (DESIGN.md §15).
+  `MQTTPingInterval` (180 s, 10 to 3600 s, or off), and the status and session settings (DESIGN.md §15).
 - **Status**, `GET /status` → `networking`: `MQTTState`, `MQTTConnected`, `MQTTBroker`, counters,
-  `MQTTLastReason`, `MQTTLastRxTopic`.
+  `MQTTLastReason`, `MQTTLastRxTopic`; → `sensors`: the exerciser's `MQTTLINK` (`Transfers`, `Failures`,
+  `Commands`).
 - **Topics**, `<base>` = `<MQTTPrefix>/<MQTTClientId>`:
   - `<base>/status`: retained `online`, and `offline` as the will and before a reconfiguring DISCONNECT;
-  - `<base>/measurements/<NAME>`: one JSON object per sensor;
-  - `<base>/cmd/#`: inbound, counted.
+  - `<base>/link/echo`: the exerciser's probe, out and back in;
+  - `<base>/cmd/#`: inbound, counted by the exerciser.
 - **Error log `MQTT`** (FRAM-backed, like `CFGMGR_MQTT`): E 116 `MQTT_CONNECT`, 117
   `MQTT_REFUSED`, 118 `MQTT_PROTOCOL`, 119 `MQTT_NO_PINGRESP`, 120 `MQTT_LOST`, 121 `MQTT_STALLED`,
   122 `MQTT_SUB_REFUSED`, 123 `MQTT_DNS` (E 115 until the audit merge gave 115 to `SYSTEM`); W 82
@@ -136,7 +139,7 @@ And on 2026-10-08:
 - **What else changed on `dev`**:
   - `max_connections` 6 → 5;
   - FRAM chunks `MQTT` and `CFGMGR_MQTT` ahead of `WEBSERVER`'s;
-  - `PUT /networking` is now the largest request body, 1,735 B;
+  - `PUT /networking` is now the largest request body, 1,692 B;
   - `mosquitto` joined the toolchain's apt packages, and `env --tier bench` installs `avahi-daemon`.
 
 ### 1.5 Why the run is scoped, and what it covers
@@ -163,8 +166,8 @@ What that became on this branch:
 
 ### 1.6 Decided on the owner's behalf, for review (agent, 2026-10-08)
 
-`mqtt_poc/DESIGN.md` §13 holds all twelve. The ones this run touches:
-- The first measurement round follows each CONNACK.
+`mqtt_poc/DESIGN.md` §13 holds the design's, §17 the restructure's (agent, 2026-11-12). The ones this run touches:
+- The exerciser's fixed 10 s period, and its traffic as the bench module's.
 - A settings change or switching the client off publishes a retained `offline` first.
 - `MQTTHost` takes `NTPHost`'s host-name shape at PUT and at use; empty is the special "no broker, the
   client off".
@@ -312,7 +315,7 @@ estimates.
 - **The client** (`tests_hardware/bench/test_mqtt_broker_faults.py`, roughly 20 to 30 minutes). It starts
   its own mosquitto on the Pi4's `br0` address, port 18883, and enables the client over REST. In order:
   - connect and `online`;
-  - strict-JSON measurements per sensor, then an inbound command;
+  - the exerciser's echo probes, each counted back as a transfer, then an inbound command counted;
   - broker SIGKILL and restart, a SIGSTOP stall, silent path loss, a reset path;
   - a client-id takeover;
   - a 3000-message QoS 0 flood, with REST timed under it, and a 500-message QoS 1 burst;
@@ -427,11 +430,11 @@ test's own waits and bounds are plain literals in it, as Part N's rule keeps a s
 | Test (in `test_mqtt_broker_faults.py`) | Note | Part N rows |
 |---|---|---|
 | `test_the_client_connects_and_announces_itself_online` | time to connected | `mqtt.connect_timeout_ms`, `mqtt.response_timeout_ms` |
-| `test_every_sensor_publishes_strict_json_on_its_own_topic` | largest payload | `mqtt.out_payload_max` |
+| `test_the_exercisers_echo_probes_return_through_the_broker` | the probes' gaps, `MQTTLINK` before and after | `mqtt_link.exercise_period_ms` |
 | `test_a_killed_broker_is_reconnected_after_its_restart` | reconnect after the restart | `mqtt.backoff_min_ms` |
 | `test_a_stalled_broker_is_detected_by_the_pingresp_deadline` | detection, reconnect | `mqtt.response_timeout_ms` |
 | `test_a_silent_path_loss_is_detected_and_recovered` | detection, reconnect | `mqtt.response_timeout_ms` |
-| `test_stall_detection_follows_the_publish_rounds` | each offset's detection time | `mqtt.response_timeout_ms` |
+| `test_stall_detection_follows_the_exercise_rounds` | each offset's detection time | `mqtt.response_timeout_ms` |
 | `test_a_duplicate_client_id_is_bounded_by_the_backoff` | retakes against the duplicate | `mqtt.stable_after_ms`, `mqtt.short_session_warn` |
 | `test_an_inbound_flood_leaves_rest_serving_and_the_session_up` | messages taken, `GET /status` latency | none: the test's own bounds |
 | `test_an_inbound_qos1_burst_is_acknowledged_in_full` | burst time | `mqtt.qos1_retry_ms` |
@@ -443,10 +446,9 @@ test's own waits and bounds are plain literals in it, as Part N's rule keeps a s
 Record the heap tests' notes beside them (the connection wall, the serving sweep, the hammer load): they are
 the first figures with the client resident. The bench session records; it does not retune.
 
-Since the bench of 2026-10-08 (`mqtt_poc/bench_results/`), rounds fall due one interval after the last one
-fell due (DESIGN.md §13 item 13). An observer timing rounds should therefore see the mean gap equal
-`MQTTPubInterval`, where that run saw 10.56 s at 10 s; a single gap may still run long or short by one loop
-stall.
+The publish rounds that run timed (10.56 s apart at 10 s) are gone with the publisher (DESIGN.md §17). The
+exerciser sleeps one period after each probe, so its gaps run the period plus one round's slice; a single gap
+may still run long by one loop stall.
 
 ## 9. After the run
 
@@ -464,8 +466,8 @@ stall.
 | What | Where |
 |---|---|
 | The design, the research, the prototype evidence | `mqtt_poc/DESIGN.md`, `mqtt_poc/RESEARCH.md`, `mqtt_poc/prototype/RESULTS.md` |
-| The client, codec, resolver | `src/asy_mqtt_client.py`, `src/mqtt_codec.py`, `src/asy_dns_client.py` |
-| The bench device | `devices/dev.toml` (the `mqtt` instance, `max_connections`) |
+| The client, the exerciser, the resolver | `src/asy_mqtt_client.py`, `src/asy_mqtt_link_driver.py`, `src/asy_dns_client.py` |
+| The bench device | `devices/dev.toml` (the `mqtt` and `mqtt_link` instances, `max_connections`) |
 | The MQTT bench module, its device script, the host broker helper | `tests_hardware/bench/test_mqtt_broker_faults.py`, `tests_hardware/device_scripts/mqtt_at_default_gc.py`, `tests_hardware/mqtt_probe.py` |
 | The scope and the write groups | `tests_hardware/run_scopes.py`, `tests_hardware/persistence_groups.py`, `tests_hardware/conftest.py` |
 | The runner | `scripts/run_bench_hardware_suite.sh` (`--scope`) |

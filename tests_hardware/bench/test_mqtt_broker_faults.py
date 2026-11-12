@@ -1,10 +1,9 @@
-"""Bench tier for the MQTT client (SPECIFICATION.md Part A.12): the real client on the bench board against a mosquitto
-on this host's own LAN address, through broker faults, path loss, a client-id takeover, inbound floods, an AP outage, a
-reboot, the status and session settings at the firmware's gc threshold, then the faults at the gc default (I.4(e))."""
+"""Bench tier for the MQTT client and dev's link exerciser (SPECIFICATION.md Part A.12), its probes the traffic, against
+a mosquitto on this host: broker faults, path loss, a client-id takeover, inbound floods, an AP outage, a reboot, the
+status and session settings at the firmware's gc threshold, then the faults at the gc default (I.4(e))."""
 
 import contextlib
 import itertools
-import json
 import math
 import signal
 import socket
@@ -19,10 +18,8 @@ import http_client
 import pytest
 import serial
 from error_log_helpers import assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, device_toml, kick_then_reset, parse_facts, recover_by_reset, restore_board_to_serving, wait_for_script_server, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, kick_then_reset, parse_facts, recover_by_reset, restore_board_to_serving, wait_for_script_server, wait_until
 from mqtt_probe import Mosquitto, Probe, session_present, wait_for
-
-from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -37,17 +34,20 @@ _BROKER_PORT = 18883  # fixed, so every iptables rule names it; a distribution m
 _AUTH_PORT = 18884  # the password broker's, beside the anonymous one
 _AUTH_DEVICE = ("bench-device", "bench-device-pass")  # a throwaway broker's accounts, not real secrets
 _AUTH_OBSERVER = ("bench-observer", "bench-observer-pass")
-_STALL_OFFSETS_S = (1.0, 5.0, 9.0, 13.0)  # after a connect, across two of the 10 s publish rounds
+_STALL_OFFSETS_S = (1.0, 5.0, 9.0, 13.0)  # after an echo probe arrived, across two of the exerciser's rounds
 _OBSERVER_ID = "bench-observer"
-_SLOT_PAYLOAD_MAX = 384  # mqtt.out_payload_max: a larger measurement object would be dropped, counted
+_ECHO_TOPIC = "link/echo"  # the exerciser's probe topic below <base> (src/asy_mqtt_link_driver.py)
+_ECHO_PROBES = 3  # probes the traffic check waits for, each counted back as a transfer
+_PROBE_BYTES = 4  # a probe's sequence number, big-endian
+_LINK_KEYS = ("Transfers", "Failures", "Commands")  # GET /status's MQTTLINK counters
 
-_PUB_INTERVAL_S = int(str(_load.field_schema("asy_mqtt_client.py", "MQTTPubInterval")[2]))  # its minimum: the checks wait least
+_EXERCISE_PERIOD_S = _load.src_number("asy_mqtt_link_driver.py", "_EXERCISE_PERIOD_MS") / 1000  # one probe per period
 _CONNECT_WAIT_S = 90.0  # a connect once the fault is gone, the bench's WiFi latency included
 # @tunable mqtt.backoff_max_ms = 60.0
 _BACKOFF_CAP_S = 60.0  # the reconnect wait the earlier faults' short sessions may have grown to
 _STEP_WAIT_S = 20.0  # one message's round trip through the broker and the device's status
 _OUTAGE_S = 5.0  # the killed broker's downtime: the client's first attempts fail inside it
-_DETECT_BOUND_S = 35.0  # the next publish round's ping + mqtt.response_timeout_ms (20 s), plus ticks and WiFi latency
+_DETECT_BOUND_S = 35.0  # the next echo probe's ping + mqtt.response_timeout_ms (20 s), plus ticks and WiFi latency
 _DETECT_WAIT_S = 60.0
 _TAKEOVER_S = 20.0
 _TAKEOVER_MAX_CONNECTS = 5  # the doubling backoff allows about four retakes in the window; the minimum would allow ten
@@ -83,13 +83,6 @@ class MqttBench:
     client_id: str
 
 
-def _sensor_names(device: str) -> list[str]:
-    # The modules the client publishes: every sensor, the same set as the website's measurements cards.
-    definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), REPO_ROOT / "src")))
-    section = next(s for s in definitions["sections"] if s["key"] == "measurements")
-    return [str(g["key"]) for g in section["groups"]]
-
-
 def _host_ip_toward(dut_ip: str) -> str:
     # This host's own address on the DUT's network: the source the kernel picks to reach it, br0's on the bench.
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -106,6 +99,18 @@ def _count(dut_ip: str, key: str) -> int:
     return value if isinstance(value, int) else -1
 
 
+def _link(dut_ip: str) -> "dict[str, int]":
+    # GET /status's MQTTLINK counters: dev's exerciser, UARTLINK's Transfers and Failures plus its Commands (Part A.12).
+    sensors = _load.as_object(_load.get_object(dut_ip, "/status", _REST_BUDGET_S).get("sensors"), "GET /status sensors")
+    link = _load.as_object(sensors.get("MQTTLINK"), "GET /status sensors.MQTTLINK")
+    counts: dict[str, int] = {}
+    for key in _LINK_KEYS:
+        value = link.get(key)
+        assert isinstance(value, int) and not isinstance(value, bool), f"MQTTLINK.{key} is {value!r}, no count: {link!r}"
+        counts[key] = value
+    return counts
+
+
 def _wait_connected(dut_ip: str, what: str, timeout_s: float = _CONNECT_WAIT_S + _BACKOFF_CAP_S) -> float:
     # Seconds until GET /status shows the client connected; raises with `what` on a timeout.
     started = time.monotonic()
@@ -117,14 +122,6 @@ def _wait_count_above(dut_ip: str, key: str, floor: int, timeout_s: float, what:
     started = time.monotonic()
     wait_until(lambda: _count(dut_ip, key) > floor, timeout_s=timeout_s, poll_interval_s=_POLL_S, description=what)
     return time.monotonic() - started
-
-
-def _strict_json(payload: bytes) -> object:
-    # json.loads() accepts NaN and Infinity, which the device writes as null (Part A.12).
-    def refuse(token: str) -> None:
-        raise ValueError(f"non-finite JSON token {token}")
-
-    return json.loads(payload, parse_constant=refuse)
 
 
 def _mqtt_history(dut_ip: str) -> "list[JSONObject]":
@@ -139,7 +136,7 @@ def _assert_mqtt_logged_only(dut_ip: str, context: str) -> None:
 def _enable_mqtt(dut_ip: str, host_ip: str) -> None:
     # This module's shared prerequisite write (config_MQTT.cfg): every test below needs a client pointed at this
     # host's broker. Unchanged values write nothing, so a rerun on an enabled board spends no flash.
-    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"MQTTEnable": True, "MQTTHost": host_ip, "MQTTPort": _BROKER_PORT, "MQTTPubInterval": _PUB_INTERVAL_S}, timeout_s=_REST_BUDGET_S)
+    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"MQTTEnable": True, "MQTTHost": host_ip, "MQTTPort": _BROKER_PORT}, timeout_s=_REST_BUDGET_S)
     _assert_taken(res, "enabling the MQTT client")
 
 
@@ -167,12 +164,21 @@ def _drive_faults(m: MqttBench, stop: threading.Event, steps: list[str]) -> None
     def connected() -> bool:
         return mqtt_connected() is True
 
+    def echoed() -> bool:
+        # The exerciser's first probe back through the broker since the script's own boot started its counters.
+        try:
+            return _link(m.dut_ip)["Transfers"] > 0
+        except (OSError, AssertionError, http_client.HTTP_ERROR):
+            return False
+
     def step(name: str, condition: "Callable[[], bool]", timeout_s: float) -> bool:
         ok = not stop.is_set() and wait_for(lambda: stop.is_set() or condition(), timeout_s) and not stop.is_set()
         steps.append(name if ok else f"{name}: timed out")
         return ok
 
     if not wait_for_script_server(m.dut_ip, stop) or not step("connected", connected, _CONNECT_WAIT_S):
+        return
+    if not step("echo probe returned", echoed, 2 * _EXERCISE_PERIOD_S + _STEP_WAIT_S):
         return
     m.broker.stop(signal.SIGKILL)
     stop.wait(_OUTAGE_S)
@@ -263,6 +269,9 @@ def _console(device: str) -> "Iterator[_Console]":
 def mqtt_bench(bench_device_name: str, dut_ip: str, tmp_path_factory: pytest.TempPathFactory) -> "Iterator[MqttBench]":
     if "MQTTState" not in _networking(dut_ip):
         pytest.fail(f"this firmware carries no MQTT client - the bench device {bench_device_name} wires none, or its image predates it (tests_hardware/README.md)")
+    sensors = _load.as_object(_load.get_object(dut_ip, "/status", _REST_BUDGET_S).get("sensors"), "GET /status sensors")
+    if "MQTTLINK" not in sensors:
+        pytest.fail(f"this firmware carries no MQTT link exerciser - the bench device {bench_device_name} wires no mqtt_link, or its image predates it (tests_hardware/README.md)")
     reset_all_error_logs(dut_ip, "mqtt_bench")  # the verbatim /status goes to the run's evidence first
     host_ip = _host_ip_toward(dut_ip)
     broker = Mosquitto(tmp_path_factory.mktemp("mqtt"), _BROKER_PORT, bind=host_ip)
@@ -295,33 +304,37 @@ def test_the_client_connects_and_announces_itself_online(mqtt_bench: MqttBench, 
     result_note(f"connected within {took:.1f}s of the first poll; MQTTState {status['MQTTState']!r}")
 
 
-def test_every_sensor_publishes_strict_json_on_its_own_topic(mqtt_bench: MqttBench, bench_device_name: str, result_note: "_load.Note") -> None:
+def test_the_exercisers_echo_probes_return_through_the_broker(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
+    # dev's exerciser publishes one QoS 1 probe per period on <base>/link/echo and counts it a transfer once it is back
+    # through its own subscription: consecutive sequence numbers, never retained, no failure and nothing dropped.
     m = mqtt_bench
-    names = _sensor_names(bench_device_name)
-    arrived = wait_for(lambda: all(m.observer.received(f"{m.base}/measurements/{n}") for n in names), _PUB_INTERVAL_S * 3)
-    assert arrived, f"not every sensor published within three intervals: {[n for n in names if not m.observer.received(f'{m.base}/measurements/{n}')]}"
-    meas = _load.get_object(m.dut_ip, "/measurements", _REST_BUDGET_S)
-    largest = 0
-    for name in names:
-        payload = m.observer.received(f"{m.base}/measurements/{name}")[-1].payload
-        largest = max(largest, len(payload))
-        parsed = _strict_json(payload)
-        keys = set(_load.as_object(meas.get(name), f"GET /measurements {name}"))
-        assert isinstance(parsed, dict) and set(parsed) == keys, f"{name}: {parsed!r} does not carry /measurements' keys {sorted(keys)}"
-    published = {msg.topic.rsplit("/", 1)[-1] for msg in m.observer.received() if msg.topic.startswith(f"{m.base}/measurements/")}
-    assert published == set(names), f"published {sorted(published)}, expected the sensors {names}"
+    _wait_connected(m.dut_ip, "before the echo probes")
+    echo = f"{m.base}/{_ECHO_TOPIC}"
+    before, seen = _link(m.dut_ip), len(m.observer.received(echo))
+    window_s = (_ECHO_PROBES + 1) * _EXERCISE_PERIOD_S
+    arrived = wait_for(lambda: len(m.observer.received(echo)) - seen >= _ECHO_PROBES, window_s)
+    probes = m.observer.received(echo)[seen:]
+    assert arrived, f"{len(probes)} probes on {echo} within {window_s:g}s, expected {_ECHO_PROBES}"
+    assert all(len(p.payload) == _PROBE_BYTES and not p.retained for p in probes), f"a probe is not a fresh {_PROBE_BYTES}-byte sequence number: {probes!r}"
+    seqs = [int.from_bytes(p.payload, "big") for p in probes]
+    assert all(b == a + 1 for a, b in itertools.pairwise(seqs)), f"the probes' sequence numbers do not rise by one: {seqs}"
+    wait_until(lambda: _link(m.dut_ip)["Transfers"] - before["Transfers"] >= len(probes), timeout_s=_STEP_WAIT_S, poll_interval_s=_POLL_S, description="every probe counted back as a transfer")
+    after = _link(m.dut_ip)
+    assert after["Failures"] == before["Failures"], f"a probe failed on a healthy link: MQTTLINK {before} -> {after}"
     assert _count(m.dut_ip, "MQTTTxDropped") == 0, f"messages were dropped: {_networking(m.dut_ip)!r}"
-    assert largest <= _SLOT_PAYLOAD_MAX
-    result_note(f"largest measurement payload {largest} B of the {_SLOT_PAYLOAD_MAX} B slot")
+    gaps = [b.at - a.at for a, b in itertools.pairwise(probes)]
+    result_note(f"{len(probes)} probes {min(gaps):.2f}-{max(gaps):.2f}s apart at a {_EXERCISE_PERIOD_S:g}s period; MQTTLINK {before} -> {after}")
 
 
 def test_an_inbound_command_is_received_and_shown(mqtt_bench: MqttBench) -> None:
+    # A message below <base>/cmd/ reaches the exerciser's consumer, counted as a command; the client shows its topic.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the command")
-    before = _count(m.dut_ip, "MQTTRxMsgs")
+    before, commands = _count(m.dut_ip, "MQTTRxMsgs"), _link(m.dut_ip)["Commands"]
     assert m.observer.publish(f"{m.base}/cmd/bench", b"hello", qos=1)
     wait_until(lambda: _networking(m.dut_ip).get("MQTTLastRxTopic") == f"{m.base}/cmd/bench", timeout_s=_STEP_WAIT_S, poll_interval_s=_POLL_S, description="the command topic shown in GET /status")
     assert _count(m.dut_ip, "MQTTRxMsgs") > before
+    assert _link(m.dut_ip)["Commands"] == commands + 1, f"the command was not counted once: MQTTLINK Commands {commands} -> {_link(m.dut_ip)['Commands']}"
 
 
 @pytest.mark.provokes_log(
@@ -442,10 +455,11 @@ def test_a_duplicate_client_id_is_bounded_by_the_backoff(mqtt_bench: MqttBench, 
 
 def test_an_inbound_flood_leaves_rest_serving_and_the_session_up(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
     # A QoS 1 marker closes the flood: the broker may shed QoS 0 for a slow reader, never the marker, so the
-    # marker arriving proves the device read through everything the broker passed on, framing intact.
+    # marker arriving proves the device read through everything the broker passed on, framing intact. The exerciser's
+    # Commands count the flood alone; MQTTRxMsgs also counts its echo probes.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the flood")
-    received, teardowns = _count(m.dut_ip, "MQTTRxMsgs"), _count(m.dut_ip, "MQTTTeardowns")
+    received, teardowns = _link(m.dut_ip)["Commands"], _count(m.dut_ip, "MQTTTeardowns")
     latencies: list[float] = []
     for i in range(_FLOOD_MESSAGES):
         assert m.observer.publish(f"{m.base}/cmd/flood", b"%040d" % i), f"the observer lost its broker at message {i}"
@@ -455,21 +469,22 @@ def test_an_inbound_flood_leaves_rest_serving_and_the_session_up(mqtt_bench: Mqt
             latencies.append(time.monotonic() - started)
     assert m.observer.publish(f"{m.base}/cmd/flood-end", b"end", qos=1)
     wait_until(lambda: _networking(m.dut_ip).get("MQTTLastRxTopic") == f"{m.base}/cmd/flood-end", timeout_s=_DETECT_WAIT_S, poll_interval_s=_POLL_S, description="the flood's closing marker received")
-    taken = _count(m.dut_ip, "MQTTRxMsgs") - received
+    taken = _link(m.dut_ip)["Commands"] - received
     assert _count(m.dut_ip, "MQTTTeardowns") == teardowns, f"the flood ended the session: {_networking(m.dut_ip)!r}"
     result_note(f"{taken} of {_FLOOD_MESSAGES + 1} messages taken; GET /status under the flood: max {max(latencies):.2f}s, median {sorted(latencies)[len(latencies) // 2]:.2f}s")
 
 
 def test_an_inbound_qos1_burst_is_acknowledged_in_full(mqtt_bench: MqttBench, result_note: "_load.Note") -> None:
+    # Counted by the exerciser's Commands, which see the burst alone; MQTTRxMsgs also counts its echo probes.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the QoS 1 burst")
-    received, teardowns = _count(m.dut_ip, "MQTTRxMsgs"), _count(m.dut_ip, "MQTTTeardowns")
+    received, teardowns = _link(m.dut_ip)["Commands"], _count(m.dut_ip, "MQTTTeardowns")
     started = time.monotonic()
     sent = sum(1 for i in range(_QOS1_BURST) if m.observer.publish(f"{m.base}/cmd/qos1", b"%08d" % i, qos=1))
     assert sent == _QOS1_BURST, f"the observer sent {sent} of {_QOS1_BURST}"
-    wait_until(lambda: _count(m.dut_ip, "MQTTRxMsgs") - received >= _QOS1_BURST, timeout_s=_DETECT_WAIT_S, poll_interval_s=_POLL_S, description="every QoS 1 message delivered and acknowledged")
+    wait_until(lambda: _link(m.dut_ip)["Commands"] - received >= _QOS1_BURST, timeout_s=_DETECT_WAIT_S, poll_interval_s=_POLL_S, description="every QoS 1 message delivered and acknowledged")
     took = time.monotonic() - started
-    assert _count(m.dut_ip, "MQTTRxMsgs") - received == _QOS1_BURST, "a QoS 1 message was delivered twice: a PUBACK went missing"
+    assert _link(m.dut_ip)["Commands"] - received == _QOS1_BURST, "a QoS 1 message was delivered twice: a PUBACK went missing"
     assert _count(m.dut_ip, "MQTTTeardowns") == teardowns, f"the burst ended the session: {_networking(m.dut_ip)!r}"
     result_note(f"{_QOS1_BURST} QoS 1 messages acknowledged in {took:.1f}s")
 
@@ -591,7 +606,7 @@ def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_b
 
 
 @pytest.mark.provokes_log(
-    "each sweep kills and restarts the broker, then stalls it into a missed PINGRESP",
+    "each sweep stalls the broker into a missed PINGRESP, and the client reconnects once it resumes",
     ("MQTT", "E", "MQTT_CONNECT"),
     ("MQTT", "E", "MQTT_LOST"),
     ("MQTT", "E", "MQTT_NO_PINGRESP"),
@@ -599,31 +614,29 @@ def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_b
     ("MQTT", "W", "MQTT_SHORT_SESSIONS"),
 )
 @pytest.mark.parametrize("offset_s", _STALL_OFFSETS_S)
-def test_stall_detection_follows_the_publish_rounds(mqtt_bench: MqttBench, board: "Board", offset_s: float, result_note: "_load.Note") -> None:
-    # A round every 10 s from the connect, each confirmed by a PINGREQ whose PINGRESP is due 10 s later (the idle interval,
-    # 180 s, never falls due): a stall `offset_s` after a connect is detected 10 s after the next round. The console times it.
+def test_stall_detection_follows_the_exercise_rounds(mqtt_bench: MqttBench, board: "Board", offset_s: float, result_note: "_load.Note") -> None:
+    # The exerciser's probe every period, each confirmed by a PINGREQ whose PINGRESP is due 10 s later (the idle interval,
+    # 180 s, never falls due): a stall `offset_s` after a probe reached the observer is detected 10 s after the next probe.
     m = mqtt_bench
-    _wait_connected(m.dut_ip, "before the stall sweep's connect")
-    with _console(board.device) as console:
-        killed = time.monotonic()
-        m.broker.stop(signal.SIGKILL)
-        time.sleep(_OUTAGE_S)  # an absence, as in the kill test
-        m.broker.start()
-        connected = console.first_after(killed, "MQTT Connected to", _CONNECT_WAIT_S + _BACKOFF_CAP_S)
-        assert connected is not None, "no connect line on the console after the broker restarted"
-        time.sleep(max(0.0, connected + offset_s - time.monotonic()))
+    _wait_connected(m.dut_ip, "before the stall sweep")
+    echo = f"{m.base}/{_ECHO_TOPIC}"
+    with _console(board.device) as console:  # the console times the detection
+        seen = len(m.observer.received(echo))
+        assert wait_for(lambda: len(m.observer.received(echo)) > seen, 2 * _EXERCISE_PERIOD_S), f"no echo probe on {echo} to time the stall from"
+        probed = m.observer.received(echo)[-1].at
+        time.sleep(max(0.0, probed + offset_s - time.monotonic()))
         stalled = time.monotonic()
         m.broker.send(signal.SIGSTOP)
         try:
             detected = console.first_after(stalled, "No PINGRESP", _DETECT_WAIT_S)
         finally:
             m.broker.send(signal.SIGCONT)
-    assert detected is not None, f"no PINGRESP deadline on the console within {_DETECT_WAIT_S:g}s of a stall {offset_s:g}s after the connect"
-    took, expected = detected - stalled, math.ceil(offset_s / _PUB_INTERVAL_S) * _PUB_INTERVAL_S - offset_s + 10.0
-    assert abs(took - expected) <= _STALL_PHASE_TOLERANCE_S, f"a stall {offset_s:g}s after the connect was detected in {took:.2f}s, expected {expected:.1f}s"
+    assert detected is not None, f"no PINGRESP deadline on the console within {_DETECT_WAIT_S:g}s of a stall {offset_s:g}s after a probe"
+    took, expected = detected - stalled, math.ceil(offset_s / _EXERCISE_PERIOD_S) * _EXERCISE_PERIOD_S - offset_s + 10.0
+    assert abs(took - expected) <= _STALL_PHASE_TOLERANCE_S, f"a stall {offset_s:g}s after a probe was detected in {took:.2f}s, expected {expected:.1f}s"
     back = _wait_connected(m.dut_ip, "once the stalled broker resumed")
     assert m.observer.wait_connected(), "the observer did not come back"
-    result_note(f"stall {offset_s:g}s after the connect: detected in {took:.2f}s (expected {expected:.1f}s); reconnected {back:.1f}s after the resume")
+    result_note(f"stall {offset_s:g}s after a probe: detected in {took:.2f}s (expected {expected:.1f}s); reconnected {back:.1f}s after the resume")
 
 
 @pytest.mark.provokes_log(

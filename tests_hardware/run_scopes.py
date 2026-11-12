@@ -29,7 +29,7 @@ SCOPES: dict[str, Scope] = {
             (f"{_FLASH}test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent", "toolchain/versions.toml's apt_packages gains mosquitto"),
         ),
         bench=(
-            (f"{_BENCH}test_mqtt_broker_faults.py", "the client itself, against a real broker"),
+            (f"{_BENCH}test_mqtt_broker_faults.py", "the client and its dev exerciser, against a real broker"),
             # The NTP/DNS tests share the board's NTP state, so they keep the full tier's relative order: the unreachable-server
             # test leaves NTP unsynced and backing off, and runs after every test that needs it synced.
             (f"{_BENCH}test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry", _NTP),
