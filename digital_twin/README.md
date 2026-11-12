@@ -751,7 +751,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    skip of runs 5 and 5b.
    **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
    left exactly three failures on a *healthy* chip, write-through (`asy_print_log.py`'s
-   `_store_err()` writes on every push — there is no deferred flush to race), so they should come
+   `err_s()` writes on every push — there is no deferred flush to race), so they should come
    back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
    go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,
    `PrintLogHistoryStore.setup()`'s `_read()` then fails, and its `_write()` fallback stores the

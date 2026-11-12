@@ -141,9 +141,9 @@ colonised *before* the boot ran.
 
 `tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 41,000 B kept by the build
 and its setups over the heap in use before them, nothing newly placed in and ≥ 16,384 B free above
-the top survivor, a ≥ 32,768 B run), not lowered to the 2,048 B worst case. A gate between measured
-rungs (`_MAX_ROUTE_NEED`, §M6) sits *between* two rungs, because a rung's effective size wanders
-within it.
+the top survivor, a ≥ 32,768 B run), not lowered to the 2,048 B worst case (agent, 2026-09-19;
+owner-reviewed, 2026-10-02). A gate between measured rungs (`_MAX_ROUTE_NEED`, §M6) sits *between*
+two rungs, because a rung's effective size wanders within it.
 
 ---
 

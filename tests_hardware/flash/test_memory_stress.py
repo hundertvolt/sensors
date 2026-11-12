@@ -40,7 +40,8 @@ _FLASH_GAP_SCRIPT_TIMEOUT_S = 30.0
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
 _C_STACK_SCRIPT_TIMEOUT_S = 60.0
-# The C stack the deepest FRAM-backed log entry must leave free: about four call levels (owner, 2026-11-11).
+# The C stack the deepest FRAM-backed log entry must leave free: about four call levels (owner, 2026-11-11: "A",
+# asked which bound the C-stack check holds).
 # @tunable l3.c_stack_reserve_b = 1024
 _C_STACK_RESERVE_B = 1024
 # The twin run's server: the script's scratch-config main() binds it inside the run's own network namespace.

@@ -182,7 +182,7 @@ def test_wrn_s_records_in_the_warning_sub_range() -> None:
 
 
 def test_err_s_default_errno_increments_count_but_not_history() -> None:
-    # errno=0 (_NO_ERR, the default) still bumps the counter, but _store_err returns before
+    # errno=0 (_NO_ERR, the default) still bumps the counter, but _record() returns before
     # appending anything to history - a real, easy-to-miss asymmetry worth pinning down.
     hist = PrintLogHistory(history_length=4)
     hist.err_s("just counting")
@@ -671,7 +671,7 @@ def test_a_restored_0x80_byte_reads_back_as_no_entry() -> None:
 
 
 def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
-    # Regression test for a real bug: _store_err()'s "not initialized" guard used to return early only when
+    # Regression test for a real bug: _record()'s "not initialized" guard used to return early only when
     # self.level > _LOG_OFF, so with logging off - the common production case - calling err_s() before
     # setup() had loaded the persisted state fell through to _write() anyway.
     #

@@ -1172,7 +1172,7 @@ settings.
   its exact word, matched as
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
   300 s lives in the command callback. `/status` — `{"ResetErrors": true}`: every registered
-  error source, then the webserver's own log, reset one after another (owner, 2026-11-07), `HTTPDropped`'s window included;
+  error source, then the webserver's own log, reset one after another (agent, 2026-11-07), `HTTPDropped`'s window included;
   `result.ResetErrors` answers `"Failed"` when any reset returned false, else `"Valid"`; a reset that
   raises (a defect's path) reaches the catch-all, which answers 500 and persists it (errno 23);
   any other value, and every other key, answers `"Invalid"`; a body without the key resets nothing.
@@ -3615,8 +3615,8 @@ history write record none (A.4). The logging layer's own caught allocation failu
 ring, the chunk allocation, the history read and write) each print one line with the error's text
 from level 1 up, as an allocator refusal (`None`, no heap failure) does.
 
-**`reset()` writes unconditionally; `_store_err()` does not.** The asymmetry is deliberate.
-`_store_err()` refuses to touch FRAM before `setup()` has run — a half-filled ring written over a
+**`reset()` writes unconditionally; `err_s()`/`wrn_s()` do not.** The asymmetry is deliberate.
+An entry never touches FRAM before `setup()` has run (`_record()` returns first) — a half-filled ring written over a
 not-yet-restored chunk is stale state. A cleared ring is the opposite: it is exactly what the
 caller asked to persist, so `reset()` writes it straight away and marks the logger initialized once
 that write succeeds, which makes the later `setup()` return early instead of restoring over it. A
@@ -6455,7 +6455,7 @@ level, so the test also checks that the walk reaches every task top it names. A 
 fails the check at any depth; a chain is memoised with the stack's members on its own cycle, so no
 top's chain depends on which top reached a shared function first; one await holding a project
 coroutine or an asyncio awaitable counts the deeper. The board's peak is
-`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` (1,024 B) of the limit (owner, 2026-11-11). A
+`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` (1,024 B) of the limit (owner, 2026-11-11: "A", asked which bound the C-stack check holds). A
 stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
 own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
 A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
@@ -12154,11 +12154,11 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.memory_stress_bench_hammer_duration_s` | 120.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `120.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.soak_request_failure_rate` | 0.001 | `tests_hardware/bench/test_memory_stress_bench.py` — `0.001` | failed soak requests as a share of those sent, so the bound scales with the chosen `--soak-duration` | estimated (agent, 2026-10-14) — measurement owed: the failed share across the 6 h soak on the dev bench, L4 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l4.uart_link_under_api_load_request_budget_s` | 15.0 s | `tests_hardware/bench/test_uart_link_under_api_load.py` — `15.0` | — | estimated (agent, `a195c4c`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
-| `l3.heap_headroom_after_full_system_build_max_added` | 41000 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `41_000` | — | owner decision (owner, 2026-11-11: the bound covers what `build_system()` and the setups keep over the heap in use before them, 35,984 B on dev, 2026-11-11, plus the ~14 % the retired 100,000 B total had over its own reading; it changes only through a new derivation of the need, never to fit a reading) | none: the bound is the requirement | the build's survivors or the heap budget change |
+| `l3.heap_headroom_after_full_system_build_max_added` | 41000 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `41_000` | — | owner decision (owner, 2026-11-11: "A", asked which bound the full-build heap check holds; option A: the bound covers what `build_system()` and the setups keep over the heap in use before them, 35,984 B on dev, 2026-11-11, plus the ~14 % the retired 100,000 B total had over its own reading); it changes only through a new derivation of the need, never to fit a reading (owner, 2026-10-02) | none: the bound is the requirement | the build's survivors or the heap budget change |
 | `l3.heap_headroom_after_full_system_build_worst_case_factor` | 2 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `2` | × the script's worst-case allocation (16,384 B) = the largest free block it requires (32,768 B) | the requirement the script states with the check (`3fe0fb2`, 2026-09-19): room for the worst-case allocation twice over; nothing here may be raised to fit a reading | none: the factor is the requirement | the worst-case allocation or the heap budget changes |
 | `l3.settle_budget_ms` | 2000 ms | `tests_hardware/device_scripts/_shared/settle.py` — `2000` | `_shared/settle.py`: the join's budget | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l3.c_stack_budget_window_ms` | 10000 ms | `tests_hardware/device_scripts/c_stack_budget.py` — `10000` | about ten read cycles of every reader the build starts; the flash tier's 60 s script timeout covers it | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
-| `l3.c_stack_reserve_b` | 1024 B | `tests_hardware/flash/test_memory_stress.py` — `1024` | the C stack the deepest FRAM-backed log entry (`provoked_end`, F.1) leaves of the 7,936 B limit: about four call levels at ~264 B | owner decision (owner, 2026-11-11: the deepest chain carries the bound); measured 6,060 B, 1,876 B left (dev, 2026-11-11) | none: the reserve is the requirement | the deepest chain or the stack size changes |
+| `l3.c_stack_reserve_b` | 1024 B | `tests_hardware/flash/test_memory_stress.py` — `1024` | the C stack the deepest FRAM-backed log entry (`provoked_end`, F.1) leaves of the 7,936 B limit: about four call levels at ~264 B | owner decision (owner, 2026-11-11: "A", asked which bound the C-stack check holds; option A: the deepest chain's end leaves this reserve, in place of half the limit); measured 6,060 B, 1,876 B left (dev, 2026-11-11) | none: the reserve is the requirement | the deepest chain or the stack size changes |
 | `l3.wifi_radio_reinit_connect_budget_ms` | 20000 ms | `tests_hardware/device_scripts/wifi_radio_reinit_recovery.py` — `20000` | one attempt's own poll (5 s) plus the DHCP lease the bench AP gives | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 
 **CI (`.github/`)**
