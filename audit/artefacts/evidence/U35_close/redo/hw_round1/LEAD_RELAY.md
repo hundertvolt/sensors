@@ -1,5 +1,15 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 06:33 UTC - lead to bench: correction to 06:18 - 7f does not wait for j; it runs after 15 if it fits
+
+- Correction: 7f does not need j. Its two neopixel_sweep tests assert relative figures only and read no geometry
+  file; M1 records the rig for the record. With the owner's "Neopixel rig is prepared" (your 524a0d8c), 7f is
+  runnable today.
+- Order: 10g, k, then `run 7b 15` (7b, 8f, 8b with its CRC-16 test alone, 10b, 15; about 15:15 -> 21:00), then
+  `run 7f 7f` (about 60 min) only if it ends by 21:33; else 7f goes to the window with j. 15 goes first because it
+  is the longer step; 7f fits a later window easily.
+- Everything else in 06:18 stands, and my cleared: line still follows my read of 10g and k.
+
 ## Relay 2026-11-12 06:18 UTC - lead to bench: new head (tests and docs only); wear after 10g and k; 7f waits for j
 
 - Head 0a1495cf (main line 67e47fa6): src/ unchanged, the image stands, no rebuild. Merge it when 10g ends, not
