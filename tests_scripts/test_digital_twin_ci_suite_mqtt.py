@@ -14,7 +14,8 @@ from _devices import DEVICE_NAMES, device_toml, devices_with
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import build_model, module_int_const
 
-_BASE = "sensors/SensorStationDev"
+_CLIENT_ID = "FixtureNode"  # a fixture client id: the checks take the base topic as given, never a variant's
+_BASE = f"sensors/{_CLIENT_ID}"
 _LINK_POLL_MS = 250  # the fixture's generated link poll, so the hold reads it rather than a default
 
 
@@ -210,7 +211,7 @@ def test_the_hotspot_check_holds_the_client_off_the_broker(ci_suite: ModuleType,
     monkeypatch.setattr(ci_suite, "_mqtt_status", lambda: status)
     monkeypatch.setattr(ci_suite, "_mqtt_keepalives", lambda _broker, _client_id: keepalives)
     monkeypatch.setattr(ci_suite.time, "sleep", slept.append)
-    ci_suite._check_mqtt_hotspot(_ctx(ci_suite, tmp_path, mqtt=True), object(), "SensorStationDev")
+    ci_suite._check_mqtt_hotspot(_ctx(ci_suite, tmp_path, mqtt=True), object(), _CLIENT_ID)
     assert len(fails) == failed, fails
     assert slept == [ci_suite._MQTT_HOTSPOT_LINK_POLLS * _LINK_POLL_MS / 1000]
 
