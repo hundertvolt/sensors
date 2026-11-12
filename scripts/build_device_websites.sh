@@ -9,8 +9,9 @@ usage() {
 Usage: scripts/build_device_websites.sh [--stage-only] [out_root]
 
   out_root      where each device's frozen_html.py lands (default: build/generated_html), or with
-                --stage-only where each device's staged index.html and js/app.js land (default: build/staged_html),
-                every staged page under it removed first, so no removed device's page stays behind
+                --stage-only where each device's staged index.html and js/app.js land (default: build/staged_html);
+                out_root holds only staged pages: a subdirectory with an index.html is removed whole first,
+                so no removed device's page stays behind
   --stage-only  stage every device's page and bundle without freezing them (what html-validate lints)
   -h, --help    this text
 
@@ -49,7 +50,7 @@ mapfile -t devices < <(derived_devices)
 if $stage_only; then
     out_root="${1:-build/staged_html}"
     # Cleaned at the start, never at the end: every staged page under the root goes (html-validate globs each
-    # <out_root>/*/index.html), and only those, since out_root may be any directory the caller names.
+    # <out_root>/*/index.html); out_root holds only staged pages: a subdirectory with an index.html is removed whole.
     for page in "$out_root"/*/index.html; do
         if [ -f "$page" ]; then
             rm -rf "$(dirname "$page")"

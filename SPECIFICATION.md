@@ -2756,8 +2756,10 @@ timeout fires — its duration bounded by that timeout, its per-round cost by th
 spin-round test (20,000 µs on the fastest round of every three consecutive
 rounds (owner, 2026-10-13), and
 64 B on every round, `tests/lwip_host/test_modlwip_eagain.py`; 8.5 ms for a single round and 32 B at worst
-on the host) and on the dev bench by a concurrent request's bound while one connection spins (owed,
-BACKLOG.md); a failed bound goes to the owner as a change to the override, a short `POLLOUT`
+on the host) and on the dev bench by a concurrent request's bound while one connection spins
+(`tests_hardware/bench/test_modlwip_send_stall.py`: a page load and every `GET /status` within 3 s,
+the page 0.51-0.63 s at `TCP_SND_BUF` 1,600 B, dev, 2026-11-11); a failed bound goes to the owner as
+a change to the override, a short `POLLOUT`
 back-off after `EAGAIN`, not a larger bound (owner, 2026-09-30).
 
 **Removal triggers**, one per patch, each patch then removed, not re-anchored: the pin carries an
@@ -6424,15 +6426,17 @@ extra-features level, `ports/rp2/mpconfigport.h:80-81`): the limit is the linker
 minus the 256 B margin (`ports/rp2/main.c:78, 148`, `ports/rp2/mpconfigport.h:125`,
 `py/cstack.h:38-43`) = 7,936 B, and crossing it raises `RuntimeError("maximum recursion depth
 exceeded")` (`py/cstack.c:50-55`, `py/runtime.c:1784-1787`). Every resumed task re-enters its whole
-await chain in C, so the budget is the longest await chain times the per-level cost.
+await chain in C, and the plain calls under its deepest await sit on top of it, so a chain costs its
+await levels and its plain levels, each at its own cost.
 `tests_scripts/test_await_depth.py` holds every static chain to 25 levels (Part N
-`mem.max_await_depth`); on silicon one await level inside a task costs about 200 B, and at depth 28
+`mem.max_await_depth`); the longest it finds is 15. On silicon one await level inside a task costs about 200 B, and at depth 28
 three plain calls of headroom remained while 32 failed (dev, 2026-10-29, under `mpremote run`, a few
-frames deeper than the frozen entry). The longest chain: a `GET /status` through Microdot's dispatch whose system
+frames deeper than the frozen entry). The chain the C-stack bound is checked on: a `GET /status` through Microdot's dispatch whose system
 source reads NTP's config store while it is not valid, 12 await levels down to `ConfigManager._get_values()`,
 whose `CFGMGR_NTP` entry (E34) then reaches the chip through 10 plain calls from `err_s()` to the SPI command
 `_send_and_read()`, about 264 B each on silicon (dev, 2026-11-10), no pass-through helper among them (agent,
-2026-11-11). Its analysis (`tests_scripts/_await_depth.py`) starts a chain
+2026-11-11). On `dev` (2026-11-11) the quiet peak, in the setup batch, is 4,796 B and that entry's
+end 6,060 B, 1,876 B inside the 7,936 B limit. The static analysis (`tests_scripts/_await_depth.py`) starts a chain
 at every coroutine a task-creating call is handed in `src/` and the generated modules
 (`create_task()`, `asyncio.run()`, the server callback; `wait_for()`, `wait_for_ms()` and `gather()`
 run theirs as tasks of their own), Microdot calling every registered handler through
@@ -6449,7 +6453,7 @@ level, so the test also checks that the walk reaches every task top it names. A 
 fails the check at any depth; a chain is memoised with the stack's members on its own cycle, so no
 top's chain depends on which top reached a shared function first; one await holding a project
 coroutine or an asyncio awaitable counts the deeper. The board's peak is
-`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` of the limit (owner, 2026-11-11). A
+`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` (1,024 B) of the limit (owner, 2026-11-11). A
 stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
 own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
 A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
@@ -7469,7 +7473,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 20 | `random`'s boot seed | the host's randomness (`ports/unix/mpconfigport.h:190-196`) | `get_rand_32()` (`ports/rp2/mpconfigport.h:163`), used by the boot signature's `random.getrandbits(32)` | — | — | none |
 | 21 | C-stack limit | 80,000 B on the 64-bit host, no margin (`ports/unix/main.c:443-451`, `py/mpconfig.h:819-820`) | the 8 KB stack less a 256 B margin (`ports/rp2/CMakeLists.txt:661`, `ports/rp2/mpconfigport.h:125`): a call or await depth that passes on the rig can raise `RuntimeError` on the board | `tests_scripts/test_await_depth.py` pins the longest static await chain (F.1) | L3: `tests_hardware/device_scripts/c_stack_budget.py` | none |
 | 22 | `sys.settrace` | compiled into `build-settrace` only, with the three settings it implies (`MICROPY_PERSISTENT_CODE_SAVE`, `MICROPY_PY_BUILTINS_CODE` full, `MICROPY_EXPOSE_MP_COMPILE_TO_RAW_CODE`); `build-standard` differs from rp2 in none of them | none | only `scripts/test.sh --coverage` uses `build-settrace`; its allocation figures are inflated (E.5.2) | — | none |
-| 23 | lwIP's network interface (`build-lwip`, B.14.4) | a loopback netif (`MICROPY_PY_LWIP_LOOPBACK=1`, `extmod/extmod.mk:413-414`) with both ends of every connection in one process, so each connection holds two pcbs and `MEMP_NUM_TCP_PCB` 9 admits 4 pairs, about half rp2's connections; every sent packet is copied into the lwIP arena on its way back (`netif_loop_output()`, a `PBUF_RAM` pbuf, `lib/lwip/src/core/netif.c:1147`), so the arena fills sooner and a write at its edge can raise `ENOMEM` from `tcp_output()` with its bytes already queued (`extmod/modlwip.c:817-826`) before the zero-window `EAGAIN` comes; a fresh connection takes `TCP_WND` + `TCP_SND_BUF` (8,000 B, 10 MSS) to a peer that never reads | the CYW43 netif: the peer is another host and the driver takes the outgoing pbufs | `tests/lwip_host/test_modlwip_eagain.py` measures the pool in-process, loads the arena with whole-MSS writes, counting a loader's `ENOMEM` as its piece queued (the drain then checks every byte), and never accepts `ENOMEM` at an edge under test | L4: the modlwip send-stall round on `dev` (owed, BACKLOG.md) | none (the instrument's design) |
+| 23 | lwIP's network interface (`build-lwip`, B.14.4) | a loopback netif (`MICROPY_PY_LWIP_LOOPBACK=1`, `extmod/extmod.mk:413-414`) with both ends of every connection in one process, so each connection holds two pcbs and `MEMP_NUM_TCP_PCB` 9 admits 4 pairs, about half rp2's connections; every sent packet is copied into the lwIP arena on its way back (`netif_loop_output()`, a `PBUF_RAM` pbuf, `lib/lwip/src/core/netif.c:1147`), so the arena fills sooner and a write at its edge can raise `ENOMEM` from `tcp_output()` with its bytes already queued (`extmod/modlwip.c:817-826`) before the zero-window `EAGAIN` comes; a fresh connection takes `TCP_WND` + `TCP_SND_BUF` (8,000 B, 10 MSS) to a peer that never reads | the CYW43 netif: the peer is another host and the driver takes the outgoing pbufs | `tests/lwip_host/test_modlwip_eagain.py` measures the pool in-process, loads the arena with whole-MSS writes, counting a loader's `ENOMEM` as its piece queued (the drain then checks every byte), and never accepts `ENOMEM` at an edge under test | L4: `tests_hardware/bench/test_modlwip_send_stall.py` on `dev` | none (the instrument's design) |
 | 24 | lwIP struct sizes and `MEM_ALIGNMENT` (`build-lwip`) | 64-bit pointers make lwIP's structs and pool elements larger, and `MEM_ALIGNMENT` is the host's pointer size, 8, against `extmod/lwip-include/lwipopts_common.h:42`'s 4: every pool and arena threshold falls elsewhere than on rp2 | 32-bit, `MEM_ALIGNMENT` 4 | the host test reads its edges from `versions.toml`'s `[lwip]` and measures them, never asserting an rp2 figure | L4 | none |
 | 25 | IPv6 fragment reassembly (`build-lwip`) | `IPV6_FRAG_COPYHEADER` 1: with 8-byte pointers `struct ip6_reass_helper` outgrows `IP6_FRAG_HLEN`, which `ip6_reass_tmr()` asserts every second (`lib/lwip/src/core/ipv6/ip6_frag.c:117-120`); lwIP's own setting for `sizeof(void*) > 4` (`lib/lwip/src/include/lwip/ip6_frag.h:60-72`) | 0, lwIP's default | the generated host `lwipopts.h`; the build's readback runs lwIP's timers through two reassembly ticks (B.14.4) | — (nothing here reassembles fragments) | none (a pointer-width setting) |
 | 26 | what runs lwIP (`build-lwip`) | the variant's `MICROPY_INTERNAL_EVENT_HOOK` (`netif_poll_all(); sys_check_timeouts();`) in `mp_event_handle_nowait()` on every `mp_event_wait_ms()` (`py/scheduler.c:259-266`, `ports/unix/unix_mphal.c:244-252`), so lwIP advances only while MicroPython waits | PendSV and a soft timer every 64 ms (`ports/rp2/mpnetworkport.c:39, :137-171`), whatever Python is doing | `lwip_host_port.c` (B.14.4); the host tests pump with `time.sleep_ms(1)` | L4 | none |
@@ -8456,12 +8460,12 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
 
   `dev`'s other routes: `/measurements` 470 B in 2 pieces, `/sensors` 622 B in 3, `/networking`
   214 B, `/system` 151 B and `/notification` 147 B in one each. `dev` stays about 4 KB inside the
-  budget, but the sources disagree on the free heap it rests on: I.6 records about 105,000 B free
-  after boot; F.5.3 measured 130,224 B free after a real `build_system()` on `dev` (2026-09-11,
-  before the six-connection lwIP ensemble took 5,040 B of GC heap, B.14.2); and the flash tier's
-  survivor bound (at most 100,000 B allocated of the 192,488 B heap, F.5.3) would leave 59,720 B
-  after the reserve, below `dev`'s demand. Whether six connections fit on `dev` at peak waits on the
-  post-boot free-heap measurement on the dev bench (L4).
+  budget, which rests on I.6's estimate of the heap free after boot. Measured on the `dev` image
+  (2026-11-11): the build and its setups keep 35,936-36,176 B over the heap in use before them,
+  against the flash tier's bound of at most 41,000 B (Part N
+  `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), and leave a largest
+  free block of 35,136 B against its floor of 32,768 B (F.5.3); in operation one collect leaves
+  81,984-82,400 B free, against `dev`'s serving demand of 68,790 B at the connection ceiling.
 - **lwIP is never the constraint on admission.** An image provisioned for 16 admitted 16 on every
   probe, no pool surfaced, and the GC heap bound first — while a raised ceiling turns a clean
   refusal into an admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST
@@ -12118,7 +12122,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.vitest_timeout_retries` | 2 | `vitest.config.js` — `2` | `retry.count`, on vitest's own `Test timed out in <n>ms` or `Hook timed out in <n>ms` message only (`retry.condition`), inside a test with its `beforeEach`/`afterEach` (a suite's `beforeAll`/`afterAll` runs once); three of a test's timeouts (`l0.vitest_test_timeout_ms`, or a live file's own), the first attempt and the two retries, are its retry budget inside its web job's minutes (B.10.1); a pass after a retry reads `Passed only on retry` | owner decision (owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the timeout retry rule changes (E.3.1) |
-| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the deepest chain's end from `c_stack_budget.py` leaving `l3.c_stack_reserve_b` of the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` finds over src/ and every device's generated modules at fb447c7e, the change that set it (a `GET /status` through Microdot's dispatch and a config store's FRAM-backed log write to the FRAM manager's own log, F.1); the per-level cost is owed to the flash tier | none: a tripwire at the measured depth | a chain grows past it, or the board reading lands |
+| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the deepest chain's end from `c_stack_budget.py` leaving `l3.c_stack_reserve_b` of the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` found over src/ and every device's generated modules at fb447c7e, the change that set it; the C stack a chain costs is its await levels and the plain calls under them (F.1), about 200 B per await level and 264 B per plain call on silicon, and the chain the bound is checked on (a `GET /status`, 12 await levels, then 10 plain calls from `err_s()` to `_send_and_read()`) ends at 6,060 B, the quiet peak 4,796 B (dev, 2026-11-11) | 10 levels: the longest static chain is 15 (F.1); a tripwire, the C stack itself bounded by `l3.c_stack_reserve_b` | a chain grows past it |
 
 **L1 (unit tier)**
 
@@ -12126,7 +12130,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l1.unix_heapsize` | 16M | `scripts/test.sh` — `16M`; `tests_scripts/test_device_script_fram_regions.py` — `16M`; `tests_scripts/test_digital_twin_boot_contiguity.py` — `16M` | every Unix-port file's heap; `test_digital_twin_bus_hazard_concurrency.py`'s dev scenario misses its 9 s budget at 8M (E.3.1) | measured (2026-09-17), full-suite runs: 16M passes every file; 8M fails the bus-hazard dev scenario in every isolated run (E.3.1) | the measured floor itself: changed only with a measurement and a register entry, never raised to make a failing test pass (no per-file override: agent, 2026-09-17, kept as agent design by the owner, 2026-09-26) | a file's peak heap at either GC stage changes |
 | `l1.unix_gc_stack_entries` | 1024 entries | `toolchain/micropython_overrides.py` — `1024` | `MICROPY_ALLOC_GC_STACK_SIZE` in the generated Unix variant header that `build-standard`, `build-settrace` and `build-lwip` compile with, read back after each build by `verify_unix_gc_stack_in_build()` (B.14.6); what a stack overflow costs scales with `l1.unix_heapsize` | measured 2026-10-20, Unix port v1.29.0, `build-standard` against 1024- and 4096-entry scratch builds, paired runs, two rounds with the trees swapped: at 32768 `test_voc_algorithm.py` 20.0 → 6.3 s, `test_asy_scd30_driver.py` 43.0 → 28.8 s, `test_asy_webserver_service.py` 12.4 → 7.2 s, `test_digital_twin_uart_link.py` 79.4 → 70.3 s, results identical; 4096 saved 1.6 %, 0.0 % and 2.3 % beyond 1024 on the first three | upstream's own large-heap value (`ports/rp2/mpconfigport.h:94`); 4096 saves under 3 % more, below the 10 % that would justify it (agent, 2026-10-20) | the pin moves, `l1.unix_heapsize` changes, or a file's time at 32768 grows |
-| `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | estimated (agent, 2026-10-08): I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve — measurement owed: the post-boot free heap on `dev`, L4 | attention; about 3.4 KB over `dev`'s demand against the estimate, but measured on `dev` (2026-11-06, idle, 32768) 72,288-73,072 B are free after boot, about 40,300 B under the reserve, below that demand: the owner's, in the closing heap account | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
+| `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | measured on `dev` (2026-11-11, 32768): one collect in operation leaves 81,984-82,400 B free, above this budget, set (agent, 2026-10-08) from I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve | holds: `dev`'s 68,790 B demand sits about 13.2 KB under the measured free heap; the 32,768 B reserve is the after-build largest-block check (F.5.3), not held back in operation | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
 
 **L2 (digital twin)**
 

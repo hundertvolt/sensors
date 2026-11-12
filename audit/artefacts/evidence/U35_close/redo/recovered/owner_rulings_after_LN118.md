@@ -1519,3 +1519,71 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 > Did we have reasonable progress in today's bench runs?
 
 (The owner asks whether today's bench window made reasonable progress. A question, not a ruling.)
+
+## 2026-11-11 16:57:07 UTC - Homepilot test rig and no real-device access (relayed by the bench session; the bench gives ~16:56 UTC)
+
+> Also tell it, it has NO permission to connect to any real device on the network. But it should prepare a test rig for a real Homepilot. With and without https, with and without password. I will give the go and details for running it, no real device action without this.
+> Another important topic inside this, measure time for connections with and without password, and especially analyze from firmware as well as tests if a session token / cookie can be reused without re authentication, and if so, how long.
+> And, the API for callers of the new secure homepilot module should be kept compatible. The new additions should only be an internal thing, only requiring a more sophisticated initialization.
+
+(Relayed verbatim by the bench session, not typed in this conversation. No connection to any real network device, Homepilot included, without the owner's go and details. Prepare a Homepilot rig: https and http, with and without password; time the connections with and without password; analyse from firmware and tests whether a session token or cookie is reusable without re-authentication, and for how long. The secure module keeps its caller API; the additions are internal, with a richer initialisation. This repository holds no Homepilot code: where it lives is a clarification owed by the owner.)
+
+## 2026-11-11 17:06:13 UTC - the Homepilot message retracted (relayed by the bench session; the bench gives ~17:00 UTC)
+
+> Ignore my last message, copy paste error
+
+(Relayed verbatim by the bench session. The 16:57 Homepilot instruction was not meant for this campaign: no Homepilot rig, no action on it. Nothing was built.)
+
+## 2026-11-11 17:08:04 UTC - the Homepilot message, confirmed as a copy-paste error
+
+> Homepilot was a copy paste error.
+
+(The owner confirms directly in this conversation: the relayed Homepilot instruction is void for this campaign.)
+
+## 2026-11-11 17:14:59 UTC - minimal complexity, no test-fixing drift; check for runaway chains
+
+> I actually don't even understand such deep details. Follow our new rules: Minimal complexity, no dropped features, no known or new gaps, and no runaway fixing chains, and don't drift into fixing tests, concentrate on the quality of the firmware and the buildgen. Maybe this already is enough, and be reminded of this in general, I have the impression of runaway chains and test fixing is happening again. Check this!
+
+(The owner does not decide the lwIP control-test detail: the lead decides it under the rules - minimal complexity, no dropped features, no known or new gaps, no runaway fixing chains, no drift into fixing tests; the focus is the quality of the firmware and buildgen. Standing reminder. The owner asks the lead to check whether runaway chains and test fixing are happening again.)
+
+## 2026-11-11 17:21:34 UTC - the lwIP test issue in short (question)
+
+> What, in short words, was the lwip test issue?
+
+(The owner asks for a short explanation of the lwIP control-test issue. A question, not a ruling.)
+
+## 2026-11-11 17:27:05 UTC - the lwIP control test: negative, not functional? (question)
+
+> so it was a negative test, not a functional one?
+
+(The owner asks whether the lwIP control test was a negative test rather than a functional one. A question, not a ruling.)
+
+## 2026-11-11 17:29:02 UTC - negative tests are prone to overkill
+
+> be careful with such negative tests. they are extremely prone to become overkill.
+
+(Standing caution: a negative test - one that proves a failure appears without a fix - easily grows beyond its worth; add or keep one only where it is cheap and bounded.)
+
+## 2026-11-11 18:52:20 UTC - bench AP status
+"It is back for long, seems the bench did not inform you"
+(The bench access point has been up again for a while; the bench did not report that to the lead. The 18:01 question on how to bring it back is void.)
+
+## 2026-11-11 21:37:08 UTC - day wrap-up request
+"Bench is shut down for today. Now give me a short Management wrap up - what was achieved today, what is still open / next?"
+(The bench is stopped for the day; the owner asks for a short management summary of today's results and what remains.)
+
+## 2026-11-12 05:34:46 UTC - bench restart
+"Bench restarted, go ahead now"
+(The bench is running again for the next window; the lead proceeds with the agreed plan.)
+
+## 2026-11-12 05:55:06 UTC - no owner steps today (relayed by the bench, 05:54 UTC)
+"No owner steps today" (relayed)
+(The owner does no hands-on bench steps today: j, the 16b power-cycle half and 13 move to a later window, and with j the wear clearance; today runs 10g and k only.)
+
+## 2026-11-12 05:57:09 UTC - steps before the bench finishes (question)
+"Are there planned steps you can already do before the bench runs finish?"
+(The owner asks which planned steps the lead can do now, while the bench runs.)
+
+## 2026-11-12 06:15:32 UTC - wear clearance after today's plan (relayed by the bench, 06:14 UTC)
+"Once you are done with the plan for today, you have clearance for the wear tests" (relayed)
+(The owner clears the wear steps for today, after today's plan (10g, then k), ahead of the manual checks; the lead's own read of the results still precedes the cleared: line.)
