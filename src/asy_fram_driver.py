@@ -286,7 +286,8 @@ class FRAM_SPI:
         if not self.initialized:
             self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
-        self.begin()
+        if not self._begin_or_refuse():
+            return False
         status = self._set_write_protected(value=value)
         if status & _W_WEL_NOT_SET:
             self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)
@@ -299,6 +300,16 @@ class FRAM_SPI:
         if status & _W_WEL_STUCK:
             self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=_WRN_FRAM_WEL_STUCK)
         self.pr.evt("FRAM Write Protection set to", value)
+        return True
+
+    def _begin_or_refuse(self) -> bool:
+        # begin() for a public call that never raises on a live bus: another device's async session holding it is a
+        # refusal, logged as the chunk layer's _begin() logs it.
+        try:
+            self.begin()
+        except Exception as e:
+            self.pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
+            return False
         return True
 
     def begin(self) -> None:
@@ -331,10 +342,7 @@ class FRAM_SPI:
         if not self.initialized:
             self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
-        try:
-            self.begin()
-        except Exception as e:  # another device's async session holds the bus: refused, as the chunk layer's _begin()
-            self.pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
+        if not self._begin_or_refuse():
             return False
         self.initialized = self._check_device_id()
         return self.initialized

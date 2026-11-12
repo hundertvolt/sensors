@@ -367,9 +367,11 @@ gates, traps).
   - **Fewer jobs, nothing installed** (2026-11-09): `scripts/test.sh` and the twin legs take one device
     per `hardware_family` (`scripts/_devices.sh`'s `distinct_devices`: bash and `sed`), and
     `GC_THRESHOLD=32768 scripts/test.sh` runs no pytest tier, its summary listing it as skipped.
-  - **An arm64 leg runs two functions as plain twins** (2026-11-11): the Unix port compiles no native code
-    on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/` copies there
-    (SPECIFICATION.md F.1); nothing installed. Before this, every arm64 Unix-port run failed at import.
+  - **An arm64 leg runs two functions as plain twins** (2026-11-11, 2026-11-12): the Unix port compiles no
+    native code on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/`
+    copies there, regenerated with the generated tree whenever its stamp no longer holds (SPECIFICATION.md
+    F.1, E.3); every launcher's path carries them; nothing installed. Before this, every arm64 Unix-port
+    run failed at import.
   - **`[lwip]` `TCP_SND_BUF` 6,400 → 1,600 B** (2026-11-11): nothing installed; a reused chroot's changed
     `toolchain/versions.toml` runs setup once, as above, and `build-lwip` takes the new value.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
