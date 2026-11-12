@@ -169,8 +169,8 @@ def test_settle_waits_out_the_wire_time_in_a_bounded_number_of_steps() -> None:
         advance()
 
     link._advance = counted  # type: ignore[method-assign]
+    start = time.ticks_ms()  # before the write: the write dates the bytes' wire time
     a.write(bytes(8))
-    start = time.ticks_ms()
     link.settle()
     assert time.ticks_diff(time.ticks_ms(), start) >= 8 * 10 * 1000 // 9600 - 1
     assert steps[0] <= 3, steps
