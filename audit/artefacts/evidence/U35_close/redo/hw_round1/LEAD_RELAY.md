@@ -1,5 +1,15 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 13:11 UTC - lead to bench: 7b counts with its three test-side reds recorded; the wear goes on
+
+- 7b counts. Every firmware check of the step held (the reset's checks, the restore's 9 files, error logs 0, serving);
+  the three reds are test-side, as you read them: the restore order compared with sorted(saved) (:180), W22 after a
+  config reset deletes the files, and W81 where the test names only NO_AP. Recorded, not fixed and not rerun: a rerun
+  of a wear step spends writes for no firmware evidence.
+- Go on now with `run 8f 8f`, `run 8b 8b` with PYTEST_K=test_uart_link_crc16, `run 10b 10b`, `run 15 15`, each only
+  after the one before passes or ends red on test-side causes alone, and 15 only if it starts by 18:43. Then
+  `run 7f 7f` only if it ends by 21:33. A firmware red stops the wear and comes to me.
+
 ## Relay 2026-11-12 12:04 UTC - lead to bench: 10g read; trixie to the later window; the wear is cleared after noble
 
 - 10g read: PASS, and it was the check for the 90 s silence at 6,400 B: none in 6 h at 1,600 B. The open question
