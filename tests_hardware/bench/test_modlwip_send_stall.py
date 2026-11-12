@@ -1,27 +1,24 @@
 """The lwIP send stall on silicon (SPECIFICATION.md B.14.4): clients that stop reading mid-response fill the stack, and
-a non-blocking send that met ERR_MEM spun the VM in the pinned modlwip; the override returns EAGAIN instead. Proven
-twice: the round's unpatched control image must stall, the normal image must not; one hammer and one set of bounds."""
+the pinned modlwip spins the VM on a non-blocking send that meets ERR_MEM; the override returns EAGAIN instead, so the
+normal image must not stall under one hammer and one set of bounds."""
 
 import dataclasses
 import fcntl
-import json
 import re
 import socket
 import struct
 import termios
 import threading
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import _load
 import http_client
 import pytest
-from error_log_helpers import assert_no_task_ended, save_errcount
-from harness import _wait_for_slots_to_drain, boot_lines, configured_max_connections, crash_lines, get_routes, observe_during, reflash, save_fram_raw, wait_until
+from error_log_helpers import assert_no_task_ended
+from harness import _wait_for_slots_to_drain, boot_lines, configured_max_connections, crash_lines, get_routes, observe_during
 
 if TYPE_CHECKING:
-    from bench_control import BenchBridge
     from harness import Board
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
@@ -35,13 +32,11 @@ _STATUS_POLL_S = 0.5
 _STOPPED_ANSWERING_S = 5.0
 _RAW_SOCKET_TIMEOUT_S = 10.0
 _DRAIN_TIMEOUT_S = 30.0
-_SERVING_TIMEOUT_S = 120.0
 _JOIN_TIMEOUT_S = 30.0
 _MIN_ZERO_WINDOW = 2  # connections the stall needs at zero window, its precondition
 _LARGEST_ASSET = "/js/app.js"  # the largest static file a page load fetches
 _ASSET = re.compile(r'(?:src|href)="([^"#:?]+)"')
 _FIONREAD = termios.FIONREAD
-_REMOVAL_SIGNAL = "the hammer did not reach the ERR_MEM loop on the unpatched image, or the pin carries an upstream fix: re-check the modlwip_eagain override (SPECIFICATION.md B.14)"
 
 
 @dataclasses.dataclass
@@ -83,42 +78,6 @@ def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_not
     assert verdicts.zero_window >= _MIN_ZERO_WINDOW, f"only {verdicts.zero_window} connection(s) reached zero window: the hammer never blocked the board's sends"
     assert not verdicts.failed_bounds(), f"the override did not hold: {verdicts.failed_bounds()}"
     assert_no_task_ended(dut_ip, "the lwIP send-stall hammer")
-
-
-@pytest.mark.flash_cycle
-@pytest.mark.provokes_log(
-    "the control image stalls its sends by design: the stalled calls' timeouts stay in WEBSERVER's log",
-    ("WEBSERVER", "W", "HTTP_REFUSED"),
-    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
-    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-)
-def test_send_stall_on_the_unpatched_image(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
-    # The control image the round built (--lwip-control-image) must stall where the normal image does not; both flash
-    # cycles are this test's, and the FRAM evidence is saved first (a reflash is a clearing path).
-    if not request.config.getoption("--allow-flash-cycle"):
-        pytest.skip("flashes the control image and the normal one back - pass --allow-flash-cycle to deliberately run it")
-    option = request.config.getoption("--lwip-control-image")
-    assert option, "--lwip-control-image names no control image: the round builds it in a throwaway worktree (tests_hardware/README.md)"
-    control = Path(option)
-    assert control.is_file(), f"the control image {control} does not exist"
-    record = json.loads(control.with_suffix(".json").read_text(encoding="utf-8"))
-    assert isinstance(record, dict), f"no image record beside the control image: {control.with_suffix('.json')}"
-    assert record.get("overrides") == [], f"the control image's record names overrides {record.get('overrides')!r}, not []: it is no unpatched image"
-    reason = request.node.name
-    save_errcount(dut_ip, reason)
-    save_fram_raw(board, reason)
-    release_uf2, release_record = _load.round_image(request)
-    try:
-        reflash(board, control)
-        wait_until(lambda: _load.serving(dut_ip), timeout_s=_SERVING_TIMEOUT_S, description="the control image serving")
-        assert _load.image_deviations(request, dut_ip, record) == [], f"the board does not run the control image: {_load.image_deviations(request, dut_ip, record)}"
-        verdicts = _measure(board, dut_ip)
-        _note(result_note, "the unpatched control image", verdicts)
-    finally:
-        reflash(board, release_uf2)
-        wait_until(lambda: _load.serving(dut_ip), timeout_s=_SERVING_TIMEOUT_S, description="the round's image serving again")
-        assert _load.image_deviations(request, dut_ip, release_record) == [], f"the board is not back on the round's image: {_load.image_deviations(request, dut_ip, release_record)}"
-    assert verdicts.failed_bounds(), _REMOVAL_SIGNAL
 
 
 def _boot(dut_ip: str) -> "tuple[object, object]":

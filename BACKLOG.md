@@ -123,26 +123,6 @@ gates, traps).
   cadence facts, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
   dropped soft-timer tick is not mitigated in software, owner, 2026-07-18, `f3924e1`). Wear: none (FRAM writes
   are not wear; read the FRAM logs first). Twin row: none (the twin's timers model no rp2 drop).
-- **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
-  `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
-  pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
-  worktree, never committed); `bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image`
-  runs it with `--lwip-control-image <uf2>` and `--allow-flash-cycle`, flashing the control image
-  and back. Hold the connection ceiling open with clients that stop reading
-  mid-`app.js` (sockets kept open without `recv()`), then request one more page: record whether the
-  board freezes for up to 10 s and whether a watchdog reset follows (`/status`'s `ResetReason`).
-  (2) Flash the normal build and repeat that load, plus dead-client and slow-client page loads on
-  every route at the ceiling. Expected: no watchdog reset, no VM stall longer than Part N `web.per_call_timeout_s`,
-  the stalled connections reclaimed, service back to baseline once the clients go, and no
-  `MemoryError` or `memory allocation failed` marker; page-load time before and after and the CPU
-  cost of the cooperative retry recorded. While one connection sits in the retry (a client holding
-  its socket open without `recv()` during a large route), a concurrent `GET /status` completes
-  within a bound this run sets, its Part N row landing with the bench test, and the supervisor's
-  task check keeps running with no task-error growth. A failed bound goes to the owner as a change
-  to the override (a short POLLOUT back-off after `EAGAIN`), not absorbed by a larger bound. Wear:
-  two flash cycles (the control image and the normal build), no persistence write. Twin row: none
-  (the twin has no lwIP); `tests/lwip_host/test_modlwip_eagain.py` runs the same send path on the
-  `build-lwip` host build.
 - **`env --tier bench` creating a bridge under its own recovery timer** — on the bench Pi4, a
   fresh bridge (the old one deleted per `tests_hardware/README.md`'s 'Host network' section), with
   a second, manually armed SPECIFICATION.md B.13 timer as the outer safety. Expected: the

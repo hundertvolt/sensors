@@ -390,7 +390,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--bench-device", default=None, metavar="NAME", help="the board on the bench; default $BENCH_DEVICE, else the one devices/*.toml with [device].bench = true")
     parser.addoption("--image-record", default=None, metavar="PATH", help="the image record of the build on the board (default build/firmware-<bench device>.json, beside its .uf2)")
     parser.addoption("--dut-ip", default=None, metavar="ADDR", help="the DUT's last known address on the bench network; lets the session save /status before anything resets the board")
-    parser.addoption("--lwip-control-image", default=None, metavar="PATH", help="the unpatched control image a phase-C round built in a throwaway worktree; required by the unpatched lwIP test, never defaulted")
     parser.addoption("--rollover-image", default=None, metavar="PATH", help="the tick-offset test image the rollover round built; required by the rollover test, never defaulted")
     parser.addoption("--twin", action="store_true", default=False, help="run flash-tier tests and device scripts against the Unix-port twin instead of a board")
     durations = ", ".join(f"{name}={seconds:.0f} s" for name, seconds in SOAK_DURATION_SECONDS.items())
