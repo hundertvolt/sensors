@@ -43622,3 +43622,23 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   remnant (dev, root, usr), not a chroot. As 06:18 says, I tell you first and build none. Your call: a fresh trixie
   chroot (debootstrap plus a toolchain build, about 1 h 30 more on this host, before the wear), or trixie goes to a
   later window.
+
+## Bench 2026-11-12 12:57 UTC - k noble: red at test.sh, the known aarch64 cause; the wear started 12:57
+
+- noble (12:01-12:56, /home/nico/chroots/noble, a clone of 0fce67f2, /tmp on tmpfs 3.9 G, GCC 13.3.0, uv 0.13.7, ruff
+  0.17.4, mypy 2.4.1, node v26.13.1): env --tier generic rc 0, lint rc 0, typecheck rc 0, test.sh rc 1.
+- test.sh: the MicroPython tier is green (files 121 passed, tests 5261 passed, 0 failed). tests_scripts: 6544 passed,
+  20 failed (18 failed, 2 errors), one cause: the v1.29.0 Unix port has no aarch64 native emitter, so
+  `@micropython.viper` at src/crc_checks.py:20 is a SyntaxError ("invalid micropython decorator": test_microtest x11,
+  test_fram_less_boot x4, test_generate_sensortask_modules x2, test_test_sh x1), and `mpy-cross -march=host`
+  answers "unable to determine host architecture" (test_stripped_image_boots, 2 errors). This is the 11-11 06:13 cause;
+  since then the unit tier has moved off it, and these 20 are what is left. It does not repeat differently, so it is
+  recorded, not rerun (the host must be quiet for the wear). CI's x86_64 runners and the rp2 image are not affected.
+- Recipe finding: the chroot had uv 0.8.17, and this head's pyproject.toml requires ==0.13.7, so the first attempt
+  (12:00) stopped at once. A reused chroot needs the recipe's `pip install uv==<required-version>` again whenever the
+  pin moves, not only at build. Done (README's line), then rerun.
+- Logs: logs/day7_20261112/chroot_noble.log, chroot_evidence/noble/, the first attempt in chroot_noble_attempt1_uv.log.
+- The wear (lead 12:04, cleared): PYTEST_K applies to every step of a run range, so `run 7b 15` runs as four parts
+  without a round1.sh change: `run 7b 8f`, `run 8b 8b` with PYTEST_K=test_uart_link_crc16, `run 10b 10b`, `run 15 15`.
+  Each part runs only if the one before passed, and each starts only if it ends by 21:33. Started 12:57:12.
+  Flash cycles planned: 8f 1, 8b 2, 15 2 = 5. Ends about 18:45 by the table's times; then 7f (60 min) fits by 21:33.
