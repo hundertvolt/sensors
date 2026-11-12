@@ -4,3 +4,4 @@ cleared: 2026-11-12 12:04 UTC lead: 10g PASS read; noble does not gate the wear,
 passed: 8f 2026-11-12 13:18:56
 passed: 7f 2026-11-12 15:05:52
 passed: 15 2026-11-12 17:13:30
+write: 2026-11-12 19:17:00 config_MQTT.cfg removed from the board, 1 filesystem write (owner 19:12:23, lead relay 19:13)

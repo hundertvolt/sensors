@@ -43828,3 +43828,14 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - The chroot stays at /home/nico/chroots/trixie (5.0G, no mounts left) until you say to remove it.
 - Today's plan and the three 15:05 items are done. The board is idle on the round image; nothing more starts today.
   STOP at 21:33.
+
+## Bench 2026-11-12 19:17 UTC - 19:13: config_MQTT.cfg deleted; the trixie chroot kept
+
+- Deleted from the board 19:16:54-19:17:10 by a one-off isolated script (logs/day7_20261112/scratch_scripts/
+  delete_mqtt_cfg*.py: names only, the file never opened or printed), then restore_board_to_serving. Board file list
+  before: 9 config_*.cfg; after: the build's 8 (BMP3XX, ISL29125, NOTIFY, NTP, SCD30, SGP40, SYSTEM, WIFI).
+- GET /status after: 200, ResetReason 21 (the script's console Ctrl-C), ConfigFaults [], MemFree 64768.
+- The saved pre-session set (build/archive/run_bench_hardware_suite/20261112T125717Z/config-files-before-reset.txt, the
+  only saved set on the Pi) now holds those 8; the config_MQTT.cfg entry is gone, no copy kept.
+- WEAR.txt: `write: 2026-11-12 19:17:00 config_MQTT.cfg removed from the board, 1 filesystem write`.
+- config_reset not rerun. The trixie chroot stays. Nothing else starts today; STOP at 21:33.
