@@ -200,9 +200,9 @@ class BenchBridge:
         )
 
     def kick_all_stations(self) -> None:
-        # kick_client()'s workaround for every station associated now, not an assumed single DUT MAC; called right
-        # before a reset that expects a genuine STA reconnect (harness.kick_then_reset()), or right after one the
-        # board's own command armed (harness.kick_after_reset()).
+        # kick_client()'s workaround for every station associated now, not an assumed single DUT MAC: right before a
+        # reset that expects a genuine STA reconnect (harness.kick_then_reset()), right after one the board's own command
+        # armed (harness.kick_after_reset()), or once a reflash's bootloader stopped the old image (harness.reflash()).
         iface = self.wifi_iface()
         for mac in bench_associated_station_macs(iface):
             self.kick_client(mac)
