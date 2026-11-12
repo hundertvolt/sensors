@@ -3,9 +3,9 @@ round trips and failures counted, nothing sent or counted while disconnected, th
 that never raise or allocate, and the module shape the generated device module wires (SPECIFICATION.md A.12)."""
 
 import asyncio
-import gc
 import time
 
+import micropython
 from _async_harness import run
 from _mqtt_fake_broker import FakeBroker, publish_packet
 from _port_bands import PortAllocator
@@ -318,10 +318,13 @@ def test_the_callbacks_never_raise_and_allocate_nothing_on_any_message() -> None
 
     calls()  # warm: every path taken once
     link._transfers = link._commands = 0
-    gc.collect()  # the baseline of the measurement (SPECIFICATION.md I.4)
-    before = gc.mem_alloc()
-    calls()
-    assert gc.mem_alloc() - before == 0
+    # The heap locked, any allocation raises (py/gc.c); build-settrace's per-call frame is skipped while it is locked
+    # (py/profile.c), so the zero is exact on both binaries (SPECIFICATION.md E.5.2).
+    micropython.heap_lock()
+    try:
+        calls()
+    finally:
+        micropython.heap_unlock()
     assert link._transfers == 8  # the matching payload, at each flag value without RETAIN
     assert link._commands == 64
 

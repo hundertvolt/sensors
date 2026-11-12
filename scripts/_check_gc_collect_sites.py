@@ -45,7 +45,6 @@ ALLOWED = {
     ("tests/test_asy_fram_allocation_budget.py", "_priced", "collect"): "baseline: the setup's priced window",
     ("tests/test_asy_mqtt_client.py", "test_a_partners_publish_allocates_no_more_than_a_publish_on_the_same_topic.direct", "collect"): "baseline: a publish's allocation",
     ("tests/test_asy_mqtt_client.py", "test_a_partners_publish_allocates_no_more_than_a_publish_on_the_same_topic.under", "collect"): "baseline: a partner publish's allocation",
-    ("tests/test_asy_mqtt_link_driver.py", "test_the_callbacks_never_raise_and_allocate_nothing_on_any_message", "collect"): "baseline: the callbacks' allocation",
     ("tests/test_asy_system_service.py", "_call_cost", "collect"): "baseline: an empty call's allocation",
     ("tests/test_asy_system_service.py", "_settled_alloc", "collect"): "baseline: the settled allocation",
     ("tests/test_asy_system_service.py", "test_the_reports_outputs_allocate_nothing", "collect"): "baseline: the report's allocation",

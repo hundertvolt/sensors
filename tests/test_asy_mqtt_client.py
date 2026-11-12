@@ -1749,11 +1749,15 @@ def test_a_partners_publish_allocates_no_more_than_a_publish_on_the_same_topic()
     topic = client._topics[topic_id]
     payload = bytearray(4)
 
+    def relay(topic: bytes, payload: bytearray) -> bool:
+        # One Python call deeper, as publish_under() is: build-settrace allocates per call (SPECIFICATION.md E.5.2).
+        return client.publish(topic, payload, qos=0, retain=False)
+
     def direct(n: int) -> int:
         gc.collect()  # the baseline of the measurement (SPECIFICATION.md I.4)
         before = gc.mem_alloc()
         for _ in range(n):
-            client.publish(topic, payload)
+            relay(topic, payload)
         return gc.mem_alloc() - before
 
     def under(n: int) -> int:
