@@ -43746,3 +43746,18 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - Decision under 14:16's first branch: the board met its design; 10b's red is test-side (the departure probe reads NM's
   retained gateway, not the association), recorded, no rerun. Its cascade (the AP back up at 13:41:39 under the
   wrong password, the board ending silent) followed from it. Going on: 15 (start by 18:43), then 7f if it ends by 21:33.
+
+## Bench 2026-11-12 14:31 UTC - 15 red on the same stale-station trap as 8b: the rollover check never ran; 7f started
+
+- 15 (14:18:18-14:30:18, 720 s, rc 1): `test_ticks_ms_rollover_is_survived` FAILED, "timed out after 120.0s waiting for:
+  the tick-offset test image serving", plus a teardown error. The tick-offset image was built and flashed, then the round
+  image flashed back (record and board BuildDate 2026-11-12T13:13:33Z, match=1). Flash cycles: 2 (today 5).
+- The bench AP (host journal): the round image associated at 14:22:19. The AP dropped its station only at 14:24:24, by
+  itself, with no `iw station del` before the test's reflash. Then no association until 14:30:09 (the round image back).
+- The board (FRAM, read at the step's end): WIFI's newest entries W38 WLAN_CONNECT_FAILED then W79 WLAN_TO_HOTSPOT
+  (counter 25 -> 31), SYSTEM 0 (no task end), so the tick-offset image booted and ran, met the stale entry and opened its
+  hotspot, past the test's 120 s. The same path as 8b (13:37 block). After it: RR 2, ConfigFaults [], serving.
+- Test-side by the same reading as 8b (the test's reflash does not kick the AP's station first), recorded, no rerun.
+  Note for you: 15's firmware evidence (the ticks_ms rollover survived) was not gathered; a rerun would cost 2 more
+  flash cycles and hits the same trap unless the reflash kicks first, which is a test change, not mine to make.
+- 7f started at 14:31:26 (60 min by the table, ends well before 21:33).
