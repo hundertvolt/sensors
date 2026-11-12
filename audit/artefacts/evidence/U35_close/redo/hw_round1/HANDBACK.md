@@ -43761,3 +43761,31 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   Note for you: 15's firmware evidence (the ticks_ms rollover survived) was not gathered; a rerun would cost 2 more
   flash cycles and hits the same trap unless the reflash kicks first, which is a test change, not mine to make.
 - 7f started at 14:31:26 (60 min by the table, ends well before 21:33).
+
+## Bench 2026-11-12 14:47 UTC - 7f: 11 passed, 5 failed; two may be firmware reds; today's wear plan is run through
+
+- 7f (14:31:27-14:46:27, 900 s, rc 1, flash tier gated: persistence_write, scd30_extra_write, neopixel_sweep; archive
+  build/archive/run_flash_hardware_suite/20261112T143127Z): 16 selected, 11 passed, 5 failed. No flash cycle.
+- For your read, possibly firmware:
+  1. `test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame` [none] and [crc16], :254: the
+     stream ran, but no frame arrived intact. [none]: frames_sent 87, frames_intact 0, flush 90589 us, uartrsr_oe False.
+     [crc16]: 84 sent, 0 intact, flush 8526 us. All-or-nothing, not one frame lost to a flash window. The sibling
+     `test_link_transactions_during_config_writes_are_recorded` passed in both modes (0 transactions failed, 5 flushes
+     each). The tree's last firmware change before round 1 sized dev's responder ring (ecca7f3b); I have not checked
+     whether uart_dma_ring_interrupts_off.py's config_write state matches it.
+  2. `test_config_float_round_trip.py::test_config_floats_round_trip_unchanged`: mpremote lost the port mid-script
+     (OSError Errno 5 on the serial fd) after the script had printed "FACT fields=17". Whether the board reset there
+     (a config write in flight) or the USB link dropped, the run does not say; SYSTEM's FRAM log stayed 0 (no task end).
+- Likely test-side or environment:
+  3. `test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`, :122: the scratch build wrote 8
+     files and the production store set lists 9; the difference is config_MQTT.cfg. That file is on the board (7b saved
+     and restored it); whether the current firmware writes it or it is left from an older image, I have not checked.
+  4. `test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios`:
+     "hysteresis_band_dwell_no_chatter: 1 range switches, expected 0..0" (10 scenarios, 23 switches in all). Real
+     light on the bench sensor.
+- After it: serving, RR 21 (the harness), uptime 24, ConfigFaults [], LastTaskEnd null, SSID and Hostname as before,
+  DebugLevel 5. FRAM: CFGMGR_* W22 (7f's config resets), CFGMGR_SYSTEM W21 (the damaged-file test, which passed),
+  CFGMGR_WIFI E21/W22, SYSTEM 0, WIFI unchanged at 31.
+- Today's wear, all run: 7b (counts, 3 test-side), 8f PASS, 8b (counts on its CRC-16 checks), 10b (test-side by the
+  journal), 15 (test-side, the rollover not checked), 7f (above). Flash cycles: 5 (8f 1, 8b 2, 15 2). Nothing else is
+  planned for this window (to 21:33). I wait for your read; nothing is rerun.
