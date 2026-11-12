@@ -43600,3 +43600,14 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 
 - The owner (~06:16 UTC): "Neopixel rig is prepared". So 7f's neopixel_sweep tests (`--allow-neopixel-sweep`, ~10 min of
   light programs on the rig) have what the table names. 10g is still running; the wear follows k, as at 06:14.
+
+## Bench 2026-11-12 11:57 UTC - 10g PASS: 6 h soak, every error log 0 after it
+
+- 10g (05:54:54-11:56:43, rc 0, image BuildDate 2026-11-11T19:54:26Z, commit 524a0d8c):
+  `test_http_soak_stays_live` PASSED, Result PASS. 6 of 39132 GETs failed over 21600 s (the bound is 0.1 %, 39);
+  no crash or reboot in the 6 h console tail, no task ended. Host load 0.26 at start, 0.11 at end.
+- The read-across GET /status after it: every FRAM error log 0 (SCD30 included, so no E11 in the steady state),
+  LastTaskEnd null, ConfigFaults [], MemFree 76192. ResetReason 21 with uptime 23: the harness's console Ctrl-C when
+  its mpremote session ends, after the test's no-reboot check (SPECIFICATION.md A.8), not a firmware reset.
+- Recovery passes: 2, both mpremote (a port in use once, one USB rebind of 1-1.4, 10.4 s), harness-side.
+- Merged the 06:18 and 06:33 relays (head 8ab233e1). Next: 8b's round1.sh change as 06:18 says, its own commit, then k.
