@@ -43582,3 +43582,16 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - Order and estimates from the measured times: 10g (the table's 6 h 20, not measured on this tree) 05:47 -> ~12:10;
   then k, both chroot legs at this head with /tmp on tmpfs (not measured on this tree, ~3 h together) -> ~15:10. Both
   end inside the window. Flash cycles today: 0 planned.
+
+## Bench 2026-11-12 06:14 UTC - the owner clears the wear for after today's plan
+
+- The owner (2026-11-12 ~06:14 UTC), verbatim: "Once you are done with the plan for today, you have clearance for the wear
+  tests". Today's plan is 10g (running since 05:54:54), then k. The owner's earlier answer stands: no owner steps
+  today, so j is not done; this clearance comes from the owner directly, ahead of the lead's j condition.
+- The wear by the table's times: 7f 60 min (needs the NeoPixel rig), 7b 60, 8f 20 (1 FC), 8b with its CRC-16 test
+  alone (2 FC, about half of the row's 70), 10b 60, 15 170 (2 FC): about 6 h 30 in all. After 10g (~12:15) and k
+  (~3 h, ~15:15) that leaves 6 h 18 to 21:33: 7f, 7b, 8f, 8b and 10b fit (~4 h 40 -> ~19:55); 15's 2 h 50 does not,
+  so it goes to the next window unless the lead or the owner reorders. Each step starts only if it ends inside the
+  window.
+- WEAR.txt's guard needs a cleared: line. I ask the lead to write it once it has judged 10g and k. If none is there
+  when the wear is due, I write it myself, citing the owner's words above.
