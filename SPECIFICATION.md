@@ -6426,15 +6426,18 @@ extra-features level, `ports/rp2/mpconfigport.h:80-81`): the limit is the linker
 minus the 256 B margin (`ports/rp2/main.c:78, 148`, `ports/rp2/mpconfigport.h:125`,
 `py/cstack.h:38-43`) = 7,936 B, and crossing it raises `RuntimeError("maximum recursion depth
 exceeded")` (`py/cstack.c:50-55`, `py/runtime.c:1784-1787`). Every resumed task re-enters its whole
-await chain in C, so the budget is the longest await chain times the per-level cost.
+await chain in C, and the plain calls under its deepest await sit on top of it, so a chain costs its
+await levels and its plain levels, each at its own cost.
 `tests_scripts/test_await_depth.py` holds every static chain to 25 levels (Part N
-`mem.max_await_depth`); on silicon one await level inside a task costs about 200 B, and at depth 28
+`mem.max_await_depth`); the longest it finds is 15 (a `PUT /sensors` into the SCD30's failed-push
+recovery). On silicon one await level inside a task costs about 200 B, and at depth 28
 three plain calls of headroom remained while 32 failed (dev, 2026-10-29, under `mpremote run`, a few
-frames deeper than the frozen entry). The longest chain: a `GET /status` through Microdot's dispatch whose system
+frames deeper than the frozen entry). The chain the C-stack bound is checked on: a `GET /status` through Microdot's dispatch whose system
 source reads NTP's config store while it is not valid, 12 await levels down to `ConfigManager._get_values()`,
 whose `CFGMGR_NTP` entry (E34) then reaches the chip through 10 plain calls from `err_s()` to the SPI command
 `_send_and_read()`, about 264 B each on silicon (dev, 2026-11-10), no pass-through helper among them (agent,
-2026-11-11). Its analysis (`tests_scripts/_await_depth.py`) starts a chain
+2026-11-11). On `dev` (2026-11-11) the quiet peak, in the setup batch, is 4,796 B and that entry's
+end 6,060 B, 1,876 B inside the 7,936 B limit. The static analysis (`tests_scripts/_await_depth.py`) starts a chain
 at every coroutine a task-creating call is handed in `src/` and the generated modules
 (`create_task()`, `asyncio.run()`, the server callback; `wait_for()`, `wait_for_ms()` and `gather()`
 run theirs as tasks of their own), Microdot calling every registered handler through
@@ -6451,7 +6454,7 @@ level, so the test also checks that the walk reaches every task top it names. A 
 fails the check at any depth; a chain is memoised with the stack's members on its own cycle, so no
 top's chain depends on which top reached a shared function first; one await holding a project
 coroutine or an asyncio awaitable counts the deeper. The board's peak is
-`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` of the limit (owner, 2026-11-11). A
+`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` (1,024 B) of the limit (owner, 2026-11-11). A
 stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
 own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
 A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
@@ -8458,12 +8461,12 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
 
   `dev`'s other routes: `/measurements` 470 B in 2 pieces, `/sensors` 622 B in 3, `/networking`
   214 B, `/system` 151 B and `/notification` 147 B in one each. `dev` stays about 4 KB inside the
-  budget, but the sources disagree on the free heap it rests on: I.6 records about 105,000 B free
-  after boot; F.5.3 measured 130,224 B free after a real `build_system()` on `dev` (2026-09-11,
-  before the six-connection lwIP ensemble took 5,040 B of GC heap, B.14.2); and the flash tier's
-  survivor bound (at most 100,000 B allocated of the 192,488 B heap, F.5.3) would leave 59,720 B
-  after the reserve, below `dev`'s demand. Whether six connections fit on `dev` at peak waits on the
-  post-boot free-heap measurement on the dev bench (L4).
+  budget, which rests on I.6's estimate of the heap free after boot. Measured on the `dev` image
+  (2026-11-11): the build and its setups keep 35,936-36,176 B over the heap in use before them,
+  against the flash tier's bound of at most 41,000 B (Part N
+  `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), and leave a largest
+  free block of 35,136 B against its floor of 32,768 B (F.5.3); in operation one collect leaves
+  81,984-82,400 B free, against `dev`'s serving demand of 68,790 B at the connection ceiling.
 - **lwIP is never the constraint on admission.** An image provisioned for 16 admitted 16 on every
   probe, no pool surfaced, and the GC heap bound first — while a raised ceiling turns a clean
   refusal into an admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST
@@ -12120,7 +12123,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.vitest_timeout_retries` | 2 | `vitest.config.js` — `2` | `retry.count`, on vitest's own `Test timed out in <n>ms` or `Hook timed out in <n>ms` message only (`retry.condition`), inside a test with its `beforeEach`/`afterEach` (a suite's `beforeAll`/`afterAll` runs once); three of a test's timeouts (`l0.vitest_test_timeout_ms`, or a live file's own), the first attempt and the two retries, are its retry budget inside its web job's minutes (B.10.1); a pass after a retry reads `Passed only on retry` | owner decision (owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the timeout retry rule changes (E.3.1) |
-| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the deepest chain's end from `c_stack_budget.py` leaving `l3.c_stack_reserve_b` of the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` finds over src/ and every device's generated modules at fb447c7e, the change that set it (a `GET /status` through Microdot's dispatch and a config store's FRAM-backed log write to the FRAM manager's own log, F.1); the per-level cost is owed to the flash tier | none: a tripwire at the measured depth | a chain grows past it, or the board reading lands |
+| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the deepest chain's end from `c_stack_budget.py` leaving `l3.c_stack_reserve_b` of the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` found over src/ and every device's generated modules at fb447c7e, the change that set it; the C stack a chain costs is its await levels and the plain calls under them (F.1), about 200 B per await level and 264 B per plain call on silicon, and the chain the bound is checked on (a `GET /status`, 12 await levels, then 10 plain calls from `err_s()` to `_send_and_read()`) ends at 6,060 B, the quiet peak 4,796 B (dev, 2026-11-11) | 10 levels: the longest static chain is 15 (F.1); a tripwire, the C stack itself bounded by `l3.c_stack_reserve_b` | a chain grows past it |
 
 **L1 (unit tier)**
 

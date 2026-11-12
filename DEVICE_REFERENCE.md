@@ -103,9 +103,9 @@ built in; elsewhere set DST Offset to 0 and change GMT Offset at your local swit
   staleness check** — a restored backup is accepted no matter how old it is. Under a nonzero limit,
   a backup stamped later than the unit's clock (the clock was set back) counts as too old.
 - **`WaitTimeNTP`** (seconds, 0–600): how long a boot waits for NTP before restoring a timestamped
-  backup (so its age can be checked). **`0` means never wait**: the backup is restored at once,
-  without an age check. A wait that ends without a sync restores the backup without an age check
-  and logs a warning.
+  backup (so its age can be checked). **`0` means never wait**: the backup is restored at once, its
+  age checked only if the clock is already set then. A wait that ends without a sync restores the
+  backup without an age check and logs a warning.
 
 The `0`s point in different directions: `BackupPeriod` turns a feature off, `BackupMaxAge` turns a
 limit off, `WaitTimeNTP` skips a wait.
