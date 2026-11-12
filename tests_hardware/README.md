@@ -858,8 +858,9 @@ on a directory at its path (`valid` False; agent, 2026-11-11), and `CFGMGR_NTP` 
 then 10 nested plain calls down to `_send_and_read()`); its end is its own fact (`provoked_end`,
 beside `provoked_logged`, the entries it logged). The host holds the provoked end to leave
 `l3.c_stack_reserve_b` (1,024 B) of the 7,936 B limit and notes the quiet peak beside it (owner,
-2026-11-11); the twin's figures (`twin_c_stack_peak`) are reported, never
-compared. No flash cycle and no production config file: each setup writes its defaults once into the
+2026-11-11: "A", asked which bound the C-stack check holds); the twin's figures
+(`twin_c_stack_peak`) are reported, never compared. No flash cycle and no production config file: each
+setup writes its defaults once into the
 scratch directory, removed afterwards; the booted modules' logs, the provoked E34 among them, go
 into FRAM, which the session start saved first.
 
@@ -1132,9 +1133,10 @@ assumption, not at a product bug.
   therefore saves the whole FRAM part raw at its start and end (`fram-raw-session-start.txt`,
   `fram-raw-session-end.txt` in the run's evidence, `fram_raw_dump.py` reading only) and
   `GET /status` with it on the bench, so the before-image is kept and every entry a run adds is
-  attributable. Two kinds of entry a run leaves in the production history are its own: every
+  attributable. Three kinds of entry a run leaves in the production history are its own: every
   scratch build (`build_system()` or `main()` over `hwtest-scratch/`) records `W CFG_FILE_UNREADABLE`
-  (22) in each FRAM-backed config store's history, its files not found there; and test-band residue
+  (22) in each FRAM-backed config store's history, its files not found there; `c_stack_budget.py`'s
+  provoked phase records `E CFG_NOT_VALID` (34) in `CFGMGR_NTP`'s; and test-band residue
   - the reboot script's load entries, an erase script's seeds when it fails before erasing - is the
   same kind.
 - **The chunk reset race lands on each named seam, and a stale seed cannot pass.**
@@ -1260,9 +1262,11 @@ assumption, not at a product bug.
   `boot_lines()`) and `asy_wifi_service.py`'s `pr.one()` lines, all printed at `DebugLevel` >= 3
   (`asy_print_log.py`'s `_LOG_ONCE`); `test_real_ntp_sync_succeeds_over_genuine_udp` needs
   `asy_ntp_client.py`'s `pr.all()` lines at 5. The one-time lines print in the boot's first second, which a
-  reset's USB gap can hide, so both helpers also take SYSTEM's per-second `System uptime:` line at 5: a fresh
-  low value after a reset, or one below the line before it. At the shipped `DebugLevel` 0 none of these print, so a
-  board left there reads as a dead link. The standard-state fixture stops such a session at its
+  reset's USB gap can hide, so both helpers also take SYSTEM's per-second `System uptime:` line at 5 when it
+  falls below the line before it (a capture that spans the reset), and `wait_for_boot()` also takes its first
+  uptime line when that value is within the wait's own elapsed time plus `_FRESH_BOOT_UPTIME_SLACK_S`; on a
+  capture of one boot alone, `boot_lines()` has only the markers. At the shipped `DebugLevel` 0 none of
+  these print, so a board left there reads as a dead link. The standard-state fixture stops such a session at its
   start naming the level, or repairs it with `--repair-standard-state` ("Prerequisites").
 - **WS2812 bit timing is specified in `datasheets/ws2812/WS2812.pdf` p.4** ("Data transfer time":
   T0H 0.35 us, T1H 0.7 us, each +-150 ns; reset low above 50 us). The manual
@@ -1497,8 +1501,9 @@ flash tier, no `src/` logger involved; each asserts its exact outcome in its own
 **`conftest.py`'s session-scoped `dut_ip()`** gates nearly every bench test:
 - it kicks the AP's stations and resets the board (`harness.kick_then_reset()`), then waits for
   `asy_wifi_service.py`'s `pr.one("WLAN connection established")` line passively through
-  `board.tail_log()` (printed at `DebugLevel` >= 3), with one bounded reset retry through
-  `recover_by_reset()`;
+  `board.tail_log()` (printed at `DebugLevel` >= 3), or, given `--dut-ip`, for `GET /status`
+  answering at that address (the console drops what it prints between two tails), with one bounded
+  reset retry through `recover_by_reset()`;
 - when neither connects, the DUT holds stale stored credentials (a bridge recreated with a new
   SSID/password) and falls back to its own hotspot every time: `_recover_stale_dut_credentials()`
   joins that hotspot, PUTs the bench AP's current SSID/password (`BenchBridge.ap_password()`'s

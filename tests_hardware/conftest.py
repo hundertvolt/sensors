@@ -300,7 +300,8 @@ def board_state_deviations(level: "int | None", files: "list[str]", write_protec
 @pytest.fixture(scope="session")
 def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> str:
     # The DUT's STA address on the bench bridge network. An exec stops main.py and hard_reset() restarts it, so the
-    # address is read once the log shows the STA connect, then the board is reset and serving is awaited.
+    # address is read once the board has joined (the log shows the STA connect, or GET /status answers at --dut-ip),
+    # then the board is reset and serving is awaited.
     config = request.config
     seen: list[str] = []
 
@@ -332,7 +333,7 @@ def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> 
         harness.kick_then_reset(board, bench)
     ips = [line[len("DUT_IP=") :].strip() for line in output.splitlines() if line.startswith("DUT_IP=")]
     if not ips or not ips[0]:
-        raise HardwareTestFailureError(f"the log showed 'WLAN connection established' but the board reported no STA address:\n{output}")
+        raise HardwareTestFailureError(f"the board reported no STA address after the wait for its STA connect (the 'WLAN connection established' log line, or GET /status answering at --dut-ip):\n{output}")
     ip = ips[0]
     wait_until(
         lambda: http_client.fetch(ip, 80, "GET", "/status", timeout_s=_HTTP_READY_PROBE_TIMEOUT_S).status_code == 200,
