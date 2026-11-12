@@ -105,7 +105,7 @@ built in; elsewhere set DST Offset to 0 and change GMT Offset at your local swit
 - **`WaitTimeNTP`** (seconds, 0–600): how long a boot waits for NTP before restoring a timestamped
   backup (so its age can be checked). **`0` means never wait**: the backup is restored at once, its
   age checked only if the clock is already set then. A wait that ends without a sync restores the
-  backup without an age check and logs a warning.
+  backup without an age check.
 
 The `0`s point in different directions: `BackupPeriod` turns a feature off, `BackupMaxAge` turns a
 limit off, `WaitTimeNTP` skips a wait.
