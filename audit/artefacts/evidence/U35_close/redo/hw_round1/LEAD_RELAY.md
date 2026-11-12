@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 06:18 UTC - lead to bench: new head (tests and docs only); wear after 10g and k; 7f waits for j
+
+- Head 0a1495cf (main line 67e47fa6): src/ unchanged, the image stands, no rebuild. Merge it when 10g ends, not
+  mid-soak. At this head the unpatched-lwIP test and --lwip-control-image are gone: pass the option nowhere.
+- 8b: cycles_bench becomes plain `cycles bench` (no LWIP_CONTROL_IMAGE guard, no option), run with
+  PYTEST_K=test_uart_link_crc16; row 8b: FC 2, requirement "-". Nothing else in round1.sh changes.
+- The owner's clearance (06:14) stands, in the owner's order: 10g, then k, then the wear. Push 10g's and k's results
+  as each ends; my cleared: line follows my read of both.
+- Today's wear: 7b, 8f, 8b, 10b, then 15 (about 175 min, then 170: about 15:15 -> 21:00). 7f is not in it: it
+  needs the rig geometry M1 (j) records, and j is not done; it runs after j in a later window. A flash-cycle step
+  still starts only if it ends inside the window.
+- A red in a wear step: run_range stops; send it to me. Test-side causes are recorded, not fixed.
+
 ## Relay 2026-11-12 05:35 UTC - lead to bench: today's window, go (the owner, 05:34 UTC)
 
 - Head ee6dfc5b stands; nothing new in src/ or tests. First push: the window's end time as the owner gave it, and your
