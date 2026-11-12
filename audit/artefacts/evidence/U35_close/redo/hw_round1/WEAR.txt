@@ -1,3 +1,4 @@
 # Round 1's opt-in wear guard (round1.sh, HANDOVER.md "Opt-in wear"). The audit session adds one line starting
 # "cleared:" once it has judged every non-wear result; round1.sh appends "passed: <step> <UTC>" for each wear pass.
 cleared: 2026-11-12 12:04 UTC lead: 10g PASS read; noble does not gate the wear, trixie to the later window; run 7b 15 after noble ends, then run 7f 7f if it ends by 21:33
+passed: 8f 2026-11-12 13:18:56
