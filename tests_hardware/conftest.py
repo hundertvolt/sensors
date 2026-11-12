@@ -22,6 +22,7 @@ import markers
 import scd30_prerequisite
 from bench_control import BenchBridge
 from harness import Board, HardwareNotAvailableError, HardwareTestFailureError, wait_for_boot, wait_until
+from persistence_groups import SCOPED_FLAG, deselected_by, parse_groups, persistence_groups
 from soak_durations import SOAK_DURATION_SECONDS
 from twin_board import TwinBoard
 
@@ -398,7 +399,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--allow-multi-day-rollover", action="store_true", default=False, help="the tick-rollover observation on the tick-offset test image, about 2 h; no write of its own")
     parser.addoption("--allow-neopixel-sweep", action="store_true", default=False, help="~10 minutes of light programs on the NeoPixel-to-ISL29125 rig recorded by the manual tier; no write of its own, its config pushes need --allow-persistence-write")
     parser.addoption("--allow-persistence-write", action="store_true", default=False, help="the owned flash-filesystem and SCD30 NVM writes listed in tests_hardware/README.md's budget table; shared prerequisite writes run without it")
-    parser.addoption("--allow-scd30-extra-write", action="store_true", default=False, help="on top of --allow-persistence-write: the further SCD30 NVM writes the budget table lists under scd30_extra_write")
+    parser.addoption("--allow-persistence-write-to", action="append", default=[], metavar="GROUP[,GROUP]", help="the scoped --allow-persistence-write: only the persistence_write tests whose every named group is given (repeatable or comma-separated; '<section>/<group>' as the device definitions key it, or 'hwtest' for a scratch config file, tests_hardware/persistence_groups.py); an unknown name is a usage error")
+    parser.addoption("--allow-scd30-extra-write", action="store_true", default=False, help="on top of a write permission covering sensors/SCD30: the further SCD30 NVM writes the budget table lists under scd30_extra_write")
     parser.addoption("--allow-toolchain-reverify", action="store_true", default=False, help="a full toolchain re-verification: network fetches and ~8 min of builds; no board write")
     parser.addoption("--repair-standard-state", action="store_true", default=False, help="repair a board found outside the standard state; each repair is a listed prerequisite write")
 
@@ -406,16 +408,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     # The wear gates deselect rather than skip, so a run reports its deselected count; each item is
     # tagged with the flag that would select it, which tells it apart from a runner's -m exclusion.
-    # Only these two options are read at collection: everything else a fixture reads at run time.
+    # Only the write options are read here, the rest at run time: a global or fully covering scoped one, SCD30's narrowing.
     allow_writes = config.getoption("--allow-persistence-write")
+    allowed = parse_groups(config.getoption("--allow-persistence-write-to") or ())
     allow_extra_write = config.getoption("--allow-scd30-extra-write")
     kept: list[pytest.Item] = []
     deselected: list[pytest.Item] = []
     for item in items:
-        lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
+        marker = item.get_closest_marker("persistence_write")
+        lacks_write_permission = None if marker is None else deselected_by(marker.args, allow_all=allow_writes, allowed=allowed)
         lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
         if lacks_write_permission:
-            item.user_properties.append(("deselected_by", "--allow-persistence-write"))
+            item.user_properties.append(("deselected_by", lacks_write_permission))
             deselected.append(item)
         elif lacks_extra_write_permission:
             item.user_properties.append(("deselected_by", "--allow-scd30-extra-write"))
@@ -432,6 +436,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    scoped = parse_groups(config.getoption(SCOPED_FLAG) or ())
+    unknown = sorted(scoped - persistence_groups()) if scoped else []
+    if unknown:
+        raise pytest.UsageError(f"{SCOPED_FLAG}: no such group {unknown}; the groups are {sorted(persistence_groups())}")
     markers.register(config)
     # A thread that dies fails the test it ran under instead of leaving only pytest's warning, so no reader's death
     # goes unseen (agent, 2026-10-22); a -W option or a filterwarnings mark, applied after this line, still overrides it.

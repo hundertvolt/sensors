@@ -198,7 +198,7 @@ def _scenario_problems(name: str, figures: "dict[str, object]", bounds: "dict[st
 
 
 @pytest.mark.neopixel_sweep
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration(board: Board, request: pytest.FixtureRequest, result_note: _ResultNote) -> None:
     # Seven flash writes to a scratch config file (the range/resolution pushes), removed after.
     if not request.config.getoption("--allow-neopixel-sweep"):

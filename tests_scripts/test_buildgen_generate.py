@@ -28,7 +28,8 @@ from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import GeneratedDevice, generate_device, main
 from buildgen.graph import build_construction_order
-from buildgen.model import DeviceModel, TomlDoc, instance_label
+from buildgen.model import MAINTENANCE_NAMES, DeviceModel, TomlDoc, instance_label
+from buildgen.schema_ast import extract_field_schemas
 from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, build_model, module_int_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 from scripts._generate_sensortask_modules import expected_facts
@@ -475,7 +476,8 @@ def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) ->
     assert {k.value for k in settings.keys if isinstance(k, ast.Constant)} - {"notification"} == {row[0] for row in SETTINGS_GROUPS}
     for page in ("networking", "system"):
         expected = [(module, fields, dict([hook.split("=", 1)]) if hook else {}) for section, module, fields, hook in SETTINGS_GROUPS if section == page]
-        assert _settings_groups(source, page) == expected
+        # The MQTT client's group is its schema's, computed at boot like notification's: no table row.
+        assert [group for group in _settings_groups(source, page) if group[0] != "mqtt"] == expected
 
 
 # The functions SPECIFICATION.md L.2 lets a generated module define, each with its reason there.
@@ -533,7 +535,15 @@ def _runtime_module_names(tree: ast.Module) -> "set[str]":
     return names
 
 
-def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
+def _whole_schema(source: str, module: str, src_dir: Path) -> "tuple[str, ...]":
+    # A group built from `cm.schema_names(<module>.get_cfg_schema())` takes the module's whole schema, read from its source.
+    cls = next(ast.unparse(n.value.func) for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == module and isinstance(n.value, ast.Call))
+    imported = next(n.module for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ImportFrom) and any(a.name == cls for a in n.names))
+    assert imported is not None
+    return tuple(extract_field_schemas(src_dir / f"{imported}.py"))
+
+
+def _settings_groups(source: str, page: str, src_dir: Path = _REPO_ROOT / "src") -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
     # (module, field names, hook keywords) of each SettingsGroup the generated RouteSources lists for `page`.
     routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
     settings = next(k.value for k in routes.keywords if k.arg == "settings")
@@ -543,7 +553,9 @@ def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...]
     out = []
     for call in groups.elts:
         assert isinstance(call, ast.Call) and ast.unparse(call.func) == "SettingsGroup"
-        out.append((ast.unparse(call.args[0]), ast.literal_eval(call.args[1]), {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
+        module, names = ast.unparse(call.args[0]), call.args[1]
+        fields = _whole_schema(source, module, src_dir) if ast.unparse(names) == f"cm.schema_names({module}.get_cfg_schema())" else ast.literal_eval(names)
+        out.append((module, fields, {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
     return out
 
 
@@ -787,8 +799,7 @@ def test_a_test_override_is_named_in_the_build_info_and_a_release_build_names_no
 
 
 def _status_entries(source: str, name: str) -> "dict[str, str]":
-    returned = next(n.value for n in ast.walk(_function(source, name)) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.Dict)
+    returned = _status_literal(_function(source, name))
     return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
 
 
@@ -865,8 +876,7 @@ def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(devi
     assert calls.count("conn.get_data") == 1
     assert not [c for c in calls if c.startswith("conn.") and c not in ("conn.get_data", "conn.get_wifi_uptime")], calls
     snapshot = next(n.targets[0].id for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and "conn.get_data()" in ast.unparse(n.value))
-    returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.Dict)
+    returned = _status_literal(fn)
     entries = {k.value: ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
     assert "IP" not in entries
     fields = {"IPv4": "IP", "Subnet": "Subnet", "Gateway": "Gateway", "DNS": "DNS", "RSSI": "RSSI", "Mode": "Mode", "Connected": "Connected", "WifiTS": "TS"}
@@ -875,11 +885,20 @@ def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(devi
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_networking_status_reads_the_webservers_drop_window(device: str) -> None:
-    fn = _function(_real(device).module_source, "_networking_status")
-    returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.Dict)
+    returned = _status_literal(_function(_real(device).module_source, "_networking_status"))
     entries = {k.value: ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
     assert entries["HTTPDropped"] == "await webserver.get_dropped_count()"
+
+
+def _status_literal(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> ast.Dict:
+    # The dict literal a status source returns: directly, or (the MQTT client's device) bound to a name its link status is merged into.
+    returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Return))
+    if isinstance(returned, ast.Name):
+        merged = [ast.unparse(n) for n in ast.walk(fn) if isinstance(n, ast.Call) and ast.unparse(n.func) == f"{returned.id}.update"]
+        assert merged == [f"{returned.id}.update(mqtt.get_link_status())"], merged
+        returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == returned.id)
+    assert isinstance(returned, ast.Dict)
+    return returned
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -925,11 +944,13 @@ def _uart_bus_calls(source: str) -> "dict[str, str]":
 def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(device: str) -> None:
     # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
     source = _real(device).module_source
+    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
     assert _settings_groups(source, "networking") == [
         ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
         ("conn", ("LEDWifiOn",), {}),
         ("ntp", ("NTPHost", "NTPOffset", "NTPInterval"), {"post_asy_fct": "ntp.ntp_force_sync"}),
         ("ntp", ("DNSFallback",), {}),
+        *(mqtt if "mqtt = MQTTClient(" in source else []),
     ]
 
 
@@ -941,7 +962,7 @@ def test_real_device_settings_groups_accept_exactly_what_their_page_shows_as_wri
     source = _real(device).module_source
     sections = {s["key"]: s for s in json.loads(json.dumps(definitions_for_toml(toml, src_dir)))["sections"]}
     shown = {page: [tuple(f["key"] for f in g["fields"] if f.get("kind") != "readonly" and not f.get("dispatch")) for g in sections[page]["groups"] if "fields" in g] for page in ("networking", "system")}
-    accepted = {page: [fields for _module, fields, _hooks in _settings_groups(source, page)] for page in ("networking", "system")}
+    accepted = {page: [fields for _module, fields, _hooks in _settings_groups(source, page, src_dir)] for page in ("networking", "system")}
     assert shown["networking"] == accepted["networking"]
     assert sorted(k for group in shown["system"] for k in group) == sorted(k for group in accepted["system"] for k in group)
 
@@ -1233,6 +1254,54 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     assert "notification_led=None" in result.module_source
     assert "notification_pause=None" in result.module_source
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
+
+
+def _mqtt_doc() -> TomlDoc:
+    doc = base_doc()
+    table_at(doc, "device")["max_connections"] = 5  # the client's connection takes the sixth (buildgen/validate.py)
+    array_at(doc, "instance").append({"driver": "mqtt", "wiring": {"fram_target": "fram"}})
+    return doc
+
+
+def test_mqtt_is_built_after_conn_and_wired_to_no_sensor(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The client sends only what a wired partner hands it (owner, 2026-11-12, paraphrase: no interval of its own, a
+    # sensor publishing would be wired to it in the TOML): declared first, it is built right after conn, ahead of them.
+    doc = _mqtt_doc()
+    entries = array_at(doc, "instance")
+    entries.insert(0, entries.pop())
+    source = generate_device(write_doc(tmp_path, "mqtt", doc), src_dir, ext_dir).module_source
+    ast.parse(source)
+    line = next(text for text in source.splitlines() if text.strip().startswith("mqtt = MQTTClient("))
+    assert 'MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig("SensorStationTest", _MQTT_RESPONSE_TIMEOUT_MS,' in line
+    assert line.rstrip().endswith("_MQTT_IDLE_RECHECK_MS, _DNS_TIMEOUT_MS), cfg_path=cfg_path, log=log_fram)")
+    assert source.index("conn = WifiService(") < source.index(line) < source.index("scd30 = SCD30_Reader(")
+    assert "from asy_mqtt_client import MQTTClient, MqttConfig" in source
+    assert "_MQTT_RESPONSE_TIMEOUT_MS = const(10000)" in source
+    assert "_MQTT_PING_INTERVAL_MS" not in source and "_MQTT_KEEPALIVE_S" not in source  # both follow the MQTTPingInterval setting
+    assert "SettingsGroup(mqtt, cm.schema_names(mqtt.get_cfg_schema()), post_fct=mqtt.reconnect)" in source
+    assert "status.update(mqtt.get_link_status())" in source
+    assert "mqtt.setup" in source  # in the boot's collected setup list
+
+
+def test_the_mqtt_exerciser_is_built_on_its_wired_client_and_reports_its_maintenance_status(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Its client through the generic @wiring path and nothing else - no log, since it logs through the client's logger
+    # (owner, 2026-11-12: "The wire up of the module shall also be done withhin the TOML file"); its counters on /status.
+    doc = _mqtt_doc()
+    array_at(doc, "instance").insert(0, {"driver": "mqtt_link", "wiring": {"mqtt_target": "mqtt"}})
+    source = generate_device(write_doc(tmp_path, "mqtt_link", doc), src_dir, ext_dir).module_source
+    ast.parse(source)
+    assert "    mqtt_link = MQTTLinkDriver(client=mqtt)" in source.splitlines()
+    assert source.index("mqtt = MQTTClient(") < source.index("mqtt_link = MQTTLinkDriver(")  # declared first, built after its client
+    assert "from asy_mqtt_link_driver import MQTTLinkDriver" in source
+    assert f'("{MAINTENANCE_NAMES["mqtt_link"]}", mqtt_link.get_link_status)' in source
+    assert "mqtt_link.setup" not in source  # nothing to set up: no config store, no logger of its own
+    assert "mqtt_link" in _collected_modules(source, "_collect_task_starters")
+
+
+def test_a_device_without_mqtt_carries_none_of_its_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    source = generate_device(write_doc(tmp_path, "plain", base_doc()), src_dir, ext_dir).module_source
+    assert "mqtt" not in source.lower()
+    assert "    return {" in source.split("async def _networking_status()")[1].split("async def ")[0]
 
 
 def test_device_without_a_fram_manager_refuses_reset_errors_by_the_reset_decision_alone(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

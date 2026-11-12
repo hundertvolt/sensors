@@ -246,7 +246,7 @@ def test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link(joined_ho
         assert res.status_code == 200, f"GET {path} over the hotspot link -> {res.status_code}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("notification/autoConfig")
 def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: str) -> None:
     # /notification's WarnCO2 over a real wireless hotspot link, a value differing from the board's and the board's own
     # restored after; /networking's radio fields are the credential stage's.
@@ -355,7 +355,7 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "Bench
 
 
 @pytest.mark.destructive_last
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 @pytest.mark.provokes_log(
     "the wrong password's failed streak and the reopened hotspot's WLAN warnings, asserted",
     ("WIFI", "W", "WLAN_NO_AP"),
@@ -383,7 +383,7 @@ def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBrid
 
 
 @pytest.mark.destructive_last
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 @pytest.mark.provokes_log(
     "credentials stored while the bench AP is down: the DUT's next streak fails and reopens its hotspot",
     ("WIFI", "W", "WLAN_NO_AP"),
@@ -407,7 +407,7 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "Benc
 
 @pytest.mark.destructive_last
 @pytest.mark.soak_duration
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 @pytest.mark.provokes_log(
     "the second failed streak's WLAN_SILENT, asserted",
     ("WIFI", "W", "WLAN_NO_AP"),

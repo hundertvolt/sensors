@@ -27,8 +27,8 @@ import { formatFieldValue } from "./field-format.js";
 const SOURCE_UNAVAILABLE_TEXT = "unavailable";
 const NO_DATA_TEXT = "no data";
 const UNSET_TOGGLE_TEXT = "—";
-// The form each string shape takes: src/asy_dns_client.py's host_label_ok(), src/asy_ntp_client.py's _ntp_host_ok()
-// and _dns_fallback_ok() (its _DNS_FALLBACK_MAX servers); a country code's own description states its form.
+// The form each string shape takes: src/asy_dns_client.py's host_label_ok() and host_name_ok(), src/asy_ntp_client.py's
+// _dns_fallback_ok() (its _DNS_FALLBACK_MAX servers); a country code's own description states its form.
 /** @type {Partial<Record<NonNullable<FieldDef["shape"]>, string>>} */
 const STRING_SHAPE_HINTS = {
     hostLabel: "letters, digits and '-' only",

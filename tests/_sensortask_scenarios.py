@@ -828,6 +828,8 @@ def _all_printers(module: "ModuleType") -> "list[PrintLog]":
     if _has(module, "isl29125"):
         loggers += [module.isl29125.pr, module.isl29125.cfgmgr.pr]
     loggers += [module.notification.pr, module.notification.cfgmgr.pr]
+    if _has(module, "mqtt"):
+        loggers += [module.mqtt.pr, module.mqtt.cfgmgr.pr]
     if _has_uart_link(module):
         # No cfgmgr - UARTComm has no config schema (its parameters are an out-of-band wire
         # contract, never runtime-writable, SPECIFICATION.md Part J.6), one entry per instance.
@@ -3215,20 +3217,24 @@ def _scenario_status_get(device: str) -> None:
     body = _strict(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
     sensors, system, networking, notification, errcount = (_obj(body["sensors"]), _obj(body["system"]), _obj(body["networking"]), _obj(body["notification"]), _obj(body["errcount"]))
-    # SGP40 and UARTLINK are the maintenance-status sources (VOC backup/restore timestamps; UART transfer/failure
+    # SGP40, UARTLINK and MQTTLINK are the maintenance-status sources (VOC backup/restore timestamps; UART and MQTT link
     # counts), and the initiating link instance reports its hazard run under its own name; each is expected where the
-    # device declares it - reflective, so a device with neither stays honest here.
+    # device declares it - reflective, so a device with none stays honest here.
     expected_sensors = set()
     if _has(module, "sgp40"):
         expected_sensors.add("SGP40")
     if _has_uart_link(module):
         expected_sensors.update(("UARTLINK", module.uart_link_init.name))
+    if _has(module, "mqtt_link"):
+        expected_sensors.add("MQTTLINK")
     assert set(sensors.keys()) == expected_sensors, (sorted(sensors), sorted(expected_sensors))
     if _has(module, "sgp40"):
         assert "BackupTS" in _obj(sensors["SGP40"]) and "RestoreTS" in _obj(sensors["SGP40"])
     if _has_uart_link(module):
         assert "Transfers" in _obj(sensors["UARTLINK"]) and "Failures" in _obj(sensors["UARTLINK"])
         assert set(_obj(sensors[module.uart_link_init.name])) == {"Runs", "Pending", "Last"}, sensors
+    if _has(module, "mqtt_link"):  # nothing exercised yet: the client is off until enabled over REST
+        assert _obj(sensors["MQTTLINK"]) == {"Transfers": 0, "Failures": 0, "Commands": 0}, sensors
     assert "SysUptime" in system and "LocalTime" in system and "UTCTime" in system and "UnixTime" in system
     for key in ("ResetReason", "MemFree"):  # this boot's decoded reason, the free heap
         assert type(system[key]) is int, (key, system[key])

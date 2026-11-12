@@ -138,7 +138,7 @@ def _system(dut_ip: str) -> "JSONObject":
     return system
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/dns", "networking/identity", "networking/mqtt", "networking/ntp", "networking/wifiLed", "notification/autoConfig", "sensors/BMP3XX", "sensors/ISL29125", "sensors/SCD30", "sensors/SGP40", "system/settings")
 def test_config_reset_over_rest_brings_back_the_defaults(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_Note") -> None:
     networking = _get(dut_ip, "/networking")
     save_errcount(dut_ip, "config-reset")

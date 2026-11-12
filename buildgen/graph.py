@@ -63,6 +63,8 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
     for spec in model.instances.values():
         if spec.driver in ("sgp40", "notification"):
             deps[spec.key].add("ntp")  # sgp40 built with ntp.ntp_clock_valid, notification with ntp.cettime
+        if spec.driver == "mqtt":
+            deps[spec.key].add("conn")  # built with conn's bound methods, as ntp is; a wired partner orders itself after it
         for wf in spec.wiring_schema:
             value = spec.wiring.get(wf.toml_field)
             # An instance reference is a string; an absent optional field or Part L.6.2's

@@ -14,10 +14,11 @@ MARKERS: dict[str, str] = {
     "persistence_write": (
         "the test itself spends a limited-endurance write - the RP2040 flash filesystem, or SCD30 NVM: a PUT /sensors to the "
         "SCD30 spends one write per changed field, one per AmbPres or ForceCalRef sent and one per ContMeas=false, none for an "
-        "unchanged TempOffset/MeasInterval/Altitude/SelfCal - deselected unless --allow-persistence-write; a shared "
-        "prerequisite write stays unmarked, tests_hardware/README.md"
+        "unchanged TempOffset/MeasInterval/Altitude/SelfCal - deselected unless --allow-persistence-write, or "
+        "--allow-persistence-write-to naming every settings group the marker lists; a shared prerequisite write stays unmarked, "
+        "tests_hardware/README.md"
     ),
-    "scd30_extra_write": "further SCD30 NVM writes beyond what persistence_write admits; always carried with it; deselected unless both flags",
+    "scd30_extra_write": "further SCD30 NVM writes beyond what persistence_write admits; always carried with it; deselected unless both flags (the write permission covering sensors/SCD30)",
     "neopixel_sweep": "needs the NeoPixel-to-ISL29125 rig; skipped unless --allow-neopixel-sweep",
     "toolchain_reverify": "full toolchain re-verification; skipped unless --allow-toolchain-reverify",
     "destructive_last": "informational: runs after every other test of its module",

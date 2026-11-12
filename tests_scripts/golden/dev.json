@@ -21,6 +21,22 @@
     "Resolution": "int",
     "SampleInterval": "int"
   },
+  "config_MQTT.cfg": {
+    "MQTTClientId": "str",
+    "MQTTEnable": "bool",
+    "MQTTHost": "str",
+    "MQTTOnlineMsg": "str",
+    "MQTTPW": "str",
+    "MQTTPersistent": "bool",
+    "MQTTPingInterval": "int",
+    "MQTTPort": "int",
+    "MQTTPrefix": "str",
+    "MQTTUser": "str",
+    "MQTTWillMsg": "str",
+    "MQTTWillQoS": "int",
+    "MQTTWillRetain": "bool",
+    "MQTTWillTopic": "str"
+  },
   "config_NOTIFY.cfg": {
     "AutoOn": "bool",
     "FlashBri": "int",

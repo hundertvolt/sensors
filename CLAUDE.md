@@ -249,8 +249,11 @@ Three standing practices:
   not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the target every operation
   that spends a limited-endurance write cycle sits behind a default-off marker with a tracked budget:
   `flash_cycle` (`--allow-flash-cycle`, "reflashes the board (flash wear)"), `persistence_write`
-  (`--allow-persistence-write`) for any real write to the SCD30's on-chip NVM or the RP2040's flash
-  filesystem (a dispatch-only PUT persists nothing and is outside the gate), `scd30_extra_write`
+  (`--allow-persistence-write`, or `--allow-persistence-write-to GROUP` for only the named groups each
+  marker declares (owner, 2026-10-08: "it makes absolutely no sense globally enable persistence writes, as
+  writing the scd30 for mqtt tests is nonsense, so scope it correctly")) for any real write to the SCD30's
+  on-chip NVM or the RP2040's flash filesystem (a dispatch-only PUT persists nothing and is outside the
+  gate), `scd30_extra_write`
   (`--allow-scd30-extra-write`) AND-gated on top for the up to 12 further SCD30 NVM writes its four
   tests own (with both flags up to 13 owned writes per session on `dev`'s SCD30, and at most one
   start command; owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the extra-write flag

@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 ROLE_REVERSAL_CLIENT_CONN = "sensors-bench-dut-client-tmp"
 # The comment every injected iptables rule carries: what clear_leftovers() finds and a restore proves absent.
 FAULT_COMMENT = "sensors-bench-fault-injection"
-# The (table, chain) pairs this module injects rules into.
-_INJECTION_CHAINS = (("filter", "FORWARD"), ("nat", "PREROUTING"))
+# The (table, chain) pairs this module injects rules into: INPUT/OUTPUT for a peer's TCP to a server on this host.
+_INJECTION_CHAINS = (("filter", "FORWARD"), ("nat", "PREROUTING"), ("filter", "INPUT"), ("filter", "OUTPUT"))
 # GNU timeout's exit status when it ended the command (coreutils `timeout` manual): a capture that saw no packet.
 _TIMEOUT_ENDED_EXIT = 124
 
@@ -97,6 +97,12 @@ class BenchBridge:
         # station on it, the DUT included.
         if not self._ap_active():
             _nmcli("connection", "up", self.ap_conn)
+
+    def block_tcp_port_from(self, peer: str, port: int, *, reset: bool = False, comment: str = FAULT_COMMENT) -> None:
+        # One peer's TCP traffic to a port on THIS host (INPUT/OUTPUT, never FORWARD: the server is local), dropped
+        # both ways or refused with a reset. Scoped to peer and port, so no other connection is touched.
+        for chain, spec, _what in _tcp_port_rules(peer, port, reset=reset, comment=comment):
+            _run_iptables(["-A", chain, *spec])
 
     def block_udp_ports(self, ports: "Iterable[int]", comment: str = FAULT_COMMENT) -> None:
         # Scoped, temporary iptables DROP rules on the bridge's FORWARD chain for the given UDP destination ports (53
@@ -278,6 +284,11 @@ class BenchBridge:
             text=True,
         )
 
+    def unblock_tcp_port_from(self, peer: str, port: int, *, reset: bool = False, comment: str = FAULT_COMMENT) -> None:
+        # Safe when block_tcp_port_from() was never reached, absence proven as unblock_udp_ports() proves it.
+        for chain, spec, what in _tcp_port_rules(peer, port, reset=reset, comment=comment):
+            _delete_rule("filter", chain, spec, what)
+
     def unblock_udp_ports(self, ports: "Iterable[int]", comment: str = FAULT_COMMENT) -> None:
         # Safe when block_udp_ports() was never reached: a -D that finds nothing passes only once the chain's listing
         # proves the rule absent (_delete_rule()).
@@ -350,6 +361,17 @@ def _run_tc(args: "list[str]") -> None:
 
 def _table_args(table: str) -> "list[str]":
     return [] if table == "filter" else ["-t", table]
+
+
+def _tcp_port_rules(peer: str, port: int, *, reset: bool, comment: str) -> "list[tuple[str, list[str], str]]":
+    # (chain, rule spec, the fragment _delete_rule() finds it by) for block_tcp_port_from()'s rules.
+    tag = ["-m", "comment", "--comment", comment]
+    if reset:
+        return [("INPUT", ["-p", "tcp", "-s", peer, "--dport", str(port), "-j", "REJECT", "--reject-with", "tcp-reset", *tag], f"--dport {port} ")]
+    return [
+        ("INPUT", ["-p", "tcp", "-s", peer, "--dport", str(port), "-j", "DROP", *tag], f"--dport {port} "),
+        ("OUTPUT", ["-p", "tcp", "-d", peer, "--sport", str(port), "-j", "DROP", *tag], f"--sport {port} "),
+    ]
 
 
 def bench_associated_station_macs(iface: str) -> list[str]:

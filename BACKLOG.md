@@ -317,12 +317,30 @@ gates, traps).
   round did not intend, and a hotspot fallback only after a reset with no kick right before it
   (A.4's reset rules). Wear: none (reads only). Twin row: none (the twin fakes Wi-Fi connection
   state only).
+- **The MQTT PoC's scoped bench run** (branch `claude/whole-project-audit-plan-followup` only, until it
+  merges) — on `dev`: `mqtt_poc/BENCH_HANDOVER.md` is its run sheet and its full context, `--scope mqtt`
+  with writes scoped to `networking/identity`, `networking/mqtt`, `networking/ntp` and
+  `notification/autoConfig` (owner, 2026-10-08: "include the ntp tests too, allow networking/ntp";
+  "include the hotspot role reversal too"); its section 7 says where the results go. Wear: the
+  flash-filesystem writes the scope's tests own in those four groups (`tests_hardware/README.md`'s
+  budget table), no SCD30 write of their own. Twin row: `ci_suite._run_14_mqtt_broker_faults`, the
+  MQTT module's named cover.
 - **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
   the two unbought bench-rig capabilities (SPECIFICATION.md E.6.6).
 
 ## Deferred / explicitly out-of-scope work
 
+- **The MQTT client against the full-system heap bound, after the audit** (branch
+  `claude/whole-project-audit-plan-followup` only, until it merges; owner, 2026-10-08: "The heap limit should
+  definitely be obeyed in the final version, but that's a topic becoming relevant when the audit is done.").
+  The client cost 11,360 B in all, its imports included (`mqtt_poc/DESIGN.md` §5), on the 2026-10-08 image, before
+  the restructure folded its codec in, took its publisher out and added `dev`'s exerciser (`mqtt_poc/DESIGN.md` §17), so the
+  figure is owed again by the next flash step; the `dev` image's flash
+  step read 114,768 B against the 100,000 B total `test_real_gc_heap_headroom_survives_a_full_system_build`
+  then bounded. Its bound is now at most 41,000 B added by the build and its setups (SPECIFICATION.md Part
+  N's `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev`'s
+  35,984 B without the client, so `dev` with it is expected over the bound; the bound stays where it is.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
@@ -385,6 +403,12 @@ gates, traps).
     (SPECIFICATION.md F.1); nothing installed. Before this, every arm64 Unix-port run failed at import.
   - **`[lwip]` `TCP_SND_BUF` 6,400 → 1,600 B** (2026-11-11): nothing installed; a reused chroot's changed
     `toolchain/versions.toml` runs setup once, as above, and `build-lwip` takes the new value.
+  - **`mosquitto`, a new apt package (MQTT PoC branch, 2026-10-08)**: `toolchain/versions.toml`'s
+    `apt_packages` gains the broker the MQTT client's twin and bench tests start themselves (owner,
+    2026-10-07: 'apt package (Recommended)'). Its Debian/Ubuntu package also enables a system broker on
+    `localhost:1883`, which no test uses; a chroot without systemd only installs it. The twin suite's
+    Run 14 needs it on `PATH` or in `/usr/sbin`, so a chroot's `scripts/run_digital_twin_ci.sh dev` also
+    proves the package landed.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on
@@ -404,8 +428,8 @@ gates, traps).
   the hardware watchdog after the recovery ladder (SPECIFICATION.md F.2): a `machine.I2C` transfer
   on a wedged bus; a single `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`,
   v1.29.0; the FRAM's waits around it wait only on other coroutines, SPECIFICATION.md F.2).
-  `socket.getaddrinfo()` is not called from `src/`; its one call is `asyncio.start_server()`'s, on the
-  numeric bind host (SPECIFICATION.md F.2). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
+  `socket.getaddrinfo()` is called from `src/` on numeric hosts only: `asyncio.start_server()`'s bind
+  host and the MQTT client's broker address, the IPv4 literal its resolver returned (SPECIFICATION.md F.2). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
   target').
 - **Resize the rp2 littlefs reservation** — only once flash space is actually short (owner,
   2026-09-26); trigger: the firmware image-size report; mechanism SPECIFICATION.md B.14.3.

@@ -348,11 +348,11 @@ scripts/run_bench_rollover_test.sh
 # lists them, SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
-# Limited-endurance writes a test owns are off by default; --allow-persistence-write runs them, and
-# --allow-scd30-extra-write on top of it (AND-gated, never alone) the further SCD30 NVM writes
-# (up to 12, 13 a session with both; "Persistence-write gating" holds the budget table):
+# Limited-endurance writes a test owns are off by default; --allow-persistence-write runs them, --allow-persistence-write-to
+# only those into the named groups, and --allow-scd30-extra-write on top of either (AND-gated, never alone) the further
+# SCD30 NVM writes (up to 12, 13 a session with both; "Persistence-write gating" holds the groups and the budget table):
 scripts/run_flash_hardware_suite.sh --allow-persistence-write
-scripts/run_flash_hardware_suite.sh --allow-persistence-write --allow-scd30-extra-write
+scripts/run_flash_hardware_suite.sh --allow-persistence-write-to=sensors/SCD30 --allow-scd30-extra-write
 
 # The two long ISL29125 light programs need the physical rig ("The NeoPixel sweep rig") and ~10
 # minutes; the envelope's config pushes also need --allow-persistence-write:
@@ -710,6 +710,86 @@ check.
 | a ceiling refusal under concurrent API load is the stack's reject-when-full, not a fault | `bench/test_bus_concurrency_under_api_load.py`'s `fetch()` | 3 attempts per call, 0.25 s apart, each counted | the arms run below the ceiling | 2026-10-14, `v1.29.0` (code read) |
 | one header line resets the server's per-call read timeout | `harness.HELD_PAD_LINE`, in the ceiling probe's walk | one line per held connection per step (0.3 s) | the walk no longer outlasts `web.per_call_timeout_s` | 2026-10-14, `v1.29.0` (code read) |
 | DNAT to 127.0.0.1 does not deliver to a local socket on this bench (`route_localnet` 0) | `BenchBridge.start_udp_source_capture()`, read by `read_captured_udp_source_port()` | one `tcpdump -c 1` capture per test (60 s) | the redirect delivers locally | 2026-10-14, `v1.29.0` (code read) |
+
+## The MQTT client on the bench (`bench/test_mqtt_broker_faults.py`)
+
+The client (SPECIFICATION.md Part A.12) is built into the bench device only and is off until enabled.
+This module drives it against a real `mosquitto` on this host. Its traffic is the bench device's link
+exerciser (`mqtt_link`): a QoS 1 echo probe every `mqtt_link.exercise_period_ms` on `<base>/link/echo`,
+read back through `GET /status`'s `MQTTLINK` (`Transfers`, `Failures`), and the `<base>/cmd/#` messages
+this host publishes, counted as its `Commands`; the client itself sends no sensor values. The broker binds this host's own address
+toward the DUT (`br0`'s) on port **18883**, so a distribution broker on 1883 is never involved; the
+package comes from `toolchain/versions.toml`'s `apt_packages`, which `env --tier bench` installs.
+
+**Before the run**: the board must carry the round's image of the bench device, which wires the client
+(`scripts/build_firmware.py`, the session's image check in `bench/conftest.py`). A board without the
+client or its exerciser fails the module with that instruction instead of skipping. The fixture's own `ResetErrors` goes
+through `reset_all_error_logs()`, which saves the verbatim `/status` to the run's evidence first.
+
+**Writes**: one `PUT /networking` enables the client and points it here, and one switches it off at the
+end. Both are shared prerequisites (`_enable_mqtt`/`_disable_mqtt`, pinned in
+`tests_scripts/test_persistence_write_marker_completeness.py`); a rerun whose values are unchanged writes
+nothing. Every test that owns a write is marked `persistence_write("networking/mqtt")`; their counts are
+the budget table's MQTT row ("Persistence-write gating").
+
+**What it does to the host**: `BenchBridge.block_tcp_port_from()` adds `iptables` rules on INPUT/OUTPUT
+matching only the DUT's address **and** port 18883 (a DROP both ways for silent path loss, or a REJECT
+with a TCP reset). Each test removes its rules in its own `finally`; they carry the fault comment, so a
+killed run's leftover is removed by the next session's `clear_leftovers()`. None touches `br0`, its
+slaves or any other port, so the session's own connection is never at risk and no dead-man's switch is
+needed. The AP outage test uses the same `ap_down()`/`ap_up()` as `test_network_resilience.py`, and
+`recover_by_reset()` for its one reported recovery reset.
+
+**The bench log check**: each test that provokes MQTT entries names them in `provokes_log` - the broker
+faults their failed attempts, lost connections, missed PINGRESPs, stalled drains and short sessions; the
+wrong password its `MQTT_REFUSED`; an unresolvable name its `MQTT_DNS`; the AP outage the WiFi and NTP
+entries `test_network_resilience.py`'s outage names too. Any other entry fails the test.
+
+**Order matters**, the module runs top to bottom on one enabled client:
+- connect and the online status; the exerciser's echo probes counted back as transfers; an inbound
+  command counted;
+- broker SIGKILL and restart; SIGSTOP stall; silent path loss; a reset path; a client-id takeover
+  bounded by the backoff;
+- a 3000-message QoS 0 flood, a 500-message QoS 1 burst (counted by the exerciser's `Commands`, since
+  `MQTTRxMsgs` also counts its probes) and an oversized message;
+- the broker found through this host's own `.local` name, answered by its Avahi (`env --tier bench`
+  installs `avahi-daemon` when missing);
+- a checkpoint (no task ended, only the expected MQTT codes);
+- a password broker with the right and with a wrong password; an unresolvable `.invalid` and `.local`
+  name; the stall sweep at four offsets after an echo probe reached this host;
+- the AP outage; a reboot; the faults again under `device_scripts/mqtt_at_default_gc.py` at
+  `gc.threshold(-1)`, with a host thread driving them after the exerciser's first transfer;
+- the status topic and will settings across a reboot; a persistent session across a reboot; a changed
+  client id retiring the old session;
+- switching the client off, which must publish a retained `offline`.
+
+Each recovery time and count lands in the run record through `result_note`, which is where Part N's owed
+`mqtt.*` measurements come from.
+
+**The `mqtt` run scope** (owner, 2026-10-08: "only test MQTT (and whatever is affected by your changes)
+on the bench. you shall not run the whole bench at this time (will happen lateron when mqtt as such is
+running)"; then "include the ntp tests too, allow networking/ntp" and "include the hotspot role reversal
+too"). `scripts/run_bench_hardware_suite.sh
+--scope mqtt` runs the lower levels as always, then only what `tests_hardware/run_scopes.py` lists, each
+entry with the reason the branch reaches it: this module; the resolver and every NTP test (sync,
+resolution, garbage DNS and NTP answers, an unreachable server, an unexpected source, the retry after an
+outage with and without API load, an unresolvable `NTPHost`); the connection-ceiling and body-cap
+tests (dev's ceiling went 6 to 5, and the MQTT settings made `PUT /networking` the largest body); the
+heap tests at a full ceiling, at the reactive gc default and under the hammer; cold boot, REST reboot
+and the concurrent burst; the website identity check; the hotspot role reversal (its GET shapes carry the
+MQTT fields); and on the flash step the FRAM chunk layout, the full-build heap headroom and the
+`env --tier flash` rerun (`mosquitto` joined `apt_packages`). Its owned writes are this module's
+(`networking/mqtt`), the unresolvable-`NTPHost` test's (`networking/ntp`) and the hotspot module's
+credentials (`networking/identity`) and settings round trip (`notification/autoConfig`), so the run
+takes the scoped permission for those four groups; the runner refuses the global flag with a scope, and a
+passing scoped run is reported NOT CLEAN, since the rest of both tiers did not run
+(`tests_scripts/test_run_scopes.py` keeps the list collectable and its writes exact). The run sheet for
+the Pi4 session, and where its results go: `mqtt_poc/BENCH_HANDOVER.md`.
+
+```bash
+scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig
+uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py --allow-persistence-write-to=networking/mqtt -v   # the module alone
+```
 
 ## Measuring heap and serving under load
 
@@ -1635,7 +1715,7 @@ to be applied.'); no test swaps a real hardware trigger for a software-only one,
   FRAM log writes and a config flush during link traffic. The scriptable NTP responder's modes are an
   accepted limitation (owner, 2026-11-06; E.6.6 `ntp-responder-modes`).
 
-## Persistence-write gating: one global flag plus an AND-gated extra flag
+## Persistence-write gating: a global or a per-group permission, plus an AND-gated extra flag
 
 **Standing design (owner, 2026-09-16, `98dc1b2`/`4f1c802`)** (broadened from SCD30-only to all
 persistence, 2026-09-17): every write to a **limited-endurance** store that a test owns runs only
@@ -1644,12 +1724,12 @@ accepted config-persisting `PUT` writes through `asy_config_manager.py`; FRAM is
 2026-09-26: 'FRAM writes do not count as wear.').
 
 **The gates** (`tests_hardware/markers.py` is the one marker table; each flag is `--allow-<marker>`,
-or `--soak-duration` for the one valued gate):
+`--allow-persistence-write-to` the scoped form of one, or `--soak-duration` for the one valued gate):
 
 | marker | flag | gate | what it spends |
 |---|---|---|---|
-| `persistence_write` | `--allow-persistence-write` | deselected at collection | the owned flash-filesystem and SCD30 NVM writes of the budget table below |
-| `scd30_extra_write` | `--allow-scd30-extra-write`, only together with `--allow-persistence-write` | deselected at collection | the four tests' further SCD30 NVM writes, up to 12 (the budget table's row): with both flags a session spends up to 13 owned writes on `dev`'s SCD30, plus at most one start command, what the tests carry (owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the extra-write flag admits?"); always carried with `persistence_write` |
+| `persistence_write` | `--allow-persistence-write`, or `--allow-persistence-write-to=GROUP[,GROUP]` naming every group the test writes | deselected at collection | the owned flash-filesystem and SCD30 NVM writes of the budget table below |
+| `scd30_extra_write` | `--allow-scd30-extra-write`, only together with a write permission covering `sensors/SCD30` | deselected at collection | the four tests' further SCD30 NVM writes, up to 12 (the budget table's row): with both flags a session spends up to 13 owned writes on `dev`'s SCD30, plus at most one start command, what the tests carry (owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the extra-write flag admits?"); always carried with `persistence_write` |
 | `flash_cycle` | `--allow-flash-cycle` | skipped by the test | one or more reflashes (the flash-cycle rows below) |
 | `soak_duration` | `--soak-duration {short,mid,long}` | skipped by the test | time only |
 | `multi_day_rollover` | `--allow-multi-day-rollover` | skipped by the test | about 2 h on the tick-offset test image; no write of its own |
@@ -1659,6 +1739,18 @@ or `--soak-duration` for the one valued gate):
 `destructive_last`, `role_reversal` and `over_provisioned_image` are informational. The two wear
 gates deselect rather than skip, which is why the verdict names the deselected count ("Read the
 deselections in the verdict" below).
+
+**The scoped form: `--allow-persistence-write-to GROUP`** (owner, 2026-10-08: "it makes absolutely no
+sense globally enable persistence writes, as writing the scd30 for mqtt tests is nonsense, so scope it
+correctly"). Every `@pytest.mark.persistence_write(...)` names the groups its write lands in:
+`"<section>/<group>"` as the device definitions key it (`networking/mqtt`, `networking/ntp`,
+`sensors/SCD30` for the SCD30's NVM and its config, ...), or `hwtest` for a scratch file (a
+`config_HWTEST_*` file or `hwtest-scratch/`); `tests_hardware/persistence_groups.py` derives the list.
+The scoped flag selects a marked test only when it names every group that test writes; it is repeatable
+or comma-separated, an unknown group is a usage error, and the extra SCD30 flag still needs a permission
+covering `sensors/SCD30` beneath it. A deselection under a scoped permission is tagged
+`--allow-persistence-write-to=<the missing groups>`, so the verdict names the exact group a later run
+would add; a marker naming no group runs only under the global flag.
 
 **What the gate is about: the write a test OWNS, not one it is reached through** (owner,
 2026-09-18). A persisting write that *is* the thing under test is optional and belongs behind the
@@ -1683,6 +1775,7 @@ directory, removed on every path; a store's absent file gets one defaults write 
 | `--allow-persistence-write`, flash tier | SCD30 NVM | `test_scd30_same_device_read_write_concurrency`: 1 (the ambient pressure the chip already holds, re-sent) |
 | `--allow-persistence-write`, flash tier | flash filesystem | `test_config_floats_round_trip_unchanged`: 1 scratch write (its repeat answers `Unchanged`); `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration`: 7 scratch writes (also needs `--allow-neopixel-sweep`); `test_a_real_config_write_during_traffic_loses_no_frame`: 1 scratch flush per CRC mode (2 modes); `test_link_transactions_during_config_writes_are_recorded`: 5 scratch writes per CRC mode; `test_config_value_survives_a_genuine_hard_reset`: 2 (the scratch file's defaults, then the marker); `test_config_reset_deletes_every_config_file_and_reboots`: the scratch build's defaults per store, one damaged file, `resetconfig`'s deletions; `test_a_damaged_config_file_is_repaired_and_listed_as_a_config_fault`: the scratch build's defaults per store, one damaged file and its repair; `test_a_hung_shutdown_step_ends_in_a_watchdog_reset`: per command, the scratch build's defaults per store and the deletions until the hung step; `test_flash_write_loop_gap_is_recorded`: 1 scratch write (create, 1 KiB, close, remove) |
 | `--allow-persistence-write`, bench tier | flash filesystem | 2 each (the change and its restore): `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value`, `test_representative_put_round_trips_over_the_hotspot_link`, `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`, `test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly`, `test_garbage_ssid_via_rest_config_is_handled_gracefully`, `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`DebugLevel` 0, then 5), `test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link`, `test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback`, `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback`; up to 5 each (4 changes and the restore): the ISL29125 and BMP3xx config-write arms of `bench/test_bus_concurrency_under_api_load.py`; 1: `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot` (a well-formed wrong password, which the next test restores); 1: `test_fram_log_writes_and_a_config_flush_during_link_traffic_under_api_load` (`GMTOffset`, local time only, toggled between its default and the default plus a minute, so no run spends a restore); 1: `test_real_credentials_put_succeeds_and_confirms_accepted_values`; 0: `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt` (the marker is its AND-gate on the previous test's write); `test_config_reset_over_rest_brings_back_the_defaults`: `resetconfig`'s deletions, the reboot's one defaults write per file, one restore write per saved file |
+| `--allow-persistence-write`, bench tier MQTT module (`networking/mqtt`) | flash filesystem | 2 each (the change and its restore): `test_the_broker_is_found_by_the_bench_hosts_local_name`, `test_a_password_broker_admits_the_stored_credentials`, `test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fires`, `test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted`, `test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff` (per name, 2 names); 3 each: `test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff` (the wrong credentials, the corrected password, the restore), `test_a_changed_client_id_retires_the_old_persistent_session` (the switch, the new id, both back in one write); prerequisites: `_enable_mqtt` and the closing test's `_disable_mqtt` (2, 0 for unchanged values) |
 | `--allow-scd30-extra-write` (with `--allow-persistence-write`) | SCD30 NVM | flash `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`: 2 (the offset and its restore); flash `test_scd30_argument_reaction_is_recorded`: up to 3, restored in the script; bench `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`: up to 3 (2 offsets and the restore); bench `test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero`: 4 (`AmbPres` 0, the stepped `Altitude`, and both restores); up to 12 in all |
 | manual (`scripts/run_manual_hardware_tests.sh`; each step states its writes before its `confirm()`) | flash filesystem | the flash config across a power cycle: 2 (`WarnCO2` and its restore); the power cut mid config write: up to 20 scratch writes and 1 removal per round, 3 rounds; the shutdown-command power cuts: `resetconfig`'s deletions, the next boot's one defaults write per file, one restore write per saved file (`config_files_restore.py`; `erasefram` is FRAM, outside the budget) |
 | manual | SCD30 NVM | the NVM across a power cycle: 2 (`MeasInterval` and its restore); the power cut mid NVM write: up to 21 (20 changes and the restore), plus 1 for the `PUT` that puts `MeasInterval` back after the boot when the cut left it changed |
@@ -1701,11 +1794,12 @@ there means "everything that ran, passed", not "everything ran".
 **Mechanism and its checks:**
 
 - `tests_hardware/conftest.py`'s `pytest_collection_modifyitems()` is the single deselection point:
-  it deselects every `persistence_write` item without `--allow-persistence-write` and every
-  `scd30_extra_write` item without `--allow-scd30-extra-write`, tagging each with
-  `("deselected_by", <flag>)` in its `user_properties` before pytest's deselection hook, so the run
-  record tells a wear-gate deselection from a runner's `-m` exclusion. No test checks either flag
-  inline.
+  it deselects every `persistence_write` item no permission covers (neither `--allow-persistence-write`
+  nor an `--allow-persistence-write-to` naming all of its groups) and every `scd30_extra_write` item
+  without `--allow-scd30-extra-write`, tagging each with `("deselected_by", <flag>)` (for a scoped
+  permission, `--allow-persistence-write-to=<the missing groups>`) in its `user_properties` before
+  pytest's deselection hook, so the run record tells a wear-gate deselection from a runner's `-m`
+  exclusion. No test checks either flag inline.
 - `scd30_measuring` (`tests_hardware/flash/conftest.py`) is unmarked and ungated: it normally writes
   nothing, and its one possible write is a pinned prerequisite.
 - `tests_scripts/test_persistence_write_marker_completeness.py` checks, without hardware: every test
@@ -1715,7 +1809,9 @@ there means "everything that ran, passed", not "everything ran".
   run only by a gated test, a listed prerequisite, or a manual step that states its writes before
   its `confirm()`; no raw-socket request persists unlisted; `fetch()` is this tier's only route to an
   HTTP request; every marker is registered, every gate flag names a marker of its own name, and
-  `scd30_extra_write` never appears without `persistence_write`.
+  `scd30_extra_write` never appears without `persistence_write`; every `persistence_write` marker names
+  its groups from `persistence_groups.py`'s list and covers every group its own literal `PUT`s write, and
+  `scd30_extra_write` rides on `sensors/SCD30`.
 
 ## FRAM capacity check, real-hardware tier
 

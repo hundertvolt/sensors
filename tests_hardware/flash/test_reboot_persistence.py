@@ -19,7 +19,7 @@ _BOOT_LOG_TIMEOUT_S = 20.0
 
 
 # A config value written through the real ConfigManager survives a genuine reset.
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_config_value_survives_a_genuine_hard_reset(board: "Board") -> None:
     read = False
     try:

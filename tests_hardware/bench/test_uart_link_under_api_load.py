@@ -95,7 +95,7 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     assert not load.findings, f"torn reads during the echoes: {load.findings[:10]}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("system/settings")
 def test_fram_log_writes_and_a_config_flush_during_link_traffic_under_api_load(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The link's own transactions under the readers' load with FRAM log writes (ResetErrors blanks every chunk) and one
     # config write in their midst, whose flush task starts in the PUT's own handling: every read answered, no link

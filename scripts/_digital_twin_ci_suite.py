@@ -10,7 +10,9 @@ import argparse
 import http.client
 import json
 import os
+import re
 import shutil
+import signal
 import socket
 import statistics
 import struct
@@ -27,8 +29,12 @@ import tomllib
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# The repo root is appended, so tests/ resolves as a namespace package and no tests/ fake shadows a host module.
+# The repo root is appended, so tests/ resolves as a namespace package and no tests/ fake shadows a host module;
+# tests_hardware/ last, for the broker tools the bench tier imports under the same top-level name.
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "tests_hardware"))
+from mqtt_probe import Mosquitto, Probe, free_tcp_port, session_present, wait_for
+
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
 from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
@@ -228,6 +234,24 @@ _DNS_POLL_S = 0.5
 _JOIN_MARGIN_S = 5.0  # past a burst's own timeout, so a thread is joined only once its request gave up
 _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections slot, the property under test
 
+# Run 14 (the MQTT client against a real mosquitto, Part A.12): each wait polls the device's status and returns early.
+# Its traffic is the dev exerciser's, one QoS 1 echo probe per period, the period read from the exerciser's source.
+_MQTT_ECHO_PERIOD_S = module_int_const(SRC_DIR, "asy_mqtt_link_driver.py", "_EXERCISE_PERIOD_MS") / 1000
+_MQTT_ECHO_WAIT_S = 3 * _MQTT_ECHO_PERIOD_S  # the round under way, the next, and its echo through the broker
+_MQTT_CONNECT_WAIT_S = 60.0  # WiFi up, then a connect after a backoff grown by the earlier faults
+_MQTT_STEP_WAIT_S = 15.0  # one message's round trip through the broker and the status poll
+_MQTT_OUTAGE_S = 5.0  # the killed broker's downtime: two attempts fail at the minimum backoff
+_MQTT_HOTSPOT_LINK_POLLS = 3  # the hotspot hold, in the client's link polls: each finds no station link
+# @tunable mqtt.response_timeout_ms = 10
+_MQTT_PINGRESP_DEADLINE_S = 10  # what the keep-alive adds to the ping interval
+_MQTT_STALL_WAIT_S = 2 * (_MQTT_ECHO_PERIOD_S + _MQTT_PINGRESP_DEADLINE_S)  # twice the next probe's confirming ping and its deadline
+_MQTT_TAKEOVER_S = 15.0  # the duplicate client's stay, long enough for the device to retake the session once
+# @tunable mqtt.backoff_max_ms = 60.0
+_MQTT_BACKOFF_CAP_S = 60.0  # the reconnect wait the takeover's short sessions may have grown to
+_MQTT_FLOOD_MESSAGES = 3000  # 40-byte QoS 0 payloads, about 200 KB through the device's 1 KB receive buffer
+_MQTT_STATUS_TOPIC = "twin/availability"  # a status topic outside the device's own tree (owner, 2026-10-13: 'Any full topic')
+_MQTT_NEXT_CLIENT_ID = "twin-next"  # the client id the retire check moves to
+
 # A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
 _DNS_QUERY_ID = 0x1234
@@ -235,7 +259,7 @@ _DNS_RESPONSE_HEADER_LEN = 4
 _DNS_RECV_FAILED_TEXT = "Receiving a DNS request failed."  # asy_captive_dns.py's own warning line, a failed port-53 bind included
 
 # The run names --only takes, in run_suite()'s order, and the run each consumes the state or result of.
-RUN_NAMES = ("1", "2", "3", "4", "5", "5b", "5c", "6", "7", "8", "9", "10", "11", "11b", "12", "13")
+RUN_NAMES = ("1", "2", "3", "4", "5", "5b", "5c", "6", "7", "8", "9", "10", "11", "11b", "12", "13", "14")
 _PRODUCERS = {"2": "1", "4": "3", "5b": "5", "7": "6", "8": "7", "9": "8"}
 _USAGE_EXIT = 2
 
@@ -379,6 +403,118 @@ def _check_exit(run: TwinRun, ec: int, run_label: str) -> None:
     # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check.
     if ec < 0 and not run.killed:
         _fail(f"{run_label}: {exit_reason(ec, killed=run.killed)}; last log lines:\n{log_tail(run)}")
+
+
+def _check_mqtt_faults(broker: Mosquitto, probes: list[Probe], base: str, client_id: str) -> None:
+    # Run 14's faults, each recovered by Part A.12's rules: a broker kill, a stall, a client-id takeover, a flood.
+    connects = _mqtt_count("MQTTConnects")
+    broker.stop(signal.SIGKILL)
+    time.sleep(_MQTT_OUTAGE_S)
+    broker.start()
+    back = wait_for(lambda: _mqtt_count("MQTTConnects") > connects and _mqtt_status().get("MQTTConnected") is True, _MQTT_CONNECT_WAIT_S)
+    _check(condition=back, msg=f"Run 14: reconnected after the broker was killed and restarted ({_mqtt_status()})")
+
+    pings = _mqtt_count("MQTTPingTimeouts")
+    broker.send(signal.SIGSTOP)
+    stalled = wait_for(lambda: _mqtt_count("MQTTPingTimeouts") > pings, _MQTT_STALL_WAIT_S)
+    broker.send(signal.SIGCONT)
+    _check(condition=stalled, msg="Run 14: a stalled broker was detected by the PINGRESP deadline of the ping confirming the next message")
+    back = wait_for(lambda: _mqtt_status().get("MQTTConnected") is True, _MQTT_CONNECT_WAIT_S)
+    _check(condition=back, msg="Run 14: reconnected once the stalled broker resumed")
+
+    teardowns = _mqtt_count("MQTTTeardowns")
+    thief = Probe(HOST, broker.port, client_id, ()).start()
+    probes.append(thief)
+    time.sleep(_MQTT_TAKEOVER_S)
+    thief.close()
+    _check(condition=_mqtt_count("MQTTTeardowns") > teardowns, msg="Run 14: a second client with the device's client id took the session over")
+    back = wait_for(lambda: _mqtt_status().get("MQTTConnected") is True, _MQTT_CONNECT_WAIT_S + _MQTT_BACKOFF_CAP_S)
+    _check(condition=back, msg=f"Run 14: reconnected once the duplicate client left ({_mqtt_status()})")
+
+    commands = _mqtt_link_count("Commands")  # the exerciser's cmd/# count: MQTTRxMsgs also counts its echoes
+    for i in range(_MQTT_FLOOD_MESSAGES):
+        probes[0].publish(f"{base}/cmd/flood", b"%040d" % i)
+    flooded = wait_for(lambda: _mqtt_link_count("Commands") > commands, _MQTT_STEP_WAIT_S)
+    status, _ = _http("GET", "/status")
+    _check(condition=commands >= 0 and flooded and status == _HTTP_OK, msg="Run 14: an inbound flood was taken while REST kept serving")
+    _check(condition=wait_for(lambda: _mqtt_status().get("MQTTConnected") is True, _MQTT_STEP_WAIT_S), msg="Run 14: still connected after the flood")
+
+
+def _check_mqtt_hotspot(ctx: RunContext, broker: Mosquitto, client_id: str) -> None:
+    # Run 14's hotspot (owner, 2026-10-08: 'Generally, when the device is in hotspot mode, the MQTT client is off.'): the
+    # client enabled in the hotspot the device boots into waits for a station link and holds no broker connection there.
+    def waiting_in_hotspot() -> bool:
+        status = _mqtt_status()
+        return status.get("Mode") == "AP" and status.get("MQTTState") == "waiting"
+
+    _check(condition=wait_for(waiting_in_hotspot, _MQTT_STEP_WAIT_S), msg=f"Run 14: in the hotspot the enabled client waits for a station link ({_mqtt_status()})")
+    time.sleep(_MQTT_HOTSPOT_LINK_POLLS * module_int_const(ctx.wiring_plan_path.parent, f"{ctx.module}.py", "_MQTT_LINK_POLL_MS") / 1000)
+    held = waiting_in_hotspot() and _mqtt_count("MQTTConnects") == 0 and not _mqtt_keepalives(broker, client_id)
+    _check(condition=held, msg=f"Run 14: over {_MQTT_HOTSPOT_LINK_POLLS} link polls in the hotspot the broker saw no connect from the device ({_mqtt_status()})")
+
+
+def _check_mqtt_traffic(probe: Probe, base: str) -> None:
+    # Run 14's normal operation, the exerciser's traffic (Part A.12): online retained on the status topic, echo probes
+    # round-tripping with no failure, nothing else published, and a command counted and shown.
+    online = wait_for(lambda: any(m.payload == b"online" for m in probe.received(f"{base}/status")), _MQTT_CONNECT_WAIT_S)
+    _check(condition=online, msg=f"Run 14: the client connected and published online on {base}/status")
+    late = Probe(probe.host, probe.port, "twin-late", (f"{base}/status",)).start()
+    try:
+        kept = wait_for(lambda: any(m.retained and m.payload == b"online" for m in late.received(f"{base}/status")), _MQTT_STEP_WAIT_S)
+    finally:
+        late.close()
+    _check(condition=kept, msg=f"Run 14: the broker kept online retained on {base}/status for a later subscriber")
+    failures, transfers = _mqtt_link_count("Failures"), _mqtt_link_count("Transfers")
+    echoed = wait_for(lambda: bool(probe.received(f"{base}/link/echo")) and _mqtt_link_count("Transfers") > transfers, _MQTT_ECHO_WAIT_S)
+    _check(condition=transfers >= 0 and echoed, msg=f"Run 14: the exerciser's echo probe went out on {base}/link/echo and came back ({_mqtt_link_status()})")
+    published = {m.topic for m in probe.received()}
+    _check(condition=published <= {f"{base}/link/echo", f"{base}/status"}, msg=f"Run 14: nothing but the status and the echo probe is published ({sorted(published)})")
+    commands = _mqtt_link_count("Commands")
+    probe.publish(f"{base}/cmd/twin", b"hello", qos=1)
+    rx = wait_for(lambda: _mqtt_status().get("MQTTLastRxTopic") == f"{base}/cmd/twin" and _mqtt_link_count("Commands") > commands, _MQTT_STEP_WAIT_S)
+    _check(condition=commands >= 0 and rx, msg="Run 14: an inbound cmd message was received, counted as a command and shown")
+    after = _mqtt_link_count("Failures")
+    _check(condition=failures >= 0 and after == failures, msg=f"Run 14: no echo probe failed while the link was up (Failures {failures} -> {after})")
+
+
+def _check_mqtt_will_and_session(ctx: RunContext, broker: Mosquitto, probes: list[Probe], base: str, client_id: str, procs: list[TwinRun]) -> None:
+    # Run 14's status settings and persistent session (owner, 2026-10-13): the broker fires the configured will, a QoS 1
+    # command sent while the device is down arrives after its restart, and a client id change retires the old session.
+    # Restarts the twin on its kept state; `procs` holds the one running, so the caller's teardown ends the right one.
+    watch = Probe(HOST, broker.port, "twin-status", (_MQTT_STATUS_TOPIC,)).start()
+    probes.append(watch)
+
+    def last_status() -> bytes:
+        got = watch.received(_MQTT_STATUS_TOPIC)
+        return got[-1].payload if got else b""
+
+    # Pings off too (owner, 2026-10-13: 'possible to turn it off'): keep-alive 0, and the will still fires on the drop below.
+    body: JSONObject = {"MQTTWillTopic": _MQTT_STATUS_TOPIC, "MQTTOnlineMsg": "up", "MQTTWillMsg": "down", "MQTTWillQoS": 1, "MQTTWillRetain": True, "MQTTPersistent": True, "MQTTPingInterval": 0}
+    status, answer = _http("PUT", "/networking", body)
+    accepted = all(_field(answer, "result", k) in ("Valid", "Unchanged") for k in body)
+    _check(condition=status == _HTTP_OK and accepted, msg=f"Run 14: PUT /networking set the status topic, a persistent session and no pings ({answer!r})")
+    _check(condition=wait_for(lambda: last_status() == b"up", _MQTT_CONNECT_WAIT_S), msg=f"Run 14: the online message arrived on {_MQTT_STATUS_TOPIC}")
+    _check(condition=_mqtt_keepalives(broker, client_id)[-1:] == [0], msg=f"Run 14: with pings off the device connected with keep-alive 0 ({_mqtt_keepalives(broker, client_id)})")
+    old = probes[0].received(f"{base}/status")
+    _check(condition=bool(old) and old[-1].payload == b"offline", msg="Run 14: the old status topic was set offline before the reconnect")
+
+    ec = _shutdown(procs.pop(), "Run 14 (before the restart)")  # no DISCONNECT: the broker publishes the will and queues for the session
+    _check(condition=ec == 0, msg=f"Run 14: clean shutdown before the restart (exit code {ec})")
+    _check(condition=wait_for(lambda: last_status() == b"down", _MQTT_STEP_WAIT_S), msg="Run 14: the broker published the configured will when the device dropped off")
+    probes[0].publish(f"{base}/cmd/queued", b"while-away", qos=1)
+    procs.append(_spawn(ctx, [], ctx.logs_dir / "run14_b_mqtt_persistent_session.log"))
+    _wait_until_serving(procs[-1])
+    # The restarted exerciser counts from 0, so any command it counts is the queued one.
+    queued = wait_for(lambda: _mqtt_status().get("MQTTLastRxTopic") == f"{base}/cmd/queued" and _mqtt_link_count("Commands") > 0, _MQTT_CONNECT_WAIT_S)
+    _check(condition=queued, msg="Run 14: a QoS 1 command sent while the device was down arrived after its restart and was counted (the session resumed)")
+    _check(condition=wait_for(lambda: last_status() == b"up", _MQTT_STEP_WAIT_S), msg="Run 14: online again on the status topic after the restart")
+
+    ups = sum(m.payload == b"up" for m in watch.received(_MQTT_STATUS_TOPIC))
+    status, answer = _http("PUT", "/networking", {"MQTTClientId": _MQTT_NEXT_CLIENT_ID})
+    _check(condition=status == _HTTP_OK, msg=f"Run 14: PUT /networking moved the client id ({answer!r})")
+    moved = wait_for(lambda: sum(m.payload == b"up" for m in watch.received(_MQTT_STATUS_TOPIC)) > ups and _mqtt_status().get("MQTTConnected") is True, _MQTT_CONNECT_WAIT_S)
+    _check(condition=moved, msg="Run 14: reconnected under the new client id")
+    _check(condition=not session_present(HOST, broker.port, client_id), msg=f"Run 14: the broker no longer holds {client_id}'s session (retired)")
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -655,6 +791,38 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
     quarter_noise = max(statistics.pstdev(early), statistics.pstdev(late)) if quarter > 1 else 0.0
     tolerance = _MEM_TREND_TOLERANCE_SD_MULTIPLIER * quarter_noise
     return trend, tolerance, quarter, early_avg, late_avg
+
+
+def _mqtt_count(key: str) -> int:
+    # One MQTT counter of GET /status's networking block, -1 while it cannot be read.
+    value = _mqtt_status().get(key)
+    return value if isinstance(value, int) else -1
+
+
+def _mqtt_keepalives(broker: Mosquitto, client_id: str) -> list[int]:
+    # The keep-alive of every connect the broker logged for client_id, oldest first ("... as <id> (p2, c1, k190).").
+    log = broker.log_path.read_text(encoding="utf-8", errors="replace")
+    return [int(k) for k in re.findall(rf" as {re.escape(client_id)} \(p\d+, c\d, k(\d+)", log)]
+
+
+def _mqtt_link_count(key: str) -> int:
+    # One counter of the exerciser's MQTTLINK maintenance sensor, -1 while it cannot be read.
+    value = _mqtt_link_status().get(key)
+    return value if isinstance(value, int) else -1
+
+
+def _mqtt_link_status() -> JSONObject:
+    # GET /status's MQTTLINK maintenance sensor (the dev exerciser), TOLERANT like _mqtt_status().
+    status, body = _http("GET", "/status")
+    link = _field(body, "sensors", "MQTTLINK") if status == _HTTP_OK else None
+    return link if isinstance(link, dict) else {}
+
+
+def _mqtt_status() -> JSONObject:
+    # GET /status's networking block, TOLERANT like _errcount(): {} for an unreadable answer, since Run 14 polls it.
+    status, body = _http("GET", "/status")
+    networking = _field(body, "networking") if status == _HTTP_OK else None
+    return networking if isinstance(networking, dict) else {}
 
 
 def _non_empty_slots(entry: JSONObject) -> list[tuple[JSONValue, JSONValue]]:
@@ -1098,6 +1266,55 @@ def _run_13_system_commands(ctx: RunContext) -> None:
     _run_13_near_misses(ctx)
     _run_13_reboot_sequence(ctx, "reboot", EXIT_SIMULATED_RESET, "_RR_REBOOT")
     _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_WATCHDOG")
+
+
+def _run_14_mqtt_broker_faults(ctx: RunContext) -> None:
+    # ---- Run 14 (a device wiring the MQTT client): the real client against a real mosquitto, both driven from THIS
+    # process (Part E.9): idle in the hotspot, the exerciser's traffic, then a broker kill, a stall, a client-id takeover
+    # and an inbound flood, each recovered by Part A.12's rules; the will, a session kept over a restart, the retire. ----
+    if not _wires_mqtt(json.loads(ctx.wiring_plan_path.read_text(encoding="utf-8"))):
+        _SUMMARY.add("skipped", f"{_CURRENT_PASS_LABEL}Run 14 (MQTT broker faults)", f"{ctx.device} wires no MQTT client")
+        return
+    _archive_state(ctx, "run14")
+    broker = _start_mqtt_broker(ctx)
+    if broker is None:
+        return
+    procs = [_spawn(ctx, [], ctx.logs_dir / "run14_a_mqtt_broker_faults.log")]
+    probes: list[Probe] = []
+    try:
+        _wait_until_serving(procs[0])
+        system_before = errcount_counter(_errcount_required("SYSTEM"))
+        body: JSONObject = {"MQTTEnable": True, "MQTTHost": HOST, "MQTTPort": broker.port}
+        status, answer = _http("PUT", "/networking", body)
+        accepted = all(_field(answer, "result", k) in ("Valid", "Unchanged") for k in body)
+        _check(condition=status == _HTTP_OK and accepted, msg=f"Run 14: PUT /networking enabled the MQTT client in the hotspot ({answer!r})")
+        _status, cfg = _http("GET", "/networking")
+        client_id, prefix = str(_field(cfg, "MQTTClientId")), str(_field(cfg, "MQTTPrefix"))
+        base = f"{prefix}/{client_id}"
+        _check_mqtt_hotspot(ctx, broker, client_id)
+        probes.append(Probe(HOST, broker.port, "twin-observer", (f"{base}/#",)).start())
+        status, answer = _http("PUT", "/networking", {"SSID": _TEST_SSID})
+        _check(condition=status == _HTTP_OK and _field(answer, "result", "SSID") == "Valid", msg=f"Run 14: PUT /networking gave the station its SSID ({answer!r})")
+        _check_mqtt_traffic(probes[0], base)
+        ping = _field(cfg, "MQTTPingInterval")
+        kept = _mqtt_keepalives(broker, client_id)
+        _check(condition=isinstance(ping, int) and kept[-1:] == [ping + _MQTT_PINGRESP_DEADLINE_S], msg=f"Run 14: the keep-alive is the {ping} s ping interval plus the PINGRESP deadline ({kept})")
+        _check_mqtt_faults(broker, probes, base, client_id)
+        system_after = errcount_counter(_errcount_required("SYSTEM"))
+        _check(condition=system_after == system_before, msg=f"Run 14: no task ended while the broker failed (SYSTEM counter {system_before} -> {system_after})")
+        _check_mqtt_will_and_session(ctx, broker, probes, base, client_id, procs)
+        expected = {("E", code("E", n)) for n in ("MQTT_CONNECT", "MQTT_LOST", "MQTT_NO_PINGRESP", "MQTT_STALLED")} | {("W", code("W", "MQTT_SHORT_SESSIONS"))}
+        found = set(_error_codes(_errcount_required("MQTT")))
+        _check(condition=found <= expected, msg=f"Run 14: MQTT logged only the expected codes ({sorted(map(repr, found))})")
+    except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
+        _fail(f"Run 14 (MQTT broker faults): {exc!r}")
+    finally:
+        for probe in probes:
+            probe.close()
+        ec = _shutdown(procs.pop(), "Run 14") if procs else None  # empty only if the restart itself failed, already reported
+        broker.stop()
+        if ec is not None:
+            _check(condition=ec == 0, msg=f"Run 14: clean shutdown (exit code {ec})")
 
 
 def _run_1_baseline(ctx: RunContext) -> None:
@@ -1626,6 +1843,22 @@ def _stack_fault_instance(plan: "dict[str, JSONValue]") -> Instance | None:
     return None
 
 
+def _start_mqtt_broker(ctx: RunContext) -> Mosquitto | None:
+    # Run 14's broker on a free loopback port; a missing or silent one fails the run, never skips it.
+    try:
+        broker = Mosquitto(ctx.logs_dir / "run14_mqtt", free_tcp_port(HOST), bind=HOST)
+    except FileNotFoundError as exc:
+        _fail(f"Run 14 (MQTT broker faults): no broker to test against: {exc}")
+        return None
+    try:
+        broker.start()
+    except TimeoutError as exc:
+        broker.stop()  # started but never listening: not left behind
+        _fail(f"Run 14 (MQTT broker faults): no broker to test against: {exc}")
+        return None
+    return broker
+
+
 def _status_field(group: str, key: str) -> object:
     # One field of GET /status, strict: an unreadable answer raises rather than reading as a value.
     status, body = _http("GET", "/status")
@@ -1795,6 +2028,12 @@ def _wait_until_serving(run: TwinRun, timeout_s: float = 20.0) -> None:
     wait_until_serving(run, HOST, PORT, timeout_s)
 
 
+def _wires_mqtt(plan: "dict[str, JSONValue]") -> bool:
+    # Run 14's subject: the MQTT client, no bus attachment, among the instances the device's wiring plan lists.
+    instances = plan.get("instances")
+    return isinstance(instances, list) and "mqtt" in instances
+
+
 def _would_have_triggered_count(log_path: Path, run_label: str) -> int | None:
     # The runner's shutdown line's watchdog count; None when no line was printed (a crash before the runner's finally).
     line = _shutdown_line(log_path, run_label)
@@ -1867,6 +2106,8 @@ def run_suite(ctx: RunContext, only: "frozenset[str] | None" = None) -> None:
             _run_12_reset_reasons(ctx)
         if chosen("13"):
             _run_13_system_commands(ctx)
+        if chosen("14"):
+            _run_14_mqtt_broker_faults(ctx)
     except BaseException as exc:
         _SUMMARY.add("failed", f"{_CURRENT_PASS_LABEL}suite aborted: {type(exc).__name__}: {exc}")
         raise

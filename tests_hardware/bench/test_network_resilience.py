@@ -343,7 +343,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/ntp")
 @pytest.mark.provokes_log("the .invalid host's lookup never resolves, which the test waits for", ("NTP", "E", "NTP_DNS"))
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
@@ -384,7 +384,7 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
 _GARBAGE_SSID = "bench-test-net-does-not-exist"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 @pytest.mark.provokes_log(
     "the unreachable SSID's failed streak opens the hotspot; the restore's reconnect can fail once more and go silent",
     ("WIFI", "W", "WLAN_NO_AP"),
@@ -952,7 +952,7 @@ _CONSOLE_DRAIN_TIMEOUT_S = 30.0
 _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the close sends an RST (socket(7))
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("system/settings")
 @pytest.mark.provokes_log(
     "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
@@ -1024,7 +1024,7 @@ _FLASH_STALL_POLL_S = 0.05
 _FLASH_STALL_WINDOW_S = 5.0
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("notification/autoConfig")
 def test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     current = _load.get_object(dut_ip, "/notification", _PROBE_TIMEOUT_S).get("WarnCO2")
     assert isinstance(current, int), f"GET /notification carries no int WarnCO2: {current!r}"

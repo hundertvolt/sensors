@@ -144,7 +144,7 @@ def test_routine_no_yield_stretches_stay_under_the_gc_term(board: "Board", resul
     assert not over, f"routine no-yield stretches over the {bound} us GC term, or missing: {over}; facts {facts}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_flash_write_loop_gap_is_recorded(board: "Board", result_note: "Callable[[str], None]") -> None:
     # The test owns one scratch flash write (CLAUDE.md wear rule); the figure feeds F.3's flash stall row, so it is
     # recorded here and judged against its consumers there.

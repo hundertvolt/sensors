@@ -1,0 +1,25 @@
+3fe0fb2b fakes=c11 baseline=463488 after=852256 graph=388768 Retire the 80,000 B floor and replace it with three checks t
+e5d2c439 fakes=c11 baseline=461568 after=848000 graph=386432 Merge origin/main (ISL29125 promotion + the arduino/ import)
+653328b1 fakes=c11 baseline=465024 after=855744 graph=390720 Merge pull request #105 from hundertvolt/claude/heap-fragmen
+1dea035d fakes=c11 baseline=466912 after=857696 graph=390784 Merge main (4dc80ef) into the audit branch: main head is the
+e2f78f05 fakes=c11 baseline=466912 after=857696 graph=390784 Merge main (798e5a7, PR #108): the plan stays on the audit b
+8cd3b172 fakes=c11 baseline=466848 after=857632 graph=390784 Merge the U0 tooling lane: import-placement, citation and de
+7934fae1 fakes=c11 baseline=466848 after=857632 graph=390784 U1: move the legacy tree into legacy/ and repath every refer
+43aced07 fakes=c11 baseline=468128 after=858848 graph=390720 U2: one global error catalog; core, FRAM, webserver, DNS, UA
+65a0df3b fakes=c11 baseline=467616 after=855968 graph=388352 U3: one central repeat rule; WIFI, NTP, NOTIFY, BMP3XX, SGP4
+f44b9411 fakes=c11 baseline=469184 after=857472 graph=388288 U4: compare-before-write primitive; the write path on Sensor
+c3df14e1 fakes=c11 baseline=470464 after=858464 graph=388000 U5: config objects; max-args 8
+1b59a05d fakes=c11 baseline=471008 after=858912 graph=387904 U6: one-source website definitions
+40a3508f fakes=c11 baseline=471008 after=858912 graph=387904 U7: the level ladder and the runner summary block
+01e8e3eb fakes=c11 baseline=471744 after=859808 graph=388064 U8: the @tunable scheme
+2f049a00 fakes=c11 baseline=471776 after=859424 graph=387648 U9: the LED pilot refuses a signal while one runs
+41b47f1d fakes=c11 baseline=473344 after=861376 graph=388032 U10: system-wide contracts - one name scheme, shared primiti
+8d44fd14 fakes=c11 baseline=479712 after=871904 graph=392192 U11: the core - config store, bool resets, one reset path, m
+2949ed97 fakes=c11 baseline=481088 after=873152 graph=392064 U12: the algorithms - CRC words, codecs, zero-length transfe
+cbb65df2 fakes=c11 baseline=495968 after=893472 graph=397504 U13: the bus layers - I2C register access, bus clear and rec
+1cff5a26 fakes=c11 baseline=496224 after=896288 graph=400064 U14: platform facts - the 2**30 tick wrap proven, the Unix-r
+5689e2f4 fakes=c11 baseline=506976 after=908864 graph=401888 U15: the sensor drivers - all four on the shared base and th
+2977c4e0 fakes=c11 baseline=510560 after=916224 graph=405664 U16: FRAM storage - owner-seeded chunks, a tri-state read, a
+c11ca0a fakes=c11 baseline=515552 after=921856 graph=406304 U17: the UART protocol - bounded piece receives under a cap,
+51a5bd2d fakes=c11 baseline=543680 after=962560 graph=418880 MQTT PoC: the hotspot role reversal joins the mqtt scope, an
+BISECT-DONE

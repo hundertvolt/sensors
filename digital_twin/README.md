@@ -867,6 +867,25 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     and `bootloader` through the controlled shutdown (its four step lines in order, the reset line,
     then a relaunch keeping `DebugLevel` and every FRAM-backed history a superset of what it held).
     The command states, the hazards and a hang at each shutdown step are the scenario harness's.
+14. **The MQTT client against a real broker** (`_run_14_mqtt_broker_faults()`, only on a device whose
+    TOML carries `driver = "mqtt"`) — the suite starts its own `mosquitto` on a free loopback port
+    (`tests_hardware/mqtt_probe.py`, shared with the bench tier; the package comes from
+    `toolchain/versions.toml`'s `apt_packages`, and a missing broker fails the run rather than skipping
+    it), and watches the broker through a `Probe` subscriber. The client is enabled first, over
+    `PUT /networking`, in the hotspot the fresh twin boots into: there it waits, and over three link
+    polls `MQTTConnects` stays 0 and the broker logs no connect from it (A.12's hotspot rule); then the
+    station gets its SSID. The traffic is the device's link exerciser (`driver = "mqtt_link"`, A.12), the client
+    itself sending no sensor values: `online` retained on `<base>/status`, the exerciser's echo probes
+    on `<base>/link/echo` with `GET /status`'s `MQTTLINK` `Transfers` advancing and `Failures` still,
+    an inbound `cmd` message counted as a `Command` and shown as `MQTTLastRxTopic`, and the keep-alive
+    the ping interval sets. Then four faults, each recovered by SPECIFICATION.md Part A.12's rules while
+    REST keeps serving: the broker killed and restarted, the broker stopped (`SIGSTOP`) until the
+    PINGRESP deadline fires, a second client taking the device's client id, and an inbound flood of
+    3000 messages. Then the status and session settings: a configured status topic and payloads with
+    pings off (keep-alive 0), the will the broker publishes when the twin stops, a QoS 1 command sent
+    while it is down and delivered after its restart, and the old session retired after a client id
+    change. The `MQTT` log may hold only the expected connect, loss, ping and short-session codes, and
+    the `SYSTEM` counter must not move: no task ended.
 
 **The host-side scenario harness** (`scripts/_digital_twin_scenarios.py`, SPECIFICATION.md E.9)
 runs, in `scripts/run_digital_twin_ci.sh`, after the suite at each GC stage, holding port 53

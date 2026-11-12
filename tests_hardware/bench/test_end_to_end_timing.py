@@ -124,7 +124,7 @@ def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: "
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SGP40")
 @pytest.mark.provokes_log(
     "the resets tear some SPI writes: the status byte and block-invalid entries this test's own allow-list names",
     ("FRAM", "W", "FRAM_BLOCK_INVALID"),

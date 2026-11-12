@@ -11,7 +11,7 @@ hotspot_time_min = 8
 # Simultaneous-connection admission ceiling, kept below the firmware's own lwIP
 # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin - SPECIFICATION.md Part H.7. backlog
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
-max_connections = 6
+max_connections = 5  # not 6: the MQTT client's held connection takes the sixth (owner, 2026-10-07: 'Web connections 6->5')
 # The board on the bench: flashed and tested by tests_hardware/ (owner, 2026-09-03; the only one
 # flashed).
 bench = true
@@ -148,6 +148,23 @@ field = "VOC"
 [instance.wiring.warn_hum]
 source = "scd30"
 field = "Hum"
+
+# The MQTT client: dev only, off until enabled over REST (owner, 2026-10-07: 'dev only, off
+# (Recommended)'); its connection is paid for by max_connections above.
+[[instance]]
+driver = "mqtt"
+
+[instance.wiring]
+fram_target = "fram"
+
+# Dev's MQTT test target (owner, 2026-11-12, asked what it should do: "Exerciser (Recommended)"): an echo probe
+# through the broker each period and the cmd/# messages counted, as uart_link exercises UART. It logs through the
+# client, so it takes no fram_target.
+[[instance]]
+driver = "mqtt_link"
+
+[instance.wiring]
+mqtt_target = "mqtt"
 
 # --- multi-instance services ----------------------------------------------------------------------
 #

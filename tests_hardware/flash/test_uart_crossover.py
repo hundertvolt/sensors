@@ -242,7 +242,7 @@ def test_a_break_mid_frame_fails_that_transaction_only(board: Board, crc_mode: s
     assert broken["first_ok"] is True and broken["break_frame_failed"] is True and broken["next_frame_ok"] is True, f"a break did not fail exactly its own transaction: {broken}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 @pytest.mark.parametrize("crc_mode", _CRC_MODES)
 def test_a_real_config_write_during_traffic_loses_no_frame(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
     # One owned flash write: a scratch config flush, the flash driver's own interrupts-off window, during the stream.
@@ -254,7 +254,7 @@ def test_a_real_config_write_during_traffic_loses_no_frame(board: Board, crc_mod
     assert written["streamed"] is True and written["frames_intact"] == written["frames_sent"] and written["uartrsr_oe"] is False, f"a frame was lost across a real flash write: {written}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 @pytest.mark.parametrize("crc_mode", _CRC_MODES)
 def test_link_transactions_during_config_writes_are_recorded(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
     # Five owned flash writes, one per transaction: a crossing fails visibly, never corrupts; the figures fill F.3.

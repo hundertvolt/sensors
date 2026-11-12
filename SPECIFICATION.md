@@ -224,7 +224,8 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
   legacy's hardcoded CO2/VOC/Humidity checks).
 - **Networking** — `asy_wifi_service.py` (STA + captive-portal AP/hotspot fallback),
   `asy_ntp_client.py` (NTP + CET/CEST DST math), `asy_dns_client.py` (non-blocking DNS resolver
-  replacing `socket.getaddrinfo()`). Deployed code still uses the monolithic `async_connect.py`.
+  replacing `socket.getaddrinfo()`, `.local` names by one multicast query, A.12). Deployed code still
+  uses the monolithic `async_connect.py`.
 - **Task supervisor** (`SystemService._supervise()`, its own task) — two-tier self-healing: dead tasks
   restart, each end logged as a persisted SYSTEM error (decaying error score); at the first end past
   the threshold, the supervisor feeds the watchdog once, then feeding stops one-way and it reboots
@@ -902,7 +903,8 @@ under the implicit FRAM-wiring rule below the list):
     `sysfunct`'s config store logs to it), `sysfunct`, `conn`, `ntp`, every instance with a
     `setup()` in construction order, and the webserver last — here `fram → sysfunct → conn → ntp →
     neopixel → scd30 → sgp40 → bmp3xx → notification → webserver` (`dev` adds `isl29125` after
-    `bmp3xx` and `uart_link_init → uart_link_resp` after `notification`). One hard constraint:
+    `bmp3xx` and `mqtt → uart_link_init → uart_link_resp` after `notification`; its `mqtt_link` has no
+    `setup()`). One hard constraint:
     `sysfunct.setup()` resolves its `level_setters` and `config_stores` providers, which read every
     module including `webserver` (step 14), satisfied by batching after construction. Every logger
     store is set up here, first in its module's `setup()`, so no logger is set up lazily by a task.
@@ -937,7 +939,8 @@ under the implicit FRAM-wiring rule below the list):
 its own `CFGMGR_WIFI` → CaptiveDNS → NTPClient → its own `CFGMGR_NTP` → SystemService → its own
 `CFGMGR_SYSTEM` → SCD30 (its `CFGMGR_SCD30` RAM-only, no chunk) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
 (timestamped) → BMP3xx → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own
-`CFGMGR_ISL29125`) → NotificationService → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
+`CFGMGR_ISL29125`) → NotificationService → its own `CFGMGR_NOTIFY` → (`dev`-only: the MQTT client's
+`MQTT` → its own `CFGMGR_MQTT`, A.12; its link exerciser shares `MQTT` and draws none) → (`dev`-only: `UART_init` →
 `UART_resp` — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
 Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
 `cfgmgr` but SCD30's, uses it — which modules may have one is the owner's rule at step 4 above; the order
@@ -1052,8 +1055,8 @@ settings.
   `get_dict_data()`); `/sensors` → same, each `get_dict_cfg()`, a module whose config cannot be read
   sending the unavailable marker in place of its field map, and the flat routes the marker in place
   of each field of such a module's settings group (C.6); `/networking` → `SSID, PW(masked),
-  Country, Hostname, HotspotPW(masked), LEDWifiOn, NTPHost, NTPOffset, NTPInterval, DNSFallback`;
-  `/system` → `DebugLevel,
+  Country, Hostname, HotspotPW(masked), LEDWifiOn, NTPHost, NTPOffset, NTPInterval, DNSFallback`, on
+  `dev` the MQTT client's settings too (A.12); `/system` → `DebugLevel,
   GMTOffset, DSTOffset` plus one nested, never-flattened `build` sub-entry (L.7 —
   `{"FirmwareVersion", "WebsiteVersion", "BuildDate"}`, verbatim from
   `WebserverService`'s own `build_info=` constructor kwarg, which every generated device supplies
@@ -1063,10 +1066,12 @@ settings.
   without re-flashing to check); `/notification` → `OnH, OnM, OffH, OffM, FlashBri, FlashInterval, FlashDur,
   AutoOn, WarnCO2, WarnVOC, WarnHum`; `/status` → live-only, sub-structured
   `networking`/`system`/`sensors`/`notification`/`errcount` (one entry per module plus per
-  `ConfigManager` — `CFGMGR_<name>`); `sensors` holds one object per source with that source's
+  `ConfigManager` — `CFGMGR_<name>`; on `dev`, `networking` also carries the MQTT client's status
+  fields, A.12); `sensors` holds one object per source with that source's
   fields — one per SGP40 under its instance name (`SGP40`, `SGP40_<ext>`, Part C.14:
   `BackupTS`/`RestoreTS`) and, for dev's initiator, `UARTLINK` (`Transfers`/`Failures`) and its
-  hazard report under its resolved name (`UART_init`: `Runs`, `Pending`, `Last`, below); the page
+  hazard report under its resolved name (`UART_init`: `Runs`, `Pending`, `Last`, below), and dev's
+  MQTT link exerciser's `MQTTLINK` (`Transfers`/`Failures`/`Commands`, A.12); the page
   reads each such field by its `path` (`[source, field]`), while its definitions key stays
   `<source>_<field>`.
 - **`/status` fields with meaning beyond their name**: `SysUptime` — measured seconds since boot
@@ -1393,8 +1398,9 @@ persistence across reboot; a sustained fault matrix, derived from that device's 
 plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
 persistence-correctness sweep; recovery after a bounded fault clears; hotspot fallback with a real
 answered UDP DNS query; NTP permanently unreachable; a real blocking hang proving the watchdog
-backstop engages; the reset reasons reachable at L2; the system commands end to end; a clean soak
-run at both `gc.threshold(-1)` and the project's chosen
+backstop engages; the reset reasons reachable at L2; the system commands end to end; on a device
+carrying the MQTT client, the client against a real mosquitto through a kill, a stall, a client-id
+takeover and an inbound flood; a clean soak run at both `gc.threshold(-1)` and the project's chosen
 `gc.threshold(32768)`, in that order — Part I.4(e)'s standing rule). A run whose interpreter dies
 by a signal fails its check naming the signal, as a crash and not a failed check
 (`scripts/_twin_process.py`'s `exit_reason()`), and neither `scripts/run_digital_twin_ci.sh` nor
@@ -1431,7 +1437,7 @@ again; **Off** no readable Wi-Fi configuration: the radio stays unused until a r
 | 6 | Captive DNS on UDP 53 | AP | accepted (owner, 2026-09-26): answers every on-subnet A or ANY query with the unit's own address and any other type with an empty NOERROR reply; the subnet filter trusts the datagram's source address (a LAN peer's spoofing is out of model); a malformed query is dropped; the task ends when the hotspot does | `src/asy_captive_dns.py` (`run()`'s subnet filter, `DNSQuery`); `src/asy_wifi_service.py` (`_leave_hotspot_mode()`); C.7.5 |
 | 7 | DHCP server on UDP 67 | AP | accepted (required by the owner's hotspot, A.4; `lib/cyw43-driver/src/cyw43_lwip.c:237-239`): MicroPython's DHCP server, started by the CYW43 driver on the hotspot interface (eight leases, A.4) | `lib/cyw43-driver/src/cyw43_lwip.c:237-239` under `CYW43_NETUTILS` (`extmod/cyw43_config_common.h:44`); `shared/netutils/dhcpserver.c:65` (`PORT_DHCP_SERVER` 67) |
 | 8 | Hotspot radio | AP | accepted permanently as a known limitation (owner, 2026-09-26; first accepted 'for now', owner 2026-07-13, `b64857d`): WPA2-AES-PSK with the shared default password `12345678` unless the device's TOML `hotspot_password` or the `HotspotPW` setting sets another; exploitable only in radio range of a unit on its hotspot (not yet set up, reset to defaults, or after losing its Wi-Fi), and radio-range attackers are out of model. Every place the default is written, the whole-project audit's temporary records aside: `src/asy_wifi_service.py` (`HotspotPW`'s schema default `_VAL_HOTSPOT_PW` and its comment); each `devices/*.toml` `hotspot_password`; this row, L.2's naming bullet and L.3's example TOML; `mockdata/samples.json` (`HotspotPW`); the reference-only legacy tree (`legacy/firmware/python/CommonDrivers/async_connect.py`, `legacy/dev_drivers/async_connect.py`); and the tests pinned to that default — `tests/test_asy_wifi_service.py`, `tests/test_neopixel_wifi_integration.py`, `tests/test_ntp_fram_system_integration.py`, `tests/test_ntp_wifi_dns_integration.py`, `tests/test_readiness_gates.py`, `tests/test_setter_microdot_integration.py`, `tests_scripts/_toml_fixtures.py`, `tests_scripts/test_buildgen_validate.py`, `tests_scripts/test_buildgen_error_contract.py`, `tests_scripts/buildgen_fixtures/multi_instance.toml` and `novel_combo.toml`; `tests_hardware/` holds no copy and reads the bench device's TOML through `tests_hardware/harness.py`'s `hotspot_password()`. The one copy in a form ruff's S105/S106 flag carries a per-file exemption in `pyproject.toml` naming its file | auth: `ports/rp2/main.c:196` (v1.29.0) sets `CYW43_AUTH_WPA2_AES_PSK`; `src/asy_wifi_service.py` passes only `essid` and `password` (`wlan.config(essid=…, password=…)`, `_configure_hotspot_ap()`), which leaves it (`extmod/network_cyw43.c:514-526`: only the `security` key sets the auth) |
-| 9 | Outbound traffic | STA | listed (owner, 2026-09-26): DNS queries (UDP 53) to the DHCP-provided server, then the `DNSFallback` servers in order (default `8.8.8.8,1.1.1.1`, owner, 2026-09-26; at most three, agent, 2026-09-30, owner-reviewed, 2026-10-02; the list may be emptied); NTP (UDP 123) to `NTPHost` (default `pool.ntp.org`). No other destination is contacted: beside the local-link traffic of rows 4, 5 and 10 (mDNS, ICMP and IPv6 neighbour discovery, the DHCP client), nothing leaves the unit. A reply is accepted only from the queried server's address and port (a connected socket: `extmod/modlwip.c:1257`; lwIP `lib/lwip/src/core/udp.c:261-311`), a DNS reply only with the query's 16-bit random id; a malformed reply is dropped. Spoofing by a LAN peer is out of model (C.7.2) | `src/asy_dns_client.py` (`os.urandom(2)`, `_parse_response()`), `src/asy_ntp_client.py` (`_resolve_ntp_server()`), `src/asy_udp_socket.py` (`mode="client"` connects) |
+| 9 | Outbound traffic | STA | listed (owner, 2026-09-26): DNS queries (UDP 53) to the DHCP-provided server, then the `DNSFallback` servers in order (default `8.8.8.8,1.1.1.1`, owner, 2026-09-26; at most three, agent, 2026-09-30, owner-reviewed, 2026-10-02; the list may be emptied); NTP (UDP 123) to `NTPHost` (default `pool.ntp.org`); on `dev` with its MQTT client on, the broker (row 17). No other destination is contacted: beside the local-link traffic of rows 4, 5 and 10 (mDNS, ICMP and IPv6 neighbour discovery, the DHCP client), nothing leaves the unit. A reply is accepted only from the queried server's address and port (a connected socket: `extmod/modlwip.c:1257`; lwIP `lib/lwip/src/core/udp.c:261-311`), a DNS reply only with the query's 16-bit random id; a malformed reply is dropped. Spoofing by a LAN peer is out of model (C.7.2) | `src/asy_dns_client.py` (`os.urandom(2)`, `_parse_response()`), `src/asy_ntp_client.py` (`_resolve_ntp_server()`), `src/asy_udp_socket.py` (`mode="client"` connects) |
 | 10 | DHCP client | STA | known limitation (owner, 2026-09-26): DHCP is not fault-injected; the client is lwIP's, with no project code | `lib/cyw43-driver/src/cyw43_lwip.c:224-227`; `tests_hardware/README.md` |
 | 11 | Browser-borne attacks (CSRF, DNS rebinding, clickjacking) | STA, AP | out of model (owner, 2026-09-26); the website's own XSS safety stays: every server- or user-supplied string is inserted as text | H.4 (rendering safety) |
 | 12 | Wi-Fi silent or off | Silent, Off | no network exposure: no hotspot and no service a request can reach; a silent unit's connect attempt that links is the STA mode (rows 1-10), and only a reboot reopens the hotspot or reads the configuration again | A.4 |
@@ -1439,6 +1445,7 @@ again; **Off** no readable Wi-Fi configuration: the radio stays unused until a r
 | 14 | `dev`'s UART crossover jumper | — (physical) | out of model: physical access (owner, 2026-09-26) | J.1 |
 | 15 | Repository (public, MIT) | — | no real credential is committed; the one accepted exception is row 8's default. The whole history of the public repository, every branch and pull-request ref (it has no tags), was scanned once for secrets outside the separately maintained `arduino/` tree (scanned 2026-10-20): it holds row 8's default and two generated passwords of the isolated bench access point, one in a since-deleted diagnostic script (owner, 2026-09-25: 'a pure throwaway board-bench-password, low risk') and one of the same generated kind in a since-deleted handoff note; every other password in it is a test placeholder, and it holds no access token or private key. | row 8 (owner, 2026-09-26); the forward guards: ruff's S105/S106 (`pyproject.toml`) and `.gitignore`'s root `/config_*.cfg` rule |
 | 16 | Development hosts, bench host and CI | — | outside this statement; the host tooling's own rules are B.10, B.12 and B.13 | B.10, B.12, B.13 |
+| 17 | MQTT client: one TCP connection to `MQTTHost`:`MQTTPort` (default 1883), the broker's name asked of the DHCP-provided DNS server, or of the LAN by one multicast query to UDP 5353 for a `.local` name | STA, on `dev` only, while `MQTTEnable` is on (default off) | accepted (owner, 2026-10-07: 'Plain TCP (Recommended)'; owner, 2026-10-08: 'TLS is not needed as it all runs in a local network.'): no TLS, so the broker credentials cross the LAN in clear, `MQTTPW` masked on every GET; off in hotspot mode; a message the broker relays writes nothing to flash (owner, 2026-10-07) and `dev`'s one receiver is its link exerciser, which counts its own echo probes and the `<base>/cmd/#` messages and acts on none; a malformed or oversized packet closes the connection or is discarded, never a crash; listed here (agent, 2026-11-12) | `src/asy_mqtt_client.py`, `src/asy_mqtt_link_driver.py`, `src/asy_dns_client.py` (A.12) |
 
 Out of model, by the owner's choice: untrusted LAN peers (guest Wi-Fi, IoT neighbours), browser
 pages that reach the LAN, spoofing by a LAN peer, radio-range attackers, and physical access
@@ -1448,7 +1455,312 @@ in the same change (agent, 2026-10-20).
 The table is signed off as it stands (owner, 2026-10-20: "Option 1, sign off A.11 as is", to "sign off
 A.11 as it stands, or change rows 4, 5 or 7"); rows 4, 5 and 7 stay the agent's dispositions the
 sign-off covers. Row 2's `UartHazards` clause is agent text written after the sign-off (agent,
-2026-10-22).
+2026-10-22), and so are row 17 and row 9's broker clause (agent, 2026-11-12).
+
+## A.12 MQTT client (`asy_mqtt_client.py`) and `dev`'s link exerciser (`asy_mqtt_link_driver.py`)
+
+A project-owned MQTT 3.1.1 client service: QoS 0 and 1, a clean or a persistent session, plain TCP. It is written from
+the specification with Peter Hinch's `mqtt_as` as the behavioural reference (owner, 2026-10-07, asked
+which code to use: 'Own client (Recommended)'). It is built into `dev` only and stays off until
+enabled (owner, 2026-10-07: 'dev only, off (Recommended)'), over plain TCP only (owner, 2026-10-07:
+'Plain TCP (Recommended)'; owner, 2026-10-08: 'TLS is not needed as it all runs in a local network.').
+A plain IP address is always accepted, and nothing in the client may block (owner, 2026-10-08: 'It
+should accept plain IP addresses anyway. But it must not block, ever.').
+
+**The owner's requirements** (owner, 2026-11-12, verbatim):
+
+> Some important facts:
+> - The MQTT service shall be a single, self contained file.
+> - It shall be selectable in the TOML config files and included by the buildgen then
+> - the wire up of the module shall also be done withhin the TOML file, like other devices and services
+> - There shall be a wire up target for the dev variant which does the tests and is also included via the TOML
+> - The way of integration shall be close to how it works for the UART and its dedicated testing crossover target
+>   in dev
+> - The MQTT client shall only be active when in WIFI Client mode, and inactive when in Hotspot mode - limited
+>   available ports! The wire up internally from the WiFi and MQTT is done automatically by the buildgen, but also
+>   happens on top level (sensortask*) like all other wire ups.
+
+So the split is UART's (C.3.2, J.1, J.7): a transport with no application semantics, and a `dev`-only exerciser
+that drives real traffic over it and reports through `/status`.
+
+**The transport, one self-contained file.** `asy_mqtt_client.py` holds the whole service: the packet codec (the
+encoders, the remaining-length decoder, topic-filter matching and the configuration shape checks, pure functions
+that never log and never raise on wire input, C.7.1's no-logging layers inside the file), the connection keeper,
+the per-connection reader, the outbound slots, inbound dispatch, the status and the logging. It carries no sensor,
+device or application semantics, and **it has no interval of its own but the keep-alive** (owner, 2026-11-12:
+"The mqtt module has no own interval or the like. Its transmissions are triggered from the outside. If any sensor
+ever would be published over mqtt, its own sensor service would need to take care about this, needed to be wired
+together with the MQTT inside the TOML file, and then call the transmission function by itself"; and, of the
+keep-alive ping, after that message: "Keep alive is still required"). What it sends on its own is protocol
+traffic only: CONNECT, SUBSCRIBE, the online and offline messages, PUBACKs, PINGREQs and DISCONNECT.
+
+**Selected and wired in the TOML.** A device carries the client when its TOML declares `[[instance]] driver =
+"mqtt"`; its frozen modules are the import closure of its generated module (`buildgen/frozen_modules.py`), so a
+device without it carries none of it. The WiFi wiring is generated, at the top level of `sensortask_<device>.py`
+like every other wire-up: `MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked,
+conn.get_dns_server_ip, MqttConfig(...), cfg_path=cfg_path, log=...)`, NTP's shape. A module that uses the client
+names it in its own `[instance.wiring]` (`mqtt_target = "mqtt"`, its `@wiring mqtt_target` tag, C.14), and the
+generated module passes the client to its constructor.
+
+**The partner API.** A wired module registers, at construction and so before any task starts:
+- `add_topic(topic) -> int`: an outbound topic relative to the device's base `<base>` =
+  `<MQTTPrefix>/<MQTTClientId>`; `publish_under(id, payload, *, qos=0, retain=False) -> bool` publishes on it;
+- `add_consumer(topic_filter, callback)`: a filter relative to `<base>`, subscribed at QoS 1 at every connect,
+  with its receiver.
+
+The full topics and filters are built once per settings change (`_build_topics()`, first in `setup()`'s settings
+read), so no publish allocates a topic, and an id with no topic built yet is refused and counted. `publish(topic,
+payload, *, qos=0, retain=False) -> bool` takes a full topic name; `is_connected()` and `reconnect()` complete the
+API. Both publish calls never block and never raise on load (Memory below). The receiver is called
+`callback(topic, payload, flags)`: two `memoryview`s into the receive buffer and the PUBLISH's flag bits (DUP
+`0x08`, QoS, RETAIN `0x01`, MQTT 3.1.1 section 3.3.1) as an int (agent, 2026-11-12, decided on the owner's behalf:
+ruff's FBT001 refuses a positional bool in `src/`).
+
+**A sensor that publishes in future** does it from its own service (owner, 2026-11-12, quoted above): its TOML
+wires it to `mqtt`, it registers its topics through the partner API, and it calls `publish_under()` itself when it
+has something to send, at its own timing. No module sends sensor values today.
+
+**`dev`'s link exerciser** (owner, 2026-11-12, asked "What should dev's MQTT test target do?": "Exerciser
+(Recommended)", the option reading "Publishes a test message on its own topic every few seconds and receives it
+back through the broker, counting round trips and failures in /status, so the link is never idle on dev, as
+uart_link does for UART. It also takes over today's cmd/# subscription. The twin and bench tests drive it; no other
+device carries it."). `asy_mqtt_link_driver.py`, driver `mqtt_link`, class `MQTTLinkDriver`, is built like
+`asy_uart_link_driver.py` (A.7 step 13b, J.7):
+- `devices/dev.toml` alone declares it, `[[instance]] driver = "mqtt_link"` with `[instance.wiring] mqtt_target =
+  "mqtt"`; the registry maps it through `buildgen/driver_registry.py`'s `_OVERRIDES`, since it is no `SensorReader`;
+- its constructor takes the client and nothing else: it registers `<base>/link/echo` as a topic and a consumer and
+  `<base>/cmd/#` as a consumer, and allocates its 4-byte probe;
+- one task starter, `start_asy_exercise`, runs the exercise loop: every `mqtt_link.exercise_period_ms` (Part N) it
+  first counts a probe still out as a failure, then, while the client is connected, publishes one QoS 1 probe, its
+  sequence number big-endian, rewritten in place; a publish the ring refuses fails at once, and nothing goes out
+  while the client is off, waiting or in the hotspot;
+- the probe back through its own subscription, not retained and equal to the one out, is a transfer; a stale or
+  retained copy counts nothing. A message below `<base>/cmd/` is a command, counted; the client's
+  `MQTTLastRxTopic` shows its topic;
+- `get_link_status()` returns `{"Transfers", "Failures", "Commands"}`, each saturating at `COUNTER_CAP`: the
+  maintenance sensor `MQTTLINK` in `/status`'s `sensors`, UARTLINK's keys plus `Commands` (A.8);
+- it logs through the client's logger (`self.pr = client.pr`), so it has no log, no errcount row and no FRAM chunk
+  of its own, and it writes no entry; it owns no setting, no config file and no route, so it adds no flash write
+  site (agent, 2026-11-12, decided on the owner's behalf: a fixed period and the shared logger, each reversible);
+- it never raises, never blocks, and allocates nothing per round beyond the client's publish path and nothing per
+  echo (an in-place compare). Each probe draws the ping that confirms a publish, so a connected `dev` pings once
+  per period: the twin's and the bench's fault tests time their detections from that traffic.
+
+**Off in hotspot mode** (the owner's requirement above; owner, 2026-10-08: 'Generally, when the device is in
+hotspot mode, the MQTT client is off.'): `network_available_locked()` reads false there even with an address, so
+the keeper opens no socket, asks no DNS or mDNS question and logs nothing, and the exerciser sends nothing, a
+probe the switch stranded counting one failure. Entering the hotspot or losing the link ends a connection within
+`mqtt.link_poll_ms` plus a tick, with no entry; a `wifi_mode_lock` busy at that check postpones it by one tick, not
+one poll (agent, 2026-11-12, decided on the owner's behalf). L1 pins all three (Testing below).
+
+**Tasks and the socket.** Two tasks of the client's, none sharing a socket waiter with another:
+- the keeper, `_connection_loop()` (starter `start_asy_connection`), never ends on a remote fault
+  (C.7.2). While connected it ticks every `mqtt.tick_ms` and owns every write, the ping and link
+  deadlines, QoS 1 retransmission and teardown;
+- one reader per connection, `_reader_loop()` (a C.9 task-table row), blocks on `Stream.readinto()`
+  with no timeout, parses in place and dispatches; it never writes and never raises, and records why it
+  ended for the keeper, which persists it, except an unexpected exception, which its own task top logs
+  as E UNEXPECTED (C.9) instead (agent, 2026-11-12).
+
+On `dev` the exerciser's loop is a third, its own module's task starter; it touches only the client's API, never
+the socket.
+
+**Cancelling one waiter on a socket drops the socket's whole poll entry**
+(`extmod/asyncio/core.py`'s `IOQueue.remove()`, v1.29.0), so only two things ever cancel one: the
+keeper's teardown, and a drain's `wait_for_ms()` timeout, which ends the connection in the same tick
+(agent, 2026-10-08). The teardown cancels the reader and never awaits it: MicroPython cannot tell
+the reader's cancellation from the keeper's own, so an `except CancelledError` around that await
+would swallow a supervisor's cancel. `cancel()` takes the reader out of the poll set at once, and a
+cancelled task's end is never reported. The reader queues inbound PUBACKs for the keeper, so every
+write has one author and none lands inside a running drain, which resets the stream's pending
+output when it finishes.
+
+The broker name goes to `resolve_ipv4()` with the network's DHCP-provided DNS server alone: the
+resolver has no built-in server, and `DNSFallback` stays NTP's own setting (agent, 2026-10-08,
+decided on the owner's behalf, `mqtt_poc/DESIGN.md` §13). The keeper owns the socket: `socket.socket()`,
+non-blocking, `connect()` to the IPv4 literal
+`resolve_ipv4()` returned (so `getaddrinfo()` sees a numeric host only, F.2), wrapped in an asyncio
+`Stream` and closed by `wait_closed()` on every exit path; `Stream.close()` is a no-op.
+`asyncio.open_connection()` is never used, since its connect wait has no timeout and a timeout
+leaves its socket to the GC finaliser. The CONNECT is written at once; a connecting socket answers
+EAGAIN (`extmod/modlwip.c` `lwip_tcp_send()`), so it waits in the stream's buffer, and the drain
+that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
+
+**Connection behaviour.**
+- **Gating.** Off (`MQTTEnable` false, or an empty `MQTTHost`): no socket, no DNS, no log; the
+  keeper waits for `reconnect()` or `mqtt.idle_recheck_ms`. `network_available_locked()` false
+  (link down, no IP, or hotspot mode): it waits, with no backoff growth and no log, the DNS server
+  read before `wifi_mode_lock` and the lock held only around the availability call.
+- **MQTT never drives WiFi** (owner, 2026-10-07, asked whether MQTT connection loss may ever
+  trigger WiFi recovery: 'Never (Recommended)'). The client resets only its own socket.
+- **Dead transport.** lwIP has no TCP keepalive here, so a PINGRESP deadline is the only detector:
+  a PINGREQ after every `MQTTPingInterval` seconds without one (180 s; 0 sends none) and one right
+  after every PUBLISH written, new or sent again, whatever the interval; the connection closes after
+  `mqtt.response_timeout_ms` without an answer. A PINGREQ already out confirms only what was written
+  before it, so a PUBLISH written meanwhile gets the next one. It is counted as `MQTTPingTimeouts`,
+  link up and transport dead, and is never fed into WiFi recovery (owner, 2026-10-13: 'The ping
+  interval shall become a parameter, it should be possible to turn it off (e.g. by setting it to
+  None).'; asked its default: '3 min'; asked whether a ping should follow each publish: 'Ping after
+  publish (Recommended)'). The CONNECT's keep-alive is the interval plus `mqtt.response_timeout_ms`
+  in whole seconds, 190 s by default, and 0 with no idle ping (3.1.1 section 3.1.2.10); the broker
+  times a silent device out at 1.5 times it and publishes the will, and with 0 never does (agent,
+  2026-10-13). On a reconnect under the same client id, mosquitto 2.0.18 publishes the old
+  connection's will when either side is a clean session and discards it when both are persistent
+  (its `handle_connect.c`), so with pings off and `MQTTPersistent` on a power loss never sets the
+  status offline. A broker with `max_keepalive` set refuses a 3.1.1 client whose keep-alive is 0 or
+  above it (the same file).
+- **QoS 1 out** is resent with DUP after `mqtt.qos1_retry_ms` and given up after
+  `mqtt.qos1_max_tries`, counted and never a teardown. **A stalled broker**, output past
+  `mqtt.max_out_backlog` or a drain past `mqtt.drain_timeout_ms`, closes the connection.
+- **Unconfirmed bytes.** lwIP's TCP memory (`MEM_SIZE`) is one pool shared by every connection and
+  sized at 2,000 B per connection (B.14.2); when it runs out, a write meets `ERR_MEM`, which v1.29.0
+  retries every 50 ms for up to 10 s (`extmod/modlwip.c:801-813`) and this firmware's `modlwip_eagain`
+  override answers with `EAGAIN` instead (B.14.4), the rest waiting in the stream's buffer under
+  `mqtt.max_out_backlog`. So the keeper never has more than `mqtt.unconfirmed_max_bytes` written that no
+  PINGRESP has confirmed (TCP delivers in order, so a PINGRESP proves everything before its
+  PINGREQ arrived). A PUBLISH that would pass the cap waits in the ring, and a PINGREQ goes out on
+  the next tick instead of at its interval; PUBACKs and PINGREQs are never held (owner, 2026-10-08,
+  asked whether the client should cap the bytes the broker has not yet confirmed at its 2,000 B share
+  of lwIP memory: 'Cap at 2,000 B (Recommended)').
+- **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and
+  discarded in buffer-sized pieces, counted, never allocated. A fifth length byte, an unexpected
+  packet type, a QoS 2 PUBLISH or a topic overrunning its packet closes the connection.
+- **Backoff**: `mqtt.backoff_min_ms` doubling to `mqtt.backoff_max_ms`, reset only once a connection
+  stayed up `mqtt.stable_after_ms`, or by `reconnect()` (agent, 2026-10-08): a reset at CONNACK let a
+  duplicate client id or a session-dropping broker loop at the minimum. `mqtt.short_session_warn`
+  short sessions in a row log one `MQTT_SHORT_SESSIONS` warning per episode.
+- **Reconfiguration**: `reconnect()` is the settings group's `post_fct`. The keeper publishes the
+  offline message on the old status topic (QoS 0, retained as the will is) and sends DISCONNECT, which
+  makes the broker drop the will, then reconnects with the new settings at the minimum backoff;
+  disabling the client takes the same path, so its status never stays online (agent, 2026-10-08). A
+  commanded reboot sends neither; the broker publishes the will (agent, 2026-10-08).
+- **The will and the status topic are settings** (owner, 2026-10-13, asked which will settings should be
+  configurable: 'Full availability set (Recommended)'; asked what form the will topic should take: 'Any
+  full topic (Recommended)'): `MQTTWillTopic`, `<base>/status` while empty, carries the will
+  (`MQTTWillMsg`), the online message after each CONNACK (`MQTTOnlineMsg`) and the offline message above,
+  all at `MQTTWillQoS` (0 or 1) and retained when `MQTTWillRetain` is on; their defaults are the topic
+  table's row. A will topic entered once no longer follows a prefix or client id change.
+- **Persistent session** (owner, 2026-10-13, asked how it should be switched on: 'Setting, default off
+  (Recommended)'): `MQTTPersistent` turns Clean Session off, so the broker keeps the subscriptions and
+  queues QoS 1 messages while the device is away (mosquitto 2.0.18 by default: forever, up to 1,000
+  messages, QoS 0 not queued). The CONNACK's Session Present is read: a resumed session gets the
+  unacknowledged QoS 1 messages again first, oldest first, with their original packet ids and DUP
+  ([MQTT-4.4.0-1], [MQTT-4.4.0-2], [MQTT-2.3.1-4]); a session the broker no longer holds gets them as new
+  messages; a 1 on a clean session is a malformed CONNACK. Every connect subscribes again, and a new
+  packet id skips the ids still in flight (agent, 2026-10-13). The queue stays in RAM, so a reboot drops
+  what is in flight (owner, 2026-10-13: 'I would like to have 1 and 2 built, 3 is not required').
+- **A persistent session left behind is retired** (owner, 2026-10-13, asked what should happen when a
+  persistent session is left behind: 'Retire it (Recommended)'). The keeper remembers the identity a
+  broker may hold a session for (host, port, client id, prefix, with the credentials to reach it), the
+  boot's first read inheriting the last boot's. When the client is switched off, persistence is switched
+  off, or the host, port, client id or prefix moves, it connects once more with the old identity, a clean
+  session and no will, then sends DISCONNECT, and the broker discards that session ([MQTT-3.1.2-6]). It
+  waits for the link as a connect does and is tried once; a failure is one `MQTT_RETIRE_FAILED` warning,
+  the session left to the broker's expiry. It is skipped when the next connect discards the session
+  itself (the same host, port and client id with a clean session), and a failed settings read retires
+  nothing (agent, 2026-10-13).
+
+**Inbound messages may trigger behaviours or carry values, in RAM only** (owner, 2026-10-07, asked
+what received messages may do: 'They may trigger behaviours or contain values (e.g. external
+measurements)'; asked whether such a behaviour may write to flash: 'No flash writes
+(Recommended)'), so every flash write still comes through a REST PUT (F.2). Receivers are the wired
+partners' consumers (the partner API above); the client subscribes to nothing else. The callback is
+synchronous, runs on the reader, copies what it keeps (its two `memoryview`s point into the receive buffer),
+validates every value and is idempotent, since a retained message comes again after each reconnect; a raising
+callback is logged (`CALLBACK`) and its message is still acknowledged. `dev`'s one consumer is its exerciser.
+Every inbound PUBLISH is counted (`MQTTRxMsgs`) and its topic shown (`MQTTLastRxTopic`).
+
+**Topics** (a data contract, frozen at the release like the REST API; owner, 2026-10-07, asked what the PoC
+publishes: 'Also measurements JSON', its measurement topics since superseded, below), with `<base>` =
+`<MQTTPrefix>/<MQTTClientId>`:
+
+| Topic | Direction | QoS | Retain | Payload |
+|---|---|---|---|---|
+| `MQTTWillTopic`, else `<base>/status` | out | `MQTTWillQoS` (1) | `MQTTWillRetain` (yes) | `MQTTOnlineMsg` (`online`) after each CONNACK; `MQTTWillMsg` (`offline`) is the will, and is published before a reconfiguring DISCONNECT |
+| `<base>/link/echo` (`dev`) | out and in | 1 | no | the exerciser's probe: its sequence number, 4 bytes big-endian |
+| `<base>/cmd/#` (`dev`) | in | 1 | — | counted by the exerciser as `Commands`; no behaviour |
+| a wired partner's topics and filters, below `<base>` | its own | its own | its own | the partner's own contract |
+
+**Superseded: the measurement publisher.** The PoC's client published each sensor's `/measurements` object as JSON
+on `<base>/measurements/<NAME>` (owner, 2026-10-07, asked what the PoC publishes: 'Also measurements JSON'), QoS 0
+and not retained (agent, 2026-10-08), from its own `_publish_loop()` every `MQTTPubInterval` seconds, each round
+falling due one interval after the last (agent, 2026-10-08), and off by default (owner, 2026-10-13, asked what
+should happen to the publisher, since measurements will not travel over MQTT: 'Off-able, default off
+(Recommended)'). Asked on 2026-11-12 what should happen to the measurement-sending feature (`MQTTPubInterval`, the
+client's publisher), the owner answered "Move to dev exerciser (Recommended)", then superseded that answer with the
+message quoted under the transport above (owner, 2026-11-12). So the publisher, its `sources`, `MQTTPubInterval`,
+the measurement topics, `mqtt.pub_step_ms` and the fixed `<base>/cmd/#` subscription are gone and moved nowhere;
+the exerciser sends test traffic only and has no sensor wiring (agent, 2026-11-12, reading that message).
+
+**Memory.** Contiguous chunk splitting, long-lived survivor placement and conservative allocation
+apply here as everywhere (owner, 2026-10-08: "Contiguous chunk splitting, long term allocation survivor
+placement and conservative memory management are techniques to be applied in any case here."). Every
+long-lived buffer is allocated once at construction: receive `mqtt.rx_buf_bytes`, transmit
+`mqtt.tx_buf_bytes`, `mqtt.out_slots` outbound slots of `mqtt.out_payload_max` each, the PUBACK queue
+and the last-topic buffer, about 5 KB. Each slot is its own `io.BytesIO(alloc_size)`, never one ring,
+so no long-lived block outgrows the receive buffer; a payload is copied into its slot, and one longer than the
+slot is refused. The encoded settings and the partners' full topics and filters are born in `setup()`, inside the
+boot list's placement reset (I.4(f.1)), and a reconnect with an unchanged value keeps its object; the partners
+register before the tasks start, so their lists are fixed for the program's life. A
+failed allocation leaves the client off (`MQTTState` `no memory`, shared `ALLOC` logged by
+`setup()`), never a crash. Nothing grows with uptime or traffic, and counters saturate at
+`COUNTER_CAP`. `publish()` never blocks and never raises on load: it copies the payload into a free
+slot, a queued QoS 0 message giving way first, or answers `False`, counted in `MQTTTxDropped`.
+
+**Configuration** (`config_MQTT.cfg`, every field persist-only and read at each connect, all on
+`/networking`; credentials optional and masked, owner, 2026-10-07: 'Optional, masked
+(Recommended)'): `MQTTEnable` (default false), `MQTTHost` (1-253 in `NTPHost`'s `hostName` shape, or the
+special `""`, no broker and the client off: an IPv4 literal, used as it is with no lookup, a DNS name, or a `.local` name, which `asy_dns_client.py` asks for with one
+multicast query, RFC 6762 section 5.1; owner, 2026-10-08, asked whether the resolver should learn
+`.local` names for `MQTTHost` and `NTPHost` alike: 'Add it, bench-tested (Recommended)'),
+`MQTTPort` (1883), `MQTTUser`/`MQTTPW` (0-64 bytes, no NUL, the password masked on every GET),
+`MQTTClientId` (a host label of 1-23 bytes, default `[device].hostname`), `MQTTPrefix` (1-64 bytes,
+no wildcard, NUL, or edge slash),
+`MQTTPingInterval` (10-3600 s, or 0, off; 180), `MQTTPersistent` (default false),
+`MQTTWillTopic` (a topic name of 1-128 bytes with no wildcard, NUL or leading `$`, or the special `""`,
+`<base>/status`), `MQTTOnlineMsg` and `MQTTWillMsg` (1-64 bytes, no NUL; `online` and `offline`),
+`MQTTWillQoS` (0 or 1; 1) and `MQTTWillRetain` (default true). A string outside its shape is
+refused at PUT as `Invalid` with `BAD_ARG` (C.7.4's precedent), `MQTTHost` through the `hostName` check
+`NTPHost` uses, `asy_dns_client.py`'s `host_name_ok()`, which the website's mock mirrors (agent,
+2026-10-08). A stored value that fails at use keeps the client off with one `STORED_DEFAULT` warning. `MQTTEnable` exists because the web UI cannot set
+an empty string (owner, 2026-08-22), so an empty host alone could never switch the client off from
+the UI (agent, 2026-10-08). "Reset to defaults" deletes `config_MQTT.cfg` with every schema-backed file
+(A.8), so the unit comes back with the client off. A system command's shutdown cancels the keeper (A.8
+step 4); its teardown closes a connected socket with no DISCONNECT, so the broker publishes the will, and
+a persistent session outlives it for the next boot to resume. "Reset to defaults" leaves such a session to
+the broker's expiry, as a reboot between a settings change and its retire does (agent, 2026-10-13).
+A file an earlier image stored with `MQTTPubInterval` holds a key the schema no longer has: one repair write at
+the boot's `setup()`, schema drift and no config fault (C.7.3).
+
+**Status** joins `GET /status`'s `networking` object on a device carrying the client: `MQTTState`,
+`MQTTConnected`, `MQTTBroker`, `MQTTUptime`, `MQTTConnects`, `MQTTTeardowns`, `MQTTLastReason`,
+`MQTTTxMsgs`, `MQTTTxDropped`, `MQTTRxMsgs`, `MQTTRxDropped`, `MQTTPingTimeouts`, `MQTTShortSessions`
+and `MQTTLastRxTopic`; on `dev` the exerciser's `MQTTLINK` joins `sensors`. The `MQTT` logger and its
+`CFGMGR_MQTT` companion are FRAM-backed on `dev`, the exerciser sharing the first and writing no entry;
+connection failures are errors, as NTP's are (agent, 2026-10-08), each logged once per attempt, so
+the backoff bounds the FRAM writes.
+
+**Connection budget.** The client's held TCP connection is paid for by the web ceiling (owner,
+2026-10-07, asked who pays MQTT's permanent connection in the lwIP and heap budget: 'Web
+connections 6->5'): `dev`'s `max_connections` is 5, and `buildgen/validate.py` checks the lwIP
+ensemble against `max_connections` plus one on every device carrying `mqtt`.
+
+**Testing.** At L1, `tests/test_asy_mqtt_client.py` runs the client against an in-process scripted broker over
+real loopback sockets (`tests/_mqtt_fake_broker.py`): connect, refusal and timeouts, QoS 0 and 1 both ways,
+retransmission and give-up, the ping deadlines, malformed and oversize input, a stalled broker, the backoff, the
+will and session settings, the partner API, hotspot mode (no socket and no name asked; entering it closes the
+connection within a link poll and a tick with no entry; a link lost under a busy `wifi_mode_lock` closes at the
+first tick after it) and the memory layout (no buffer needing a block above the receive buffer's, the settings and
+topics born at `setup()` and kept while unchanged, a partner's publish allocating no more than a plain one).
+`tests/test_mqtt_codec.py` pins the codec's functions inside the client file against the specification's bytes.
+`tests/test_asy_mqtt_link_driver.py` runs the exerciser over the fake broker's routing: one transfer per probe back, one failure per probe lost, nothing while the client is off or
+the hotspot runs, a stale or retained echo counting nothing, commands counted, every counter saturating, and no
+allocation and no raise in either callback. At L2 the twin suite's Run 14 (`scripts/_digital_twin_ci_suite.py`,
+`digital_twin/README.md`) runs a device wiring `mqtt` against a real mosquitto. At L4
+`tests_hardware/bench/test_mqtt_broker_faults.py` runs the bench board against a mosquitto on the bench host, the
+exerciser's probes and counters its traffic (`tests_hardware/README.md`).
+
+---
 
 ---
 
@@ -3651,7 +3963,8 @@ W36`; only a real `bench.ap_down()` outage logs entries, a deauth logs none); `R
 all 21 of `dev`'s chunks on the per-command path at about 305 ms per chunk; on the synchronous path
 each chunk's reset is one entry-sized write (`stall.fram_entry`) and the sweep runs them back to
 back with no yield between, one stretch of 19 writes on `dev` (its FRAM-backed stores), about 241 ms
-at the chip's entry write (`stall.reset_errors`), under a config flush's stall that the UART ring is
+at the chip's entry write (`stall.reset_errors`; 21 writes and about 267 ms with the MQTT client's two
+stores, A.12), under a config flush's stall that the UART ring is
 sized for (J.6). The UART pair runs one transfer per 1.085 s idle (over 601 s) and one per 1.26 s
 under six `/status` readers, with no failure (dev, 2026-11-10 image); through that sweep its cadence
 is a silicon figure owed on this path (CLAUDE.md's `asy_uart_comm.py` rule). The bench `ResetErrors` budget, from a 0-4 reader
@@ -3796,7 +4109,7 @@ alternating codes and reboots are outside the rule.
 | base | `asy_base_classes.py` (every `SensorReader`'s logger) | 1-9 | 1-2 |
 | shared | any module, one number per condition | 10-29 | 10-19 |
 | cfgmgr | `asy_config_manager.py` (`CFGMGR_<name>`) | 30-39 | 20-24 |
-| system | `asy_system_service.py` (`SYSTEM`) | 40-44, 115-119 | 69-70 |
+| system | `asy_system_service.py` (`SYSTEM`) | 40-44, 115 | 69-70 |
 | fram | `asy_fram_manager.py`, `asy_fram_driver.py` (`FRAM`) | 45-54, 100-109 | 25-29, 63-64 |
 | isl29125 | `asy_isl29125_driver.py` (`ISL29125`) | 55-57 | 30-32, 75-76 |
 | sgp40 | `asy_sgp40_driver.py` (`SGP40`) | 58-59, 110-114 | 33-35, 65-66 |
@@ -3808,8 +4121,13 @@ alternating codes and reboots are outside the rule.
 | uart | `asy_uart_comm.py`, `asy_uart_driver.py` (`UART`, or the instance name; the driver writes through its caller's logger) | 75-99 | 54-59 |
 | bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared errors) | — | 71-72 |
 | scd30 | `asy_scd30_driver.py` (`SCD30`; base and shared errors) | — | 73-74 |
+| mqtt | `asy_mqtt_client.py` (`MQTT`) | 116-124 | 82-85 |
 | asy_api_response | `asy_api_response.py` (the calling module's logger; shared codes only) | — | — |
 | test | `tests_hardware/device_scripts/` (seeds written by hardware test scripts only) | 125-127 | — |
+
+**`MQTT_DNS` is `errno` 123** (agent, 2026-11-12, decided on the owner's behalf): `system` (115-119) and
+`mqtt` (115-124) were allocated on separate branches; system keeps 115 (`SUPERVISOR_RAISED`), its only
+code there, and mqtt's band starts at 116, `MQTT_DNS` alone moving from 115 to 123.
 
 **The FRAM manager's chunks log into the manager's RAM-only history**: the FRAM module never has
 FRAM logging of its own, since a FRAM fault logged into that same FRAM is lost with it.
@@ -3876,6 +4194,9 @@ gave up.
   `NTP_NO_REPLY`); every failed server-name lookup is `NTP_DNS` (C.7).
 - **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
   config is re-read every cycle anyway, and a restart re-reads nothing more.
+- **MQTT** (`asy_mqtt_client.py`) keeps no streak: a broker outage, a refusal or a protocol fault
+  closes the connection and retries on its own capped backoff (A.12); a restart would re-initialise
+  nothing but a socket.
 
 **No origin check** (agent, 2026-09-30): an NTP reply is accepted only from the resolved server's
 address and port, because the fetch socket is connected (`UDPSocket(mode="client")` connects its
@@ -4236,7 +4557,9 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   tests' further writes (owner, 2026-10-21) — every real SCD30 write a test owns, flash
   wear being a real, always-relevant concern on real hardware, is gated behind
   `tests_hardware/conftest.py`'s `--allow-persistence-write`/`@pytest.mark.persistence_write` (the
-  single global permission). The prerequisite stays unmarked: the session fixture `scd30_measuring`
+  global permission, or `--allow-persistence-write-to=sensors/SCD30` scoped to that group alone (owner,
+  2026-10-08: "it makes absolutely no sense globally enable persistence writes, as writing the scd30 for
+  mqtt tests is nonsense, so scope it correctly")). The prerequisite stays unmarked: the session fixture `scd30_measuring`
   (`tests_hardware/scd30_prerequisite.py`) sends the start command only when no measurement arrives
   within three intervals, at most once per pytest session and never retried (owner, 2026-09-29), so a
   default run normally spends zero SCD30 writes and at most one. On the flash tier the read-while-write
@@ -4246,8 +4569,8 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   A test owning SCD30 writes beyond that one is gated behind a further,
   narrower flag/marker pair, `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write`, that is
   AND-gated on top of the global one — never an independent flag standing in for it, and never
-  substitutable for it (passing only the extra-write flag still deselects the test). One flag
-  decides whether any real SCD30 write happens at all; the second only ever narrows that further.
+  substitutable for it (passing only the extra-write flag still deselects the test). One permission
+  decides whether any real SCD30 write happens at all; the second flag only ever narrows that further.
   Four tests carry the extra-write marker, owning up to 12 further writes (2 and up to 3 on the flash
   tier, up to 3 and 4 on the bench tier; `tests_hardware/README.md`'s budget table), so with both
   flags one session spends up to 13 owned writes on `dev`'s SCD30, plus at most one start command; a
@@ -4301,7 +4624,8 @@ this generic supervision (agent, 2026-08-07). Every task created outside the tas
 lifetime, cancel path and the top that persists its failure, and the generated modules create none. Each row's task ends in a top of its own that logs through
 its own object's logger (`self.pr`): the creator's, except Captive DNS, which keeps its own DNSSRV
 logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM manager's chip watch
-(`FRAMManager.start_asy_watch_chip`, A.4) is a task starter, so it takes no row.
+(`FRAMManager.start_asy_watch_chip`, A.4) is a task starter, so it takes no row, and so are the MQTT
+client's keeper (`start_asy_connection`) and `dev`'s MQTT link exerciser (`start_asy_exercise`, A.12).
 
 | Task | Created by | Why outside the starters | Lifetime and cancel path | Top that persists its failure |
 |---|---|---|---|---|
@@ -4311,6 +4635,7 @@ logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM 
 | Per-connection HTTP | `WebserverService._serve_loop()`'s `asyncio.start_server()`, one `_serve()` task per connection (`asy_webserver_service.py`) | one per accepted connection | one request, bounded by the outer cap (`outer_cap_s`) | `_serve()`: persists `UNEXPECTED` |
 | Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` or `STACK_EXHAUSTED` at the escalation, its code recorded before that write, a `MemoryError` there still arming the reset and a write that never ends leaving the watchdog's reset to read the code; its own fault persists one `SUPERVISOR_RAISED` entry, then it ends unfed and the watchdog resets (`ResetReason` 2, A.8) |
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
+| MQTT reader | `MQTTClient._session()` (`asy_mqtt_client.py`), once the CONNACK arrived | one per connection, living as long as its socket | the connection's life; cancelled, never awaited, by the keeper's teardown, which then closes the socket (A.12) | `_reader_loop()`: records why it ended; the keeper persists `MQTT_LOST`, `MQTT_PROTOCOL` or `UNEXPECTED` |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
 | Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /uart`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
 
@@ -4797,7 +5122,7 @@ were allowed to decide without even asking"). `tests_scripts/test_firmware_write
 such site in `src/` and in every device's generated modules by file, function and construct, so a
 new, moved or vanished site fails as the owner's to decide; it reads the constructs themselves, so
 an aliased `open` or a command passed through a local variable is beyond it, as is `ext/` (agent,
-2026-10-22). The one product module carrying test machinery, the bench-only UART link exerciser, is
+2026-10-22). The bench-only UART link exerciser, a product module carrying test machinery, is
 a deliberate exception (owner, 2026-10-22, asked whether its hazard mode, test code inside the
 product module, stays: "the link module is a necessity for testing, and it's testing code inside a
 module, but for a good reason, and the guard from being included in real deployed firmware is the
@@ -4805,7 +5130,11 @@ fact that the module is never included in the config files for deployment boards
 substantial exception from the usual scheme, but for good reasons."), and
 `tests_scripts/test_uart_link_bench_only.py` keeps it off every deployed
 board: it fails when a board other than the `[device] bench = true` one declares `uart_link`, or
-another device's firmware imports or freezes its driver.
+another device's firmware imports or freezes its driver. `dev`'s MQTT link exerciser
+(`asy_mqtt_link_driver.py`, A.12) is the second such module, by the owner's requirement (owner, 2026-11-12:
+"There shall be a wire up target for the dev variant which does the tests and is also included via the TOML"):
+test traffic only, with no route, no setting and no hazard mode, declared in `devices/dev.toml` alone, and
+`tests_scripts/test_mqtt_link_bench_only.py` keeps it off every deployed board the same way.
 
 ## D.4 Resource discipline for the RP2040 target
 
@@ -5731,8 +6060,12 @@ normal image (owner, 2026-09-26).
 
 **Containment holds in both senses (owner, 2026-09-26)**: (a) execution — each hardware runner runs
 every lower level first (`scripts/_run_lower_levels.sh`); (b) scenarios — L3 ∪ L4 ⊇ L2 and L4 ⊇ L3
-(`tests_scripts/test_level_containment.py`). `manual` is an execution mode of L3/L4, not a level: it
-rides on a flash or bench board and a human closes the loop (unplug/replug, genuine power loss, a
+(`tests_scripts/test_level_containment.py`). A **scoped run** (`scripts/run_bench_hardware_suite.sh --scope
+NAME`) runs every lower level, then only the flash and bench tests `tests_hardware/run_scopes.py` lists for
+one change, with the write groups those tests own (owner, 2026-10-08: "only test MQTT (and whatever is affected
+by your changes) on the bench"); a passing one is reported NOT CLEAN, so it never stands in for an L3/L4 pass
+(agent, 2026-10-08, decided on the owner's behalf, `mqtt_poc/DESIGN.md` §13). `manual` is an execution mode of
+L3/L4, not a level: it rides on a flash or bench board and a human closes the loop (unplug/replug, genuine power loss, a
 real second device joining a hotspot). Nor are `toolchain/setup_toolchain.py env --tier
 {generic,flash,bench}` (setup environments: which host packages and services a machine gets) and
 the soak durations (`--soak-duration {short,mid,long}`, 60 s, 600 s, 6 h: opt-in runs on top of a
@@ -6635,8 +6968,10 @@ controller; restart the task; reboot; the hardware watchdog last. A `machine.I2C
 transfer in flight cannot be interrupted — no await point exists inside it — so the ladder acts
 after a transfer returns an error; rp2 bounds each I2C transfer by the bus timeout, and a call that
 never returns is the watchdog's (a stalled chip may still reach a reboot, owner, 2026-09-25).
-`socket.getaddrinfo()` is not called from `src/`: `asy_dns_client.py` resolves over its own
-non-blocking UDP client. The one call left is inside `asyncio.start_server()`
+`socket.getaddrinfo()` is called from `src/` on numeric hosts only: `asy_dns_client.py` resolves
+names over its own non-blocking UDP client (a `.local` name by one multicast DNS query, A.12, never
+lwIP's own mDNS path, which only `getaddrinfo()` reaches), and the MQTT client hands `getaddrinfo()`
+the IPv4 literal that resolver returned (A.12). The other call is inside `asyncio.start_server()`
 (`extmod/asyncio/stream.py:183`), once at server start, on the numeric bind host `0.0.0.0` (the
 generated device module's `web_host` default), which lwIP resolves without a DNS query
 (`lib/lwip/src/core/dns.c:1605-1606`, reached through `extmod/modlwip.c:1866`); the
@@ -6776,7 +7111,7 @@ The budget rows, one per stretch:
 | `feed.reset_path` | the last feed → the reset: `_reboot()`'s record, flush and pause, then the countdown with nothing fed; the escalation feeds once after its entry before it stops feeding | 4000 ms countdown (`_RESET_DELAY`) after the record, flush and pause | — | the whole `wdt.timeout_ms` | `test_the_reset_delay_ends_before_the_watchdog_would` (`tests_scripts/test_tunables_register.py`) | `system.reset_delay_s` |
 | `feed.shutdown_step` | each step of the controlled shutdown sequence (A.8) between two of its own feeds | the park wait, at most one `_TASK_CHECK_TIME` and one pass; one 256-byte FRAM erase unit; one flash-filesystem operation, up to 400 ms per sector erase | — | the whole `wdt.timeout_ms` | `test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm` (`tests/test_asy_system_service.py`); `tests_hardware/flash/test_system_commands.py` | — |
 | `stall.flash_program` | one config flush: its one `with open()` write in `_write_file()` (`asy_config_manager.py`) runs littlefs's sector erases and page programs in one non-yielding stretch, interrupts off inside each erase and program (`ports/rp2/rp2_flash.c:168-174`, v1.29.0); on an accepted PUT's deferred flush, the one boot repair and the one boot write of an absent file's defaults (C.7.3) | 2129 ms (`_FLASH_HOLD_MAX_MS`, `asy_uart_comm.py`): 5 sector erases × 400 ms + 43 page programs × 3 ms, the largest generated config file at the W25Q16JV tSE/tPP maxima (typ. 45 ms per erase), traced through littlefs (J.6); interrupts off up to 400 ms at a time inside it | 70-207 ms of blocked loop per write, interrupts off 35-39 ms per sector erase (dev silicon, 2026-10-29; W25Q16JV tSE typical 45 ms); `device_scripts/flash_write_loop_gap.py` re-measures | `con.uart_reply` (crossed: a reply that reaches the ring during the hold is still read, since the reply wait, `_read_frame()` (`asy_uart_comm.py:692-703`), looks at the ring before its deadline: `_read_delimited()` takes buffered bytes ahead of `ready()`, and `ready()` reads the fill level ahead of the deadline (`asy_uart_driver.py:245-250`, `:702-710`); a reply this device's held loop has to send, its responder's or on `dev` either end's, both sharing the loop, misses the peer's deadline: one failed, counted transaction and a resync, J.7), `con.dns_query` (crossed, soft: a query whose reply the hold keeps from being read in time counts as unanswered, and the resolver asks the next server, then NTP retries), `con.led_frame` (crossed: the animation stands still up to the hold, a visible stutter), `con.uart_rx_ring` (not crossed: its floor is sized for this hold, J.6, and the DMA ring the receive path uses (owner, 2026-10-05, answering the review's open question on the UART receive path, in paraphrase: 'UART in the DMA ring buffer') receives with interrupts off, so no frame is lost; proved on silicon without a flash write by `device_scripts/uart_dma_ring_interrupts_off.py`), `con.uart_tx` (owed: measured on the bench, link transactions during config writes), `con.watchdog`; each crossing is an accepted degradation on all three flush occasions, an accepted PUT, the boot repair and the boot defaults write, and closed so by the owner with its consequences, no reset and no loss: a late answer, a late read, one LED stutter, a DNS retry and, on `dev`'s bench link, one failed and resynced transaction (owner, 2026-10-22, asked about the proposed next steps, both write sites back to the single write and the stall closed as an accepted degradation: "For your records, your suggested next steps are fine (go back to the single write).") | record only: `test_flash_write_loop_gap_is_recorded` (`tests_hardware/flash/test_memory_stress.py`, behind `--allow-persistence-write`) records the measured gap, the figure judged against its consumers here | — |
-| `stall.reset_errors` | one `ResetErrors`: every store's reset back to back with no yield between, each an entry-sized write (`stall.fram_entry`), 19 FRAM-backed stores on `dev` (counted on the Unix port, 2026-11-10) | 241 ms: 19 × 12.7 ms, the entry write's median on the chip; 300 ms at its maximum, 19 × 15.8 ms | the sweep itself owed on silicon; the entry figure is re-measured on the next image, which drops the CS settle | a user command like a config PUT, below one config flush (`stall.flash_program`) | the ResetErrors cases in `tests/test_asy_webserver_service.py` | — |
+| `stall.reset_errors` | one `ResetErrors`: every store's reset back to back with no yield between, each an entry-sized write (`stall.fram_entry`), 19 FRAM-backed stores on `dev` (counted on the Unix port, 2026-11-10), 21 with the MQTT client's `MQTT` and `CFGMGR_MQTT` (A.12) | 241 ms: 19 × 12.7 ms, the entry write's median on the chip; 300 ms at its maximum, 19 × 15.8 ms; with the MQTT client 267 ms (21 × 12.7 ms) and 332 ms at its maximum (agent, 2026-11-12) | the sweep itself owed on silicon; the entry figure is re-measured on the next image, which drops the CS settle | a user command like a config PUT, below one config flush (`stall.flash_program`) | the ResetErrors cases in `tests/test_asy_webserver_service.py` | — |
 | `stall.i2c_transfer` | one `machine.I2C` transfer holds the loop up to the bus `timeout`, a register read (write then read) twice it (`ports/rp2/machine_i2c.c:125`, `:147`, v1.29.0) | 400,000 µs: two transfers at the largest bus `timeout`, 200,000 µs (every SCD30 bus); 50,000 µs (`_DEFAULT_TIMEOUT_US`, the rp2 default) where a bus states none | a failed transfer returns at the bus timeout, 50.9 ms and 200.9 ms at 50 and 200 ms (dev silicon, 2026-10-29) | `con.uart_reply`, `con.watchdog`, `con.dns_query`, `con.led_frame` (crossed: a stutter), `con.softirq_queue`; a wedged transfer is the recovery ladder's case (F.2) | the build rule `bus.i2c-timeout-range` (`buildgen/validate.py`) | `i2c.timeout_max_us` |
 | `stall.lwip_send` | a TCP write that meets `ERR_MEM`: at the pin it retries inside one C call, non-blocking sockets included, for up to 10 s (B.14.4) | none in C with the project's `modlwip_eagain` override (B.14.4): a non-blocking send returns `EAGAIN`, and a stuck connection retries cooperatively until an ACK or its per-call timeout reclaims it | — | `con.watchdog` (fixed by the override), every other task | B.14.4's override checks | — |
 | `stall.fram_command` | one FRAM command, its CS envelope, a plain call: the bus configured once, no lock, no yield (C.8) | ~250 µs per command, a chunk write's 12.7 ms over its 51 (`stall.fram_entry`) | medians of 300 calls on the dev chip (2026-11-10 image, frozen, 125 MHz, idle, `gc.threshold(32768)`), each with the harness's 22 µs call floor: an RDSR 143 µs, a WRDI 119 µs, a 1 B read 245 µs (13 B 260 µs), a 13 B write 809 µs as its 5 commands, `begin()` 185 µs once per operation; a bare `machine.SPI` RDSR 54 µs; re-measured on the next image, which drops the 2 µs CS settle at each edge | `con.routine_stall`; one UART poll floor, 80 B at 115200 baud = 6,944 µs (J.6) | `device_scripts/fram_command_hold_timing.py`, run by `tests_hardware/flash/test_fram_storage.py` | — |
@@ -8894,6 +9229,8 @@ none for CRC-8 or CRC-16.
 one `UDPSocket` per server tried, the reply of at most 512 B (RFC 1035 §4.2.1; a longer one arrives
 cut and parses as no usable answer) and the dotted-quad string, transient, client-controlled by the
 server and bounded before allocation. A heap failure building the query prints its text through the caller's logger (C.7).
+A `.local` name sends the same query once to the mDNS group over one bound `UDPSocket`, with the same
+reply bound (A.12).
 
 **`asy_fram_driver.py`** — construction, long-lived, fixed: the command, address, status and ID
 buffers (`_id_buf`/`_status_buf`/`_addr_buf`); per operation nothing (every
@@ -8934,6 +9271,25 @@ read: the 6-byte RGB burst's copy, unpacked in place, one `ISL29125` sample name
 tuple and the derived floats, transient; after a counted failed write, the 3-byte configuration
 snapshot's copy.
 Calibration only: `_cal_recent`, at most `_CAL_CONVERGE_N` ratios, cleared at the run's end.
+
+**`asy_mqtt_client.py`** (`dev` only) — construction, long-lived, fixed: the receive and transmit
+buffers (`mqtt.rx_buf_bytes`, `mqtt.tx_buf_bytes`), `mqtt.out_slots` outbound slots, each its own
+`io.BytesIO` of `mqtt.out_payload_max`, the PUBACK queue and the last-topic buffer, about 5 KB (A.12).
+Per partner registration, at construction: its relative topic or filter and its callback, long-lived,
+fixed once the tasks start. In `setup()`, and on a reconnect for each changed value: the encoded
+settings and every partner's full topic and filter, long-lived, bounded by the schema. Per
+connection: one socket (its lwIP pcb), its `Stream` and the reader task. Per publish: the payload
+copied into its slot, one longer than the slot refused. Per inbound packet: parsed in place, each
+matching consumer called with two views into the receive buffer; one larger than the buffer is read
+and discarded in buffer-sized pieces, client-controlled by the broker and never allocated. The codec
+in the same file keeps no state: every encoder writes into its caller's buffer and returns a length,
+and the length decoder and the topic matcher read in place. Per settings check: the client id,
+prefix and will-topic checks encode their string once, transient, bounded by the schema.
+
+**`asy_mqtt_link_driver.py`** (`dev` only) — construction, long-lived, fixed: the 4-byte probe and
+the exerciser's two consumer registrations and one topic in the client's lists (A.12). Per round: the
+probe rewritten in place and copied into a client slot by `publish_under()`, the client's publish path
+and nothing more. Per echo an in-place compare, per echo or command a counter step: no allocation.
 
 **`asy_neopixel_driver.py`** — construction, long-lived, fixed: the `NeoPixel`, its event, lock and one
 3-element frame list every write reuses. Per external command taken the `(r, g, b, t)` tuple, held in
@@ -9433,13 +9789,13 @@ oversized PUTs would, each answered 413 *after* allocating. The
 whole per-connection demand, request and response side, is derived in H.7.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
-rather than per group: the largest legitimate body is **1,080 B** on `PUT /sensors` on `dev` (743 B on
-`wozi`, 487 B on the other four devices). `/networking` is 678 B on every device, `NTPHost`'s
-253-character bound (RFC 1035) being 266 B of it, `HotspotPW` 78 B and `DNSFallback` 64 B; the
-others are smaller — `/notification` 530 B, `/system` 139 B, `/status` 22 B — and real traffic
-measures 232 B. So 2048 clears the schema maximum
-with **1.9x** margin and real traffic with ~9x, and takes the six-connection worst case to 6 x 2,048
-= 12,288 B. A body that arrives partly in the head's last read is joined from the proxy's read-ahead
+rather than per group: the largest legitimate body is **1,692 B** on `PUT /networking` on `dev`, whose
+MQTT client settings (A.12) join that route; `PUT /sensors` is 1,080 B there, 743 B on `wozi` and 487 B
+on the other four devices. `/networking` is 678 B on every other device, `NTPHost`'s 253-character
+bound (RFC 1035) being 266 B of it, `HotspotPW` 78 B and `DNSFallback` 64 B; the others are smaller —
+`/notification` 530 B, `/system` 139 B, `/status` 22 B — and real traffic measures 232 B. So 2048
+clears the schema maximum with **1.21x** margin and real traffic with ~9x, and takes the six-connection
+worst case to 6 x 2,048 = 12,288 B. A body that arrives partly in the head's last read is joined from the proxy's read-ahead
 and the rest, so for that moment it is held about twice, as upstream's multi-read `readexactly()`
 re-concatenates (F.9).
 
@@ -10620,7 +10976,8 @@ error ever can circumvent it').
   device (agent, 2026-09-09). That covers
   `sgp40.temperature_source`/`.humidity_source` (per-value wiring, L.6),
   `notification.signal_sink`/`warn_co2`/`warn_voc`/`warn_hum`, `fram_target` on every driver or
-  service taking a `log=` logging config (its FRAM store), and `device.wiring.led_target` for
+  service taking a `log=` logging config (its FRAM store), `mqtt_target` on a module wired to the
+  MQTT client (`dev`'s `mqtt_link`, A.12), and `device.wiring.led_target` for
   the WiFi status LED, passed at construction. Each field is individually optional, so a device may
   wire only some instances to FRAM; the per-signal getters and the `[device.wiring]` table likewise
   (agent, 2026-09-09) — absence disables that specific link. **Excluded** are links between
@@ -10817,8 +11174,8 @@ services — each instance group under one banner, `# --- <title> ` padded with 
 characters, titled `sensor drivers`, `singleton services` and `multi-instance services`; a group
 with no instance under it has no banner. Every instance of a driver that may repeat (a sensor, or
 `uart_link`) states `name_ext` explicitly, `""` included, so a second instance never renames the
-first; a singleton service (`fram`, `neopixel`, `notification`)
-states none.
+first; a singleton service (`fram`, `neopixel`, `notification`,
+`mqtt`, `mqtt_link`) states none.
 
 The checked key table: one row per key the build accepts, per table, and per driver for the
 `[[instance]]` and `[instance.wiring]` tables (a table cell names the driver after the table). A
@@ -10883,6 +11240,10 @@ when the key is absent.
 | `[[instance]] neopixel` | `pin` | yes | a usable GPIO, claimed once device-wide | the pixel's data line |
 | `[[instance]] notification` | `driver` | yes | `"notification"` | the driver module |
 | `[[instance]] notification` | `name_ext` | no | absent or `""`: a singleton service | — |
+| `[[instance]] mqtt` | `driver` | yes | `"mqtt"` | the client module (A.12) |
+| `[[instance]] mqtt` | `name_ext` | no | absent or `""`: a singleton service | — |
+| `[[instance]] mqtt_link` | `driver` | yes | `"mqtt_link"`, on the bench board only | `dev`'s MQTT link exerciser (A.12) |
+| `[[instance]] mqtt_link` | `name_ext` | no | absent or `""`: a singleton service | — |
 | `[[instance]] uart_link` | `driver` | yes | `"uart_link"` | the driver module |
 | `[[instance]] uart_link` | `name_ext` | no | string, a suffix; default `""` | every derived name |
 | `[[instance]] uart_link` | `bus` | yes | a declared `[bus.uartN]` | `UARTLinkDriver`'s UART |
@@ -10900,6 +11261,8 @@ when the key is absent.
 | `[instance.wiring] notification` | `warn_co2` | no | `{source, field}` naming a `get_data()` field; the signal from `buildgen/signals.py`'s `WARN_SIGNALS` | one notification signal |
 | `[instance.wiring] notification` | `warn_voc` | no | `{source, field}`, as `warn_co2` | one notification signal |
 | `[instance.wiring] notification` | `warn_hum` | no | `{source, field}`, as `warn_co2` | one notification signal |
+| `[instance.wiring] mqtt` | `fram_target` | no | a `fram` instance | `log=` |
+| `[instance.wiring] mqtt_link` | `mqtt_target` | yes | the `mqtt` instance | `client=`: the client it exercises and logs through |
 | `[instance.wiring] uart_link` | `fram_target` | no | a `fram` instance | `log=` |
 <!-- /toml-schema-table -->
 
@@ -11346,7 +11709,8 @@ Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s `# @requi
 bus.timeout>=200000`/`bus.frequency<=100000` and `bus.frequency<=400000` respectively (`bmp3xx` is
 deliberately untagged — its datasheet supports every I2C mode); every optional-instance driver's
 `fram_target` (`kwarg`, optional, target `log`); `signal_sink` (`attr`, required, target
-`request_signal`); `led_target` (`kwarg` on `conn`, target `ext_led`); `asy_sgp40_driver.py`'s
+`request_signal`); `led_target` (`kwarg` on `conn`, target `ext_led`); `asy_mqtt_link_driver.py`'s
+`mqtt_target` (`kwarg`, required, target `client`); `asy_sgp40_driver.py`'s
 `temperature_source`/`humidity_source` (L.6.3, kwargs `temperature`/`humidity`); and
 `asy_bmp3xx_driver.py`'s `_LIMITS` (`address in {0x76, 0x77}`, `trigger_s 1..3600`) — the only
 driver with a real, datasheet-documented `_LIMITS` constraint today. Every other candidate field was
@@ -11998,7 +12362,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6); `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | host computation over the real schemas at `NTPHost`'s 253-character bound (2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6); `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | host computation over the real schemas at `NTPHost`'s 253-character bound (2026-11-12): the largest legitimate body is 1,692 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.21× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | each stream call of a connection (A.5; `tests/test_asy_webserver_connections.py`); the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), includes it once; `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; the bench resilience test's admitted silence plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` and `_RESET_ERRORS_BUDGET_S`; the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; the slowloris test's 30 s socket timeout sits above it and its 6 header lines × 3 s (18 s) run past it; the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), is it plus `web.per_call_timeout_s` and two 2,129 ms flash holds | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.poll_backoff_max_ms` | 60000 ms | `js/poll-manager.js` — `60000` | after the k-th consecutive failure of a section's GET the next attempt comes min(interval × 2^(k−1), this cap) later, back to the interval after one success (`tests_js/poll-manager.test.js` reads it with `readIntConst()`) | chosen (agent, 2026-09-30), no measurement owed | choice; one request per minute per failing section against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
@@ -12040,6 +12404,27 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ntp.retry_unsynced_s` | 60 s | `src/asy_ntp_client.py` — `60` | the wait after a failed unsynced attempt, counted in `ntp.check_interval_s` ticks | owner, 2026-11-03: "Then let's actually take 1 minute, easier to understand and not significantly more noise than 2." | one attempt a minute while the server stays away | the owner changes the retry schedule |
 | `ntp.plausible_min_unix` | 1735689600 (2025-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `1735689600` | every accepted NTP reply | estimated (agent, `90171f8`) — measurement owed: none: a floor below any real reply | predates the source itself | raise the lower bound to the release date at each release; any change of the NTP-era handling (2036 wrap) |
 | `ntp.plausible_max_unix` | 4102444800 (2100-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `4102444800` | every accepted NTP reply; below 2**32, the device clock's range | estimated (agent, `90171f8`) — measurement owed: none: a ceiling past the 2036 era wrap | past the 2036 era wrap, under 2**32 | review before 2099-01-01; any change of the NTP-era handling (2036 wrap) |
+| `mqtt.response_timeout_ms` | 10000 ms | `buildgen/codegen.py` — `10000`; `scripts/_digital_twin_ci_suite.py` — `10` | the CONNACK and PINGRESP deadlines; the keep-alive is the `MQTTPingInterval` setting plus it, in whole seconds (A.11) | estimated (agent, `93b0976`) — measurement owed: CONNACK and PINGRESP latency over the bench WiFi, L4 | unknown until measured | the network class changes |
+| `mqtt.connect_timeout_ms` | 10000 ms | `buildgen/codegen.py` — `10000` | below lwIP's ~18.5 s SYN abort, so the client closes an unanswered attempt first | estimated (agent, `93b0976`) — measurement owed: the TCP connect time to the bench broker, L4 | unknown until measured | lwIP's retransmission schedule changes |
+| `mqtt.backoff_min_ms` | 2000 ms | `buildgen/codegen.py` — `2000` | the first retry after a failed attempt or a lost connection | estimated (agent, `93b0976`) — measurement owed: the reconnect time after a broker restart, L4 | unknown until measured | the retry policy changes |
+| `mqtt.backoff_max_ms` | 60000 ms | `buildgen/codegen.py` — `60000`; `scripts/_digital_twin_ci_suite.py` — `60.0`; `tests_hardware/bench/test_mqtt_broker_faults.py` — `60.0` | the retry cap; the twin suite's `_MQTT_BACKOFF_CAP_S` and the bench module's `_BACKOFF_CAP_S` equal it (the reconnect waits after the faults); a long outage writes the FRAM log once a minute | estimated (agent, `93b0976`) — measurement owed: the reconnect time after a long outage, L4 | unknown until measured | the retry policy changes |
+| `mqtt.stable_after_ms` | 30000 ms | `buildgen/codegen.py` — `30000` | the backoff reset and the short-session episode end | estimated (agent, `93b0976`) — measurement owed: the session length a client-id takeover produces, L4 | unknown until measured | the retry policy changes |
+| `mqtt.qos1_retry_ms` | 10000 ms | `buildgen/codegen.py` — `10000` | a QoS 1 resend; × `mqtt.qos1_max_tries` before the give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK latency under load, L4 | unknown until measured | the network class changes |
+| `mqtt.drain_timeout_ms` | 5000 ms | `buildgen/codegen.py` — `5000` | the stalled-broker teardown; the drain yields, so the watchdog is not in play | estimated (agent, `93b0976`) — measurement owed: drain time against a slow reader, L4 | unknown until measured | the network class changes |
+| `mqtt.tick_ms` | 100 ms | `buildgen/codegen.py` — `100` | the keeper's write and PUBACK latency; the inbound QoS 1 rate the PUBACK queue absorbs | estimated (agent, `93b0976`) — measurement owed: the keeper's loop share, L4 | unknown until measured | the outbound rate changes |
+| `mqtt.link_poll_ms` | 1000 ms | `buildgen/codegen.py` — `1000` | how late a link loss ends a connection | estimated (agent, `93b0976`) — measurement owed: none: a link loss also ends the transport | unknown until measured | the WiFi service's detection changes |
+| `mqtt.idle_recheck_ms` | 60000 ms | `buildgen/codegen.py` — `60000` | how late a setting change reaches a disabled client without `reconnect()` | estimated (agent, `93b0976`) — measurement owed: none: the settings group calls `reconnect()` | unknown until measured | the settings path changes |
+| `mqtt.rx_buf_bytes` | 1024 B | `src/asy_mqtt_client.py` — `1024` | the largest inbound packet parsed; a larger one is discarded | estimated (agent, `93b0976`) — measurement owed: the inbound packet sizes a deployment sends, L4 | unknown until measured | a consumer needs larger messages |
+| `mqtt.tx_buf_bytes` | 640 B | `src/asy_mqtt_client.py` — `640` | the largest CONNECT (about 280 B) and a PUBLISH of a full slot (at most 521 B) | estimated (agent, `93b0976`) — measurement owed: none: derived from the schema bounds | 119 B over the largest PUBLISH | a topic, payload or credential bound changes |
+| `mqtt.out_slots` | 8 | `src/asy_mqtt_client.py` — `8` | the messages queued or in flight at once: `online` and the wired partners' publishes; on `dev` the exerciser's probes, one per `mqtt_link.exercise_period_ms`, each held until its PUBACK or its give-up | estimated (agent, `93b0976`) — measurement owed: the queue depth under an outage, L4 | four slots over `dev`'s worst: `online` and three probes in flight while `mqtt.qos1_max_tries` × `mqtt.qos1_retry_ms` spans three periods | a wired partner publishes more per period |
+| `mqtt.out_payload_max` | 384 B | `src/asy_mqtt_client.py` — `384` | the largest payload a wired partner can publish, a longer one refused and counted (`MQTTTxDropped`); `mqtt.tx_buf_bytes` holds a PUBLISH of a full slot | estimated (agent, `93b0976`) — measurement owed: none while no module publishes values: `dev`'s exerciser sends 4 B and the status messages are at most 64 B (agent, 2026-11-12) | 320 B over the status messages | a sensor service publishes over MQTT (A.12) |
+| `mqtt.ack_slots` | 32 | `src/asy_mqtt_client.py` — `32` | above mosquitto's default in-flight window (20) | estimated (agent, `93b0976`) — measurement owed: none: the broker's window bounds it | 12 slots | the broker's window changes |
+| `mqtt.last_topic_bytes` | 64 | `src/asy_mqtt_client.py` — `64` | `MQTTLastRxTopic`'s length | estimated (agent, `93b0976`) — measurement owed: none: a display bound | a longer topic shows cut at 64 bytes | the status page changes |
+| `mqtt.max_out_backlog` | 2048 B | `src/asy_mqtt_client.py` — `2048` | the stalled-broker teardown | estimated (agent, `93b0976`) — measurement owed: the backlog a slow reader produces, L4 | unknown until measured | the outbound rate changes |
+| `mqtt.qos1_max_tries` | 3 | `src/asy_mqtt_client.py` — `3` | the QoS 1 give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK loss on the bench, L4 | unknown until measured | the retry policy changes |
+| `mqtt.short_session_warn` | 3 | `src/asy_mqtt_client.py` — `3` | the short-session warning | estimated (agent, `93b0976`) — measurement owed: the session pattern a takeover produces, L4 | unknown until measured | the retry policy changes |
+| `mqtt.unconfirmed_max_bytes` | 2000 B | `src/asy_mqtt_client.py` — `2000` | the connection's share of lwIP's `MEM_SIZE` (`toolchain/versions.toml`: limit × 2,000 B); the bytes written that no PINGRESP has confirmed; `tests/test_asy_mqtt_client.py` reads it from the source (`src_int()`) | owner decision (owner, 2026-10-08: 'Cap at 2,000 B (Recommended)') | the whole share, by definition | `MEM_SIZE`'s per-connection rule changes |
+| `mqtt_link.exercise_period_ms` | 10000 ms | `src/asy_mqtt_link_driver.py` — `10000` | the dev exerciser's probe rate and the time a probe has to come back before it counts as a failure; each probe draws the ping that confirms a publish (A.12), so a connected `dev` sends one PINGREQ per period | estimated (agent, 2026-11-12) — measurement owed: the probe's round trip through the bench broker under the bench's API load, L4 | a LAN round trip of milliseconds against 10 s; a probe resent after `mqtt.qos1_retry_ms` (10 s) comes back stale and counts nothing | the exerciser's traffic or the broker's place in the network changes |
 | `wifi.hotspot_stations_settle_ms` | 100 ms | `src/asy_wifi_service.py` — `100` | the stations query needs no other status command close before it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:258` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_down_settle_s` | 2 s | `src/asy_wifi_service.py` — `2` | after `disconnect()` and `active(False)` in the mode switch | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:157` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_deinit_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after `deinit()` | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:160` | unknown until measured | the CYW43 driver or the pin moves |
@@ -12180,7 +12565,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ci.unit_tests_timeout_min` | 175 min | `.github/workflows/ci.yml` — `175` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 10.4 min (run `39335426899`, the toolchain built inside `scripts/test.sh`), warm 8.9 and 9.7 min (runs `39344544377`, `38777834467`); largest single retry one `scenarios[<device>]` job's `runner.scenarios_timeout_s` × `runner.per_file_attempts`, about 128 min (one file's is 12); B.10.1's budget rule | 1.27× the warmer run plus one hung scenario job's retry budget, so its `FAIL` and the summary block print before CI cancels; that budget rests on the bench Pi4's unmeasured scenario time: measure on the bench | the job's steps or its tier grows, the toolchain cache key changes, or `runner.scenarios_timeout_s` or `runner.per_file_attempts` changes |
 | `ci.unit_tests_gc_threshold_timeout_min` | 175 min | `.github/workflows/ci.yml` — `175` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 14.0 min (run `39335426899`, the toolchain built inside `scripts/test.sh`; one scenario failed, no attempt was retried, so the whole suite ran), warm 10.1 and 9.0 min (runs `39344544377`, `38777834467`); largest single retry one `scenarios[<device>]` job's `runner.scenarios_timeout_s` × `runner.per_file_attempts`, about 128 min (one file's is 12); B.10.1's budget rule | 1.27× the warmer run plus one hung scenario job's retry budget, so its `FAIL` and the summary block print before CI cancels; that budget rests on the bench Pi4's unmeasured scenario time: measure on the bench | the job's steps or its tier grows, the toolchain cache key changes, or `runner.scenarios_timeout_s` or `runner.per_file_attempts` changes |
 | `ci.unit_tests_coverage_timeout_min` | 95 min | `.github/workflows/ci.yml` — `95` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 11.7 min (run `39335426899`, restoring the cache `unit-tests` saved: it needs that job), warm 12.1 and 14.2 min (runs `39344544377`, `38777834467`); largest single retry the pytest tier's `runner.tests_scripts_timeout_s` × `runner.per_file_attempts`, 60 min (`--coverage` runs no scenario job; one file's is 12), so (14.2 + 60) × 1.25 = 92.7, rounded up; B.10.1's budget rule | 1.28× the warmer run plus a hung tier's retry budget, so its `FAIL` and the summary block print before CI cancels | the job's steps or its tier grows, or `runner.tests_scripts_timeout_s`, `runner.per_file_timeout_s` or `runner.per_file_attempts` changes |
-| `ci.digital_twin_e2e_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 10.6 min (run `39335426899`, restoring the cache `unit-tests` saved: it needs that job), warm 10.1 and 9.3 min (runs `39344544377`, `38777834467`), the slowest leg each time `dev` at 32768, the suite part; each leg now also runs the one exclusive-port-53 scenario (E.9), 54.5 s and 54.6 s for `dev` at -1 and 32768 on the shared x86 host (2026-11-04, single observation each); largest single retry none, its longest single bounded wait the escalation run's 2 min; B.10.1's budget rule | 1.54× the warmer leg, that scenario and that wait | the job's steps or its tier grows |
+| `ci.digital_twin_e2e_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 10.6 min (run `39335426899`, restoring the cache `unit-tests` saved: it needs that job), warm 10.1 and 9.3 min (runs `39344544377`, `38777834467`), the slowest leg each time `dev` at 32768, the suite part; each leg now also runs the one exclusive-port-53 scenario (E.9), 54.5 s and 54.6 s for `dev` at -1 and 32768 on the shared x86 host (2026-11-04, single observation each); largest single retry none, its longest single bounded wait the escalation run's 2 min; B.10.1's budget rule; `dev`'s legs also run Run 14, the MQTT client's, about 114 s per pass on the twin (agent, 2026-10-08), not yet measured on the runners | 1.54× the warmer leg, that scenario and that wait; 1.34× with `dev`'s Run 14 | the job's steps or its tier grows |
 | `ci.firmware_build_verify_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | the backstop of the ARM apt download, which has no limit of its own (B.4), and the bound the firmware set's required mirror rate is sized on (`ci.apt_mirror_rate_margin`), read from this tag by the job's `apt-packages` step | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 2.1 min (run `39335426899`, restoring the cache `unit-tests` saved), warm 2.9 and 2.5 min (runs `39344544377`, `38777834467`); B.10.1's budget rule, with 10.5 min kept for the ARM apt download (the worst case of the per-attempt limits it had until 2026-11-10) | 1.5× the warmer run plus 10.5 min for the apt download | the job's steps or its tier grows |
 
 **Runners (`scripts/`)**

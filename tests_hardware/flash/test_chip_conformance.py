@@ -166,7 +166,7 @@ def test_isl29125_matches_its_twin_fake(board: Board, result_note: _ResultNote) 
 
 
 # Recorded, not judged: the datasheet states no reaction to either write. Up to three NVM writes, restored in the script.
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 @pytest.mark.scd30_extra_write
 def test_scd30_argument_reaction_is_recorded(board: Board, scd30_measuring: str, result_note: _ResultNote) -> None:
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "scd30_argument_reaction.py", timeout_s=_ARGUMENT_REACTION_TIMEOUT_S))
