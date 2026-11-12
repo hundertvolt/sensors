@@ -312,10 +312,12 @@ the twin layout of `scripts/micropypath.toml` (`micropypath twin` of `scripts/_u
 it; the runner puts `digital_twin/unixport` on its own path):
 
 ```bash
-MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json --device <device> [flags]
+MICROPYPATH="build/portable_src:build/generated_src:src:digital_twin:fakes:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json --device <device> [flags]
 ```
 
-`build/generated_src` is listed first so `import sensortask_<device>` resolves to the freshly
+`build/portable_src` holds files only on a host not known to compile native code: copies of the
+`src/` modules with a native function, each importing its plain twin from `fakes/`.
+`build/generated_src` comes before `src` so `import sensortask_<device>` resolves to the freshly
 buildgen-generated module, not any same-named file that might otherwise be found later on this
 path — no static `src/sensortask_<device>.py` exists any more. `frozen_modules` is required here too
 (see `SPECIFICATION.md` Part A.9 for the full pipeline) — the generated module does an
@@ -404,7 +406,7 @@ predictable path before any test file runs; every other import the generated mod
 e.g. `asy_i2c_driver`, still falls through to `src/`):
 
 ```bash
-MICROPYPATH="/tmp/twin_boot:src:digital_twin:ext:.frozen" <micropython-unix-port-binary> \
+MICROPYPATH="/tmp/twin_boot:build/portable_src:src:digital_twin:fakes:ext:.frozen" <micropython-unix-port-binary> \
     digital_twin/run_generic_integration.py --module sensortask_novel_combo \
     --wiring-plan /tmp/twin_boot/wiring_plan.json --device novel_combo --host 127.0.0.1 --port 8080
 ```

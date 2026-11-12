@@ -5318,8 +5318,8 @@ scripts/_run_checks.sh mpy:tests/test_math_helpers.py
 The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
 them there (`scripts/_unix_port.sh`'s `micropypath`, `tomllib`, `tests_js/_micropypath.js`), and
 `tests_scripts/test_twin_never_needs_tests_on_its_path.py` fails a twin launch whose path is spelled
-out instead or reaches `tests/`. Both start with `build/portable_src/`, which holds files only on a host whose
-Unix port compiles no native code (F.1).
+out instead or reaches `tests/`. Both start with `build/portable_src/`, which holds files only on a host not
+known to compile native code (F.1).
 
 `.frozen` is required in `MICROPYPATH` because it replaces the interpreter's default `sys.path`
 rather than extending it, and the default path is what makes frozen-in modules (`asyncio` included)
@@ -5348,9 +5348,9 @@ cannot remove <file>: <strerror>`, exit 1) and writes two stamps last, `.inputs_
 sha256 of every input it read and the name of every file it left) and
 `definitions/inputs_stamp.json` (each TOML's sha256, which the JS loader checks, H.8) — and
 `build/generated_src` prepended to `MICROPYPATH` (ahead of `src`) so the generated module resolves
-before anything else. `scripts/test.sh`/`scripts/typecheck.sh` already do both automatically;
-running one such file directly, as the invocation above does for `test_math_helpers.py`, needs them
-done by hand first or the import fails with `ImportError: no module named 'sensortask_wozi'`. A file
+before anything else. `scripts/test.sh`/`scripts/typecheck.sh` already do both automatically, and
+the `mpy:` invocation above regenerates a stale tree first; running one such file any other way needs
+them done by hand first or the import fails with `ImportError: no module named 'sensortask_wozi'`. A file
 that imports a generated module or reads a plan first calls `tests/_generated_tree.py`'s
 `require_fresh()`, which refuses a missing tree, a changed input, a missing output, an orphan or an
 empty list with `build/generated_src/ is missing or stale - run: uv run
@@ -5549,7 +5549,9 @@ public one keeps the store and therefore does register — which is why `ROLE_IN
 show as covered in `asy_uart_comm.py` while all 58 of its `_`-prefixed constants do not. A decorated function's traced
 event lands on the decorator line, not the `def` line, so every `@staticmethod`/`@classmethod`
 shows missed even when called throughout the suite. A `@micropython.viper` body runs as native code and
-fires no line event at all, so every line of it shows missed (F.1; `build-settrace`, 2026-11-09). A bare `while True:` header never fires its own
+fires no line event at all, so every line of it shows missed (F.1; `build-settrace`, 2026-11-09). On a host not
+known to compile native code the modules holding such a function run from their `build/portable_src/` copies (F.1),
+which the runner does not trace, so all of each reads as missed there; CI's coverage job runs on x86-64. A bare `while True:` header never fires its own
 trace event at any iteration (folds into an unconditional jump at compile time). Nor does a
 multi-line statement's continuation line, an `else:` or `finally:` header, or a `pass` that is an
 `if` body (a `pass` in a loop body does fire), each confirmed on `build-settrace` with a probe
@@ -6207,11 +6209,12 @@ v1.29.0); a plain `mpy-cross` refuses such a module. The limits that bind: no de
 the Unix port, so a result is masked to its width; no 64-bit product; a body runs without the
 scheduler (docs `reference/speed_python.rst`). ruff reads the viper names as builtins
 (`pyproject.toml`), and mypy wants one `arg-type` ignore per function. The Unix port compiles native code
-on x86, x86-64, 32-bit ARM and RV32 only (`ports/unix/mpconfigport.h:67-85`, v1.29.0), so on an arm64 host
-(the bench Pi4) `scripts/_generate_sensortask_modules.py` copies each such module into `build/portable_src/`,
-first in both `scripts/micropypath.toml` layouts, with the function swapped for its plain twin in
-`fakes/_native_twins.py`; `tests/test_native_twins.py` proves each twin equal to its original where native code
-compiles (CI), and a native function with no twin fails the generator on every host.
+on x86, x86-64, 32-bit ARM and RV32 only (`ports/unix/mpconfigport.h:67-85`, v1.29.0), so on any other host
+(arm64: the bench Pi4) `scripts/_generate_sensortask_modules.py` copies each such module into `build/portable_src/`
+as part of regenerating a stale tree (its stamp hashes `src/` and the twins, E.3), first in both
+`scripts/micropypath.toml` layouts, with the function swapped for its plain twin in `fakes/_native_twins.py`;
+`tests/test_native_twins.py` proves each twin equal to its original where native code compiles (CI), and a native
+function with no twin, or not a module-level `def`, fails the generator on every host.
 
 **Which stores wear.** The flash filesystem (W25Q16JV: at least 100K program-erase cycles per
 sector, datasheet section 2) and the SCD30's NVM (no published endurance figure, M.2) are the
