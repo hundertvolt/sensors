@@ -150,6 +150,16 @@ class FRAM_SPI:
             self._wp_pin.value(not value)  # WP active-low, see setup()
         return status
 
+    def _begin_or_refuse(self) -> bool:
+        # begin() for a public call that never raises on a live bus: another device's async session holding it is a
+        # refusal, logged as the chunk layer's _begin() logs it.
+        try:
+            self.begin()
+        except Exception as e:
+            self.pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
+            return False
+        return True
+
     def _check_device_id(self) -> bool:
         expected_prod_id = _KNOWN_PRODUCT_IDS.get(self._max_size)
         if expected_prod_id is None:
@@ -300,16 +310,6 @@ class FRAM_SPI:
         if status & _W_WEL_STUCK:
             self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=_WRN_FRAM_WEL_STUCK)
         self.pr.evt("FRAM Write Protection set to", value)
-        return True
-
-    def _begin_or_refuse(self) -> bool:
-        # begin() for a public call that never raises on a live bus: another device's async session holding it is a
-        # refusal, logged as the chunk layer's _begin() logs it.
-        try:
-            self.begin()
-        except Exception as e:
-            self.pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
-            return False
         return True
 
     def begin(self) -> None:
