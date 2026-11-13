@@ -1279,9 +1279,6 @@ submodule update --init datasheets`; SPECIFICATION.md Part A.6).
   peer's C implementation must mirror, and the Python-internal ones recorded as having no C impact;
   kept until the post-audit C reconciliation deletes it (owner, 2026-09-25). The protocol itself is
   SPECIFICATION.md Part J, permanent.
-- **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** and **[`audit/`](audit/)** — the whole-project
-  audit's plan, topic catalog and working records; outside the lint/typecheck scopes, deleted when the
-  audit closes and its outcomes are migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated; for anything bench-related, BACKLOG.md's

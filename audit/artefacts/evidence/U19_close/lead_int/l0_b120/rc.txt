@@ -1,4 +1,0 @@
-lint rc=0
-tc noargs rc=0
-tc ci rc=0
-pytest rc=1

@@ -1,2 +1,0 @@
-55 passed in 5.87s
-real	0m6.094s

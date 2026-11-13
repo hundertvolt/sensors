@@ -1,1 +1,0 @@
-Identical to c11ca0a:src/asy_captive_dns.py; the evidence keeps this pointer, never a copy of the source.

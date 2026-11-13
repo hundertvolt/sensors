@@ -1,3 +1,0 @@
-Traceback (most recent call last):
-  File "tests/test_asy_dns_client.py", line 23, in <module>
-ImportError: can't import name DNS_FAILED
