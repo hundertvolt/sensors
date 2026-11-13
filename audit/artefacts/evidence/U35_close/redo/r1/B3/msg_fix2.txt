@@ -1,8 +1,0 @@
-U35: storage: Run 3's bound test stubs the /status read its setup-write count now takes
-
-The bound test stubbed the twin's spawn and serve wait but not the errcount read Run 3
-now makes, so every case failed on a refused connection. It now stubs that read and adds
-two cases: a FRAM-backed logger adds one setup attempt, FRAM's in-memory log adds none.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

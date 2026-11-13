@@ -1,3 +1,0 @@
-lint rc=0
-tc rc=0
-test rc=0

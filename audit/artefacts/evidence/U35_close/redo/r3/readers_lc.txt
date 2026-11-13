@@ -1,2 +1,0 @@
---twin
-tests_hardware/flash/test_modlwip_listener_close.py

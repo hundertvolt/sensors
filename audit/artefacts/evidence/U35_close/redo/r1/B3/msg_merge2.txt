@@ -1,4 +1,0 @@
-U35: merge R1 B3's second fix (Run 3's bound test stubs the /status read)
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

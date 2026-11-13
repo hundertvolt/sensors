@@ -1,7 +1,0 @@
-Bench campaign: round 1's precheck answered; the uv pin, a failed wear step ends the range, the pass record reads to the end [skip ci]
-
-The bench session's PRECHECK_20261105.md findings 1-3 fixed in round1.sh; the ring (finding 4) is sized in the tree
-(snapshot 37, merged next); HANDOVER.md answers every item and holds images until snapshot 37's CI is green.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
