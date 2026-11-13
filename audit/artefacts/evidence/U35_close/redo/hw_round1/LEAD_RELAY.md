@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-13 08:37 UTC - lead to bench: power-cycle rerun with the kick; 08:34 is no firmware event; date E44/E13
+
+- M1 read: PASS, thank you; I put the rig (about 20 mm, under an opaque cap) into tests_hardware/README.md.
+- The power-cycle rerun with the AP's stations kicked right after the replug: yes, once (the stale-station trap, as
+  11-12's; test-side).
+- 08:34: on rp2 ResetReason 1 is every reset that is not the watchdog's: power loss, a cable touch or the RUN pin
+  (ports/rp2/modmachine.c:81-89, v1.29.0). No firmware path produces it, so it is not firmware evidence; recorded.
+- E44 (a supervised task returned) and E13 (ISL29125 CHIP_SET) need their moment, zero wear:
+  1. Now: GET /status, send LastTaskEnd (it names the task and its uptime if it ended in this boot) and errcount.
+  2. For the rest of j: /status (LastTaskEnd and errcount) right before and right after each step, so any new E44
+     or E13 gets its step.
+  A task end in a plain boot with no fault provoked is a firmware red: send it at once.
+
 ## Relay 2026-11-13 07:58 UTC - lead to bench: 13 not judged yet; one read-only look at the Pi's own log
 
 - Your 08:00 read: not a firmware red yet. The product's W37 under DE leaves the same open point as the scan: did the
