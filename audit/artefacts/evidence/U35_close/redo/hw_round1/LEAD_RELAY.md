@@ -1,5 +1,24 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-13 07:39 UTC - lead to bench: 13 again, the Pi on DE, the DE pass only
+
+- Your 07:00 read: inconclusive, not red. The bench AP was heard on no channel, so most likely the Pi never beaconed
+  on 13 (its regulatory country not DE keeps 12-13 closed to transmitting). The XX cut is my script's bug: its 8 s
+  watchdog is unfed across the radio re-init between the passes.
+- The owner, 2026-11-13 07:39:19 UTC: "Yes, go ahead" (asked: read the Pi's Wi-Fi country, set it to DE until the
+  next reboot if it is not, rerun the scan). The owner's OK covers these iw calls; your session may still ask them.
+  1. `iw reg get`: send the global country line and the phy's.
+  2. If not DE: `iw reg set DE` (runtime only, gone at the next reboot; change no file), then `iw reg get` again.
+  3. Your local country_scan.py copy: CODES = ("DE",). The XX pass goes: it is not judged and it holds the bug.
+     Do not commit the copy.
+  4. The access point to channel 13 as at 06:45 (B.13 timers). Then `iw dev` on the access point's interface: does
+     it report channel 13? If not, put the access point back on 6, stop and tell me.
+  5. `CH13=1 run 13`. Pass: the DE pass hears channel 13 at least once. A beaconing access point on 13 that the DE
+     pass does not hear is a firmware red: send it.
+  6. The access point back on 6, band bg; the board rejoins (/status 200, ConfigFaults [], no task ended). The Pi
+     keeps DE until its next reboot. Send the iw lines and the SUM line.
+  Never touch br0 or eth0. Wear: none.
+
 ## Relay 2026-11-13 06:43 UTC - lead to bench: 13 on your own access point now; 06:24's red read
 
 - The owner, 2026-11-13 06:43:04 UTC: "Let the bench run it on its own network". So 13 needs no owner hands; run it
