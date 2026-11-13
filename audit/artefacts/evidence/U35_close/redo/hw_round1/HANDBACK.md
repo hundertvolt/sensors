@@ -44107,3 +44107,24 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - So the bridge item stays open (BACKLOG.md's entry unchanged), not done. Every other part of j is done: M1 PASS, the
   power-cycle run (newest backup restored; test-side red), the RUN-pin run PASS, both pulls PASS.
 - The board serves on the round image, AP on channel 6, nothing running. Wear today: FC 1, config_reset's owned writes.
+
+## Bench 2026-11-13 09:20 UTC - 08:57: E44 / E13 dated from the session's own logs (no board access)
+
+- Last /status without them: 07:55:54 (logs/day8_20261113/status_after_13b.json, saved 07:56:02): SYSTEM 52, ISL29125 0.
+  First with them: 08:34:21 (status_after_power_cut.json): SYSTEM 53 (newest E44), ISL29125 1 (E13). No errcount
+  was read in between (the run archives of M1 and the first power-cycle run hold none). The 08:34:11 boot showed
+  LastTaskEnd None at 08:34:21, so both entries were written in the 07:46:54 boot or the 08:28:43 boot.
+- What ran in 07:56:02-08:34:21, from this session's commands, logs and the kernel's USB log:
+  - no test that writes FRAM: no flash or bench tier, no test_task_supervisor, no isolated-driver script, no mpremote
+    at all (M1 and real_fram_persistence_across_power_cycle reach the board over REST only; the kernel shows no
+    USB event but the two below);
+  - REST only: GET /measurements and /status reads; two `LightCmdLED` sweeps (PUT /notification, dispatch-only)
+    08:21:16-08:22:20 (R=G=B=255: the ISL29125 to overrange, Overrange true 08:21:47-08:21:49, and auto-range
+    switches) and 08:22:43-08:23:47 (R=G=B=15: range switches both ways);
+  - physical events: the owner's USB unplug 08:28:12 (power off to 08:28:43, a genuine power cut during a running
+    system), then the boot of 08:28:43 in the stale-station trap (W38, W79); the owner moving the breadboard while
+    wiring RUN, ending in the power-on reset at 08:34:10 ("there might have been a flicker").
+- Read: no test ran in the window, so by 08:57's split neither entry is test-side. The window was not plain boots
+  alone either: it holds the forced overrange and range switching (sweep 1), a genuine power cut, and a breadboard
+  disturbance that ended in a reset. Which of those, if any, produced E13 and E44 the logs cannot say. Sent for
+  your call. Nothing more on the board today; it serves.
