@@ -44128,3 +44128,22 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   alone either: it holds the forced overrange and range switching (sweep 1), a genuine power cut, and a breadboard
   disturbance that ended in a reset. Which of those, if any, produced E13 and E44 the logs cannot say. Sent for
   your call. Nothing more on the board today; it serves.
+
+## Bench 2026-11-13 09:35 UTC - E13 + E44 are one failed ISL29125 init at a boot, restarted by the supervisor (code reading, no board access)
+
+- The owner, 2026-11-13: "We are not done with the error entries"; on the breadboard move: "it flickered more than
+  once, and there might have been multiple incomplete boot attempts or brownouts".
+- Code: the ISL29125 read task (`_read_loop`, src/asy_isl29125_driver.py:778) returns in two cases only: `_init_isl()`
+  failing at task start (:780), or `_error_check` counting too many read errors (:787). The log holds no read error,
+  so the second is out. `_init_isl()` logs E13 "Error setting config data" when its one `configure()` burst raises
+  and returns False; the task then returns, and the supervisor logs E44 "Task ... ended: returned"
+  (src/asy_system_service.py:306) and restarts it. E13 (newest in ISL29125) and E44 (newest in SYSTEM) are that trace.
+  The sensor read normally afterwards, so the restart succeeded: the recovery ladder's task-restart rung.
+- Not a mid-run sensor brownout: a sensor reset under a running Pico takes `_check_divergence` (:421), which logs
+  W ISL_DIVERGED first and never ends the task. No such warning is in the log.
+- Not an extra Pico boot at 08:34: the kernel logs one USB disconnect per RP2040 reset, and 07:46-08:35 shows exactly
+  three (07:46:54 the scan's reset, 08:28:43 the owner's replug, 08:34:11 the breadboard move). The 08:34:11 boot had
+  no task end, so the init failure was at 07:46:54 (a warm reset, the sensor powered throughout) or 08:28:43 (a cold
+  power-up of board and sensor after the 31 s cut, the plug-in a candidate for the owner's flicker). The logs cannot
+  pick between them.
+- Open: why the first configure() failed at that boot. Not judged here; the handling is the designed one.
