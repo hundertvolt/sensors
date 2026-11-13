@@ -11765,7 +11765,8 @@ board (owner, 2026-09-13, `05f4746`: 'Do not re-raise it as actionable').
 
 The SCD30 has no repeated start (Interface Description 1.1), so every read is a write, the wait,
 then a separate read; the 50 ms is inside the device-session hold, with the bus free across it for
-the siblings (bench check owed). Each read-task (re)start,
+the siblings, which share `dev`'s i2c1 with it (silicon: the 6 h HTTP soak of 2026-11-12 logged no
+SCD30 error). Each read-task (re)start,
 supervisor restarts included, sends a soft reset and waits 2 s and never a start-continuous
 command (owner, 2026-09-26). The soft reset (0xD304) puts the sensor into its power-up state
 (Interface Description 1.4.10); a power loss within ASC's first 7 days aborts its parameter search
