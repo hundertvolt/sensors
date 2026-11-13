@@ -43967,3 +43967,26 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   bench AP on no channel, which is what an AP the Pi's regulatory domain keeps off 12-13 would look like. Reading the
   Pi's regdom or the radio's channel takes `iw`, outside the owner's rule, so not read; no regulatory setting changed.
   Stopped here as 06:43 asks. Wear: none.
+
+## Bench 2026-11-13 08:00 UTC - 07:39: 13 again; the AP really on 13 (iw), the DE pass cut before its line; the product, country DE, did not find the AP on 13
+
+- The second AP move was blocked by the session's permission check (my 06:50 OK was for one run); asked the owner in
+  session: "Yes, once more".
+- 1. `iw reg get`: `global` / `country DE: DFS-ETSI` (2400 - 2483 @ 40); `phy#0` / `country 99: DFS-UNSET`
+  (2402 - 2482 @ 40, 2474 - 2494 @ 20, both (6, 20)). 2. Global already DE: nothing set, no file touched.
+  3. country_scan.py CODES = ("DE",) in place, run, then `git checkout` (never committed; the tree is clean).
+- 4. AP to 13, 07:46:36-07:46:41, B.13 timer armed/disarmed as at 06:45 (no timer left). `iw dev`: `type AP` /
+  `channel 13 (2472 MHz), width: 20 MHz, center1: 2472 MHz`. The radio was on 13.
+- 5. `CH13=1 run 13` 07:46:49-07:46:59, rc=1: no SUM line. The board left USB at 07:46:53 (kernel: USB disconnect;
+  back 07:46:54), about 4 s in, before the DE pass printed; mpremote's host-side Errno 5. The pass verdict is
+  therefore missing, not red. Why the board reset so early (06:45's run got the DE line out at about 8 s) I cannot
+  tell from what I hold.
+- The product's own evidence, with the AP beaconing on 13: the board booted at 07:46:54 under the product (country DE:
+  GET /networking "Country": "DE", src default DE), logged WIFI W37 "the access point was not found", then W79 to its
+  hotspot; the AP's station list stayed 0 until 07:52:14, the board's STA attempts ending once the hotspot opened.
+  By 07:39's criterion this is the shape of a firmware red (an AP beaconing on 13 that a DE board does not find), from
+  the product's connect rather than the DE pass. Not judged here.
+- 6. AP back to 6, 07:52:22-07:52:27 (timer armed/disarmed, none left), `iw dev`: channel 6 (2437 MHz), band bg.
+  The board rejoined by itself at 07:55:54 after the 8 min hotspot window: STA, ResetReason 21, ConfigFaults [],
+  no task ended, MemFree 77040. Logs since 07:00: WIFI 7 -> 14 (W37, W79 again), SGP40 15 -> 23 (W65, W34, W35).
+- The Pi keeps global DE (it already had it). Wear: none.
