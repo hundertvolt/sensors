@@ -43847,3 +43847,31 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - Day 7: 7 flash cycles (ledger logs/day7_20261112/fc_ledger.txt), 1 filesystem write (config_MQTT.cfg removed).
   The plan and the three 15:05 items done. The trixie chroot stays at /home/nico/chroots/trixie.
 - The later window, unchanged: j (M1 first), 16b's power-cycle half, 13, the BMP3XX forced-mode conversion-time read.
+
+## Bench 2026-11-13 05:45 UTC - day 8 window open; the BMP3XX conversion-time read done (zero wear)
+
+- The owner, 2026-11-13 ~05:33 UTC: "Ready for another 16 hours" -> window 05:33-21:33 UTC; STOP removed. Asked which
+  owner steps fit today (j/M1, 13's channel-13 AP, 16b's power cycle), the owner: "Go ahead with what you can do, I
+  will tell you when I have time". So the BMP3XX read ran now; j, 13 and 16b wait for the owner's word.
+- The bench host rebooted ~05:28 (USB power cut to the board): GET /status 05:36 read ResetReason 1 (power-on),
+  SysUptime 564, ConfigFaults [], no task ended. Error logs read before anything ran (logs/day8_20261113/
+  status_before.json): against 11-12 14:12, WIFI 25 -> 37, SGP40 32 -> 49 (W33/W35, the known boot-time no-timestamp
+  warnings), CFGMGR_* W22 from 7b's config reset; BMP3XX, SCD30, SYSTEM, NTP, NOTIFY, UART 0. Nothing cleared.
+- BMP3XX read (lead 11-12 12:04): one isolated bounded run 05:37:26-05:38:29 (logs/day8_20261113/scratch_scripts/
+  bmp3xx_conv_time*.py, output bmp3xx_conv_time_0537.out). Chip ID 0x50, bus i2c0 at 50 kHz as dev.toml. The board's
+  configured OSR is x1/x1 (GET /sensors PresOvers 1, TempOvers 1; register 0x1C = 0), so both it and the spec row's
+  x32/x32 were measured; OSR restored to 0 (read back). Volatile registers only, no flash or NVM write.
+  - Time from the forced-mode write to STATUS drdy_press|drdy_temp, polled, n=40 each (includes the 3-byte write and
+    up to one 854 us STATUS read of polling granularity):
+
+    | OSR p/t | min us | median us | max us | datasheet typ us | driver wait ms | ready after the driver's wait |
+    |---|---|---|---|---|---|---|
+    | x1/x1 (configured) | 5816 | 5825 | 5912 | 4829 | 7 | 40/40 |
+    | x32/x32 | 129158 | 129244 | 130086 | 130069 (DS002 3.9.2) | 158 | 40/40 |
+
+  - Read: every conversion finished inside `_conversion_wait_ms()` with margin (x1/x1 at least 1.09 ms, x32/x32 at
+    least 27.9 ms, both on the overhead-including upper bound), and the driver's own shape (one sleep, one STATUS read)
+    found data ready 80/80. The x32/x32 conversion sits at its typical value; SPECIFICATION.md's BMP3XX row
+    "bench check owed" can read this.
+- After: GET /status 200, ResetReason 21 (the script's Ctrl-C), ConfigFaults [], error counters unchanged, BMP3XX 0.
+- Wear today: FC 0, FS 0, NVM 0. The board is serving on the round image. Next: j, 13, 16b when the owner says.
