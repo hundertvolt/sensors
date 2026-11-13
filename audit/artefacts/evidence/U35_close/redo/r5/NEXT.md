@@ -229,3 +229,21 @@
   bus below POR / during power-up. Designed handling, no firmware change; not seen at later boots. Owner words
   recorded 09:03:46. Relay 40 pushed (bench d7449cbf): 39 withdrawn, closed. REPORT_DRAFT updated.
   Next: snapshot (PARENT fa5cd8ae) with int c5dedfe5 = final tree; report header after CI.
+
+- 2026-11-13 09:0x UTC: snapshot 69 d06bc16c pushed (PARENT fa5cd8ae; int c5dedfe5; 9 files; PAT 0); CI push run
+  43398587932 queued 09:06:46 (the PR 107 run follows). Next PARENT = d06bc16c once green. D preconditions: bench
+  round read (no firmware red), 7f ran 11-12, 16b half dropped, 13 stopped by the owner, j done; left: CI green on
+  69 and the owner's agreement to close (asked now, one plain question). D step 5 record corrections are mine.
+
+- 2026-11-13 09:1x UTC: owner 09:09:30 "Yes, but do not merge anything yet" (recorded): D runs up to the PR, no
+  merge. Bench 09:15: owner-asked no-touch rerun (both sweeps, 5 warm reboots): no E13/E44 (recorded 09:10:18).
+  Owner asked if the bench is done / still needs watching: told yes done, no watching needed.
+  D prep: REPORT_DRAFT final (header, section 9; <S69> to fill with CI); int delete commit 6a18755a (audit/,
+  PROJECT_AUDIT_PLAN.md, README Further-reading bullet; 14,054 files), checks ddelete green (readers 972).
+  Waiting: CI run 43398601541 on snapshot 69. Then: archive commit A (snapshot.sh tree + audit/FINAL_REPORT.md,
+  parent d06bc16c) -> claude/u35-audit-archive; delete commit (int 6a18755a tree, parent A) -> audit branch; CI;
+  PR 107 retitled release 2.0, not merged.
+
+- 2026-11-13 09:15 UTC: bench day 8 ended on the owner's word (recorded 09:15:34); end note abd3a6cd; board serving the 840a2213 image; wear today FC 1 + config_reset owned writes. First twin run on 6a18755a died at toolchain setup (proxy outage, git fetch exit 128, no test ran); rerun ddelete_twin_dev2 started.
+- 2026-11-13 09:1x UTC: twin rerun also died at setup: run.sh runs under unshare -n and the toolchain has no toolchain-record.json, so setup rebuilds and needs the network. Local twin on 6a18755a skipped: the commit removes only files no code reads (git grep: two scan-exclusion lists), lint/mypy/readers green, and CI runs the full twin suite on every device on the push before any merge. Waiting on run 43398601541 (background wait bapgp0m0o).
+- 2026-11-13 09:31 UTC: CI on snapshot 69 green (run 43398601541, 27/27; PR 107 is subscribed: check_suite event arrived). Report <S69> filled. Building archive commit A from c5dedfe5 (not 6a18755a) + audit/FINAL_REPORT.md, parent d06bc16c.

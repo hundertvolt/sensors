@@ -1783,3 +1783,15 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-13 09:03:46 UTC - error entries not done; breadboard flicker (relayed)
 "We are not done with the error entries" / "it flickered more than once, and there might have been multiple incomplete boot attempts or brownouts"
 (Relayed by the bench at 09:35 bench time: the owner wants the E13/E44 pair explained, and reports repeated flicker on the breadboard move, possibly incomplete boots or brownouts.)
+
+## 2026-11-13 09:09:30 UTC - close-out agreed, no merge yet
+"Yes, but do not merge anything yet."
+(The owner agrees to start D once the checks pass, but nothing is merged yet: no merge into main and no pull request merge until the owner says so.)
+
+## 2026-11-13 09:10:18 UTC - rerun the no-touch candidates; I2C lines maybe touched (relayed)
+"repeat the tests which require no interaction of mine and which could be the reason"
+(Relayed by the bench at 09:15 bench time: the owner had the light sweeps and warm reboots rerun without hands on the bench; the owner also says they may have touched the sensor's I2C lines while at the bench.)
+
+## 2026-11-13 09:15:34 UTC - bench stops watching (relayed)
+"There are no more tests to be done, you can stop watching"
+(Relayed by the bench at 09:20 bench time: the bench campaign ends; the bench session stopped its watcher, nothing runs; the board keeps serving the 840a2213 image.)

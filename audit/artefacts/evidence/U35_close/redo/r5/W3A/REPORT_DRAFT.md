@@ -1,11 +1,14 @@
-# The whole-project audit: final report (draft; W3a 2026-11-10 at 51c9c75f; lead update 2026-11-12 at 4c717222)
+# The whole-project audit: final report (2026-11-13)
 
-Pre-audit tree `25caf528` (2026-09-25). Final tree `4c717222` unless the later window's bench steps change code
-(10g, k and the wear runs PASS 2026-11-12; P01: the gate on `d5e59a1e` plus its one placement fix, CI run 43259129986 on snapshot 68 `fa5cd8ae`),
-merged into `main` as release 2.0 with the owner's agreement (release number: owner, 2026-11-10, "It's 2.0").
+Pre-audit tree `25caf528` (2026-09-25). Final tree: integration `c5dedfe5`, published as snapshot 69 `d06bc16c`
+(CI run 43398601541, 27/27 green). The bench's final image was built from `4c717222`'s tree (2026-11-13 05:52); after it `src/` changed
+only in the Country setting's help text (`647c1bc9`); the rest is docs and one manual test.
+Release 2.0 (release number: owner, 2026-11-10, "It's 2.0") is pull request hundertvolt/sensors#107 into `main`, merged
+by the owner; not merged at the time of writing (owner, 2026-11-13: "do not merge anything yet").
 The audit's records (`audit/`, `PROJECT_AUDIT_PLAN.md`) are deleted at D. Every record stays reachable from three
-branches that are never deleted (owner, 2026-11-10 21:55:27): `claude/u35-audit-archive` at `<D: sha>`, the last
-commit holding them; `claude/u35-bench-campaign`, the bench's evidence; `claude/u35-int-backup`, the integration history.
+branches that are never deleted (owner, 2026-11-10 21:55:27): `claude/u35-audit-archive`, whose head is the last
+commit holding them (this report is its `audit/FINAL_REPORT.md`); `claude/u35-bench-campaign`, the bench's evidence;
+`claude/u35-int-backup`, the integration history.
 
 ## 1. What the audit changed against 25caf528 (current fact, by area)
 Volume at 67e47fa6, outside `audit/` and `arduino/`: 1,327 commits (1,197 without merges), 929 files
@@ -66,7 +69,8 @@ item: done in code (87c14760, SPECIFICATION.md N.2); its two record lines state 
   after it, transfers resumed 0.5 s after the replug; none rebooted, no task ended. An ISL29125 E13 with a SYSTEM E44
   logged before j: one failed init at the 08:28:43 cold power-up after the owner's cut (a supply flicker at the
   plug-in, owner; below its POR level the chip ignores the bus, datasheet), the task restarted by the supervisor as
-  designed; not seen at the later boots. The bridge rebuild left out by the owner (its BACKLOG entry stays open).
+  designed; not seen at the later boots, nor on the owner's rerun of both light sweeps and five warm reboots with
+  nobody at the bench (the owner may also have touched the sensor's I2C lines). The bridge rebuild left out by the owner (its BACKLOG entry stays open).
   Channel 13 (row 13): stopped by
   the owner 11-13 without a verdict (the bench Pi's access point may never have transmitted on 13); the Country help
   text says channels 12 and 13 are not verified. 16b's power-cycle half dropped: a rerun only re-reads the soft reset.
@@ -154,7 +158,7 @@ int 33c7d0d9, proven under an arm64 simulation (20 red before, 251 passed after)
 moved to the later window (its chroot was gone; rebuilding it would have pushed the wear past 21:33). Recipe finding:
 a reused chroot reinstalls the pinned uv when the pin moves (README, 33c7d0d9).
 
-## 8. The last round (bench 2026-11-11 and 11-12, dev image at 67e47fa6's src/)
+## 8. The last round (bench 2026-11-11 to 11-13; dev images at 67e47fa6's and 4c717222's src/)
 - **Two-image GC proof** (11-11, FC 4+5): with the shipped `gc.threshold(32768)` the largest free block after a
   collect in operation is 20,288-57,792 B; the control image without it holds 3,456-7,632 B (the reactive default's
   known placement). The control's reds were test-side or the two known teardown log checks; no firmware verdict.
@@ -176,10 +180,13 @@ a reused chroot reinstalls the pinned uv when the pin moves (README, 33c7d0d9).
   Later window (11-13): j done (BENCH above), 16b's power-cycle half dropped, 13 stopped by the owner.
 - **Re-verification (P01)**: gate66 on 67e47fa6 green (unit at both GC stages, twins at both, web tier); CI on
   snapshot 65 26/27, the coverage job's one twin-test timing defect fixed (7c142edd, test only); CI on snapshot 66
-  `503c9c83`: green (run 43175368651, 2026-11-12 07:52); snapshot 67 `e55eccf3`: green (run 43214589908, 12:29); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
+  `503c9c83`: green (run 43175368651, 2026-11-12 07:52); snapshot 67 `e55eccf3`: green (run 43214589908, 12:29);
+  snapshot 68 `fa5cd8ae`: green (run 43259129986, 27/27); snapshot 69 `d06bc16c`: green (run 43398601541, 27/27); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
   the opt-in gates), no collection error.
 
 ## 9. D
 `PROJECT_AUDIT_PLAN.md` and `audit/` deleted after every finding with forward value sits in the docs or BACKLOG;
-the last commit holding them `<D>` on `claude/u35-audit-archive`, beside `claude/u35-bench-campaign` and
-`claude/u35-int-backup`, none deleted; one merge into `main` as release 2.0 with the owner's agreement.
+the last commit holding them is the head of `claude/u35-audit-archive`, beside `claude/u35-bench-campaign` and
+`claude/u35-int-backup`, none deleted. README's "Further reading" entry for them goes with them; tests_scripts'
+scan exclusions of `audit/` stay (harmless, and they keep a restored archive out of the scans). One merge into
+`main` as release 2.0, by the owner (hundertvolt/sensors#107), with the `v2.0` tag on the merge commit (owner).
