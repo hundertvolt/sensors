@@ -1,5 +1,32 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-13 13:30 UTC - relay 41: one short round on the final fix image (owner, 13:30 UTC: "Go ahead with the flash.")
+
+Start only on the owner's go-ahead in your own session. The code on this branch is now the final scan's fix round
+(`79397251`, all three parts combined); its full local checks are still running here and any red reaches you as a
+relay. Two firmware changes touch what you measured this week; everything else in the round
+changes no device behaviour (tests and docs cover it):
+- the boot placement reset is back (owner, 11:58 UTC: "it should go back in"): `gc.collect()` between the units of
+  `SystemService.run_setups()` and `start_tasks()`, nowhere else;
+- `CFGMGR_SCD30` logs to FRAM like every other config store (owner, 12:01 UTC: "So put it back in"): one more chunk
+  on `dev`, every later chunk shifts.
+
+Steps, in this order:
+1. Before flashing: read `GET /status` errcount in full and save it (the standing FRAM rule).
+2. Build and flash `dev` from this branch head: one flash cycle, the round's only wear.
+3. On the fresh image, before any flash-tier script touches FRAM:
+   a) `GET /status` errcount: record what the first boot shows (the layout shifted; the per-owner seed makes the
+      moved chunks read blank, so the logs start empty);
+   b) one REST `reboot`, then errcount again: the boot after the reboot adds no FRAM entry. (That `CFGMGR_SCD30`'s
+      entries survive a reboot is proven in the twin; the board shows the new layout allocates and boots clean.)
+4. Flash tier: `flash/test_heap_layout.py`, `flash/test_memory_stress.py`, `flash/test_fram_storage.py`.
+5. Bench tier: `bench/test_memory_stress_bench.py` at its default gates.
+6. Hand back: pass/fail per test; the build survivors (bound 41,000 B), the largest free block after the build
+   (bound 32,768 B), the in-operation free memory after one collect, and the boot placement figures, next to this
+   week's numbers on 840a2213 (survivors 35,936-36,176 B; largest block 35,136 B; 81,984-82,400 B in operation).
+
+A test-side red is recorded and rerun once, not fixed. Nothing else on the board; keep it serving afterwards.
+
 ## Lead 2026-11-13 09:04 UTC - relay 40: relay 39 withdrawn; E13+E44 closed
 
 - Do not run relay 39: your code reading settles it. The sweep cannot end the task (no read error, and `_init_isl()`
