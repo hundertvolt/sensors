@@ -11884,7 +11884,7 @@ it can move the VOC index, and its warning, before the algorithm settles (SGP40 
 | Wait | Value in the driver | Datasheet bound | Margin | Source |
 |---|---|---|---|---|
 | soft reset → ERR read | 2 ms | none documented for 0xB6 (BMP388 DS001 4.3.22) | — | Bosch reference sequence `bmp3_soft_reset()` (agent) |
-| forced-mode write → data read | one sleep of `_conversion_wait_ms()`: 3.9.2's typical time at the configured oversampling × 6/5, whole ms rounded up, plus one tick (158 ms at ×32/×32) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum at most 1.183× typical (Table 22) | ×1.2 against typical, at or above every Table 22 maximum | the datasheet (agent, 2026-11-09; bench check owed) |
+| forced-mode write → data read | one sleep of `_conversion_wait_ms()`: 3.9.2's typical time at the configured oversampling × 6/5, whole ms rounded up, plus one tick (158 ms at ×32/×32) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum at most 1.183× typical (Table 22) | ×1.2 against typical, at or above every Table 22 maximum | the datasheet (agent, 2026-11-09); bench, 2026-11-13, the dev BMP390, n = 40 per setting: write to data ready 5.83 ms median, 5.91 ms maximum at the configured ×1/×1 (7 ms wait), 129.24 ms median, 130.09 ms maximum at ×32/×32 (158 ms wait), each with up to 1.7 ms of write and polling overhead; data ready after the driver's one sleep 80 of 80 |
 
 AN006 5.2 verifies each trimming parameter against bounds it does not publish; the driver rejects an
 all-0x00/0xFF trim block, which catches the same memory fault class. The data burst is the seven
