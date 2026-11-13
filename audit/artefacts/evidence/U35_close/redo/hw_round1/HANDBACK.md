@@ -43896,3 +43896,24 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   (WIFI 37, SGP40 49, CFGMGR_* W22 4/5, WEBSERVER 1, the rest 0).
 - (A first launch at 05:51 never started: round1.sh has no exec bit, so it runs through bash, as yesterday.)
 - FC today: 1 (logs/day8_20261113/fc_ledger.txt). Next: `run 4b 4b`, then config_reset alone.
+
+## Bench 2026-11-13 06:24 UTC - 4b on 840a2213: 91 passed, 1 red (busy-link [crc16] heap floor), PASS on its one rerun; VOC stretch 9.8 ms
+
+- `run 4b 4b` 05:57:43-06:18:14 (1231 s), rc=1: 91 passed, 1 failed, 4 skipped, 16 deselected (13 by the wear gate).
+- VOC stretch (05:39 item 2), test_routine_no_yield_stretches_stay_under_the_gc_term PASSED: gc_max_us 16207,
+  voc_max_us 9813, crc_gap_max_us 3306 (CRC total 1749 us; bound 21000 us). None over 21 ms.
+- FRAM change on silicon: every FRAM test in the tier passed (test_fram_*, the write-protect round trip included).
+- The red: test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16], at
+  :191 "the heap grew 13952 bytes over the last two thirds of the run" (heap_at_third 65008, heap_at_end 78960,
+  bound 2048). Every other assertion before it held (transfers, no link failure, RTT, echoes intact, no subsystem
+  starved, FRAM answered, 0 allocation failures). [none] PASSED in the same run; [crc16] PASSED on 11-11 09:03 and
+  14:25 on the earlier images.
+- Rerun once alone (PYTEST_K, zero wear) 06:19:46-06:21:36: PASSED (1 passed, 111 deselected). The pass prints no
+  heap facts, so its floor difference is only known to be <= 2048.
+- My reading, not settled: 13952 B is about the churn task's whole held set (_CHURN_HELD_MAX 24 -> at most 25 x
+  bytearray(512), about 544 B each with its header, plus the list: ~13.8 KB). A _heap_floor() at the end taken while
+  that set stayed full for all 8 samples (64 ms, each with a gc.collect()), against one at the third taken with it
+  freshly halved or emptied, gives this difference with no retention by the link. If so, test-side; the evidence
+  that would settle it (the churn's held count at each sample) the script does not report.
+- After each run: GET /status 200, ResetReason 21, ConfigFaults [], no task ended.
+- Next: the config_reset test alone (FORCE_WEAR=7f, PYTEST_K, --allow-persistence-write via gated).
