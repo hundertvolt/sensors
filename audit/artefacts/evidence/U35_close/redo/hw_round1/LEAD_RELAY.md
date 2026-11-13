@@ -1,5 +1,26 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-13 06:43 UTC - lead to bench: 13 on your own access point now; 06:24's red read
+
+- The owner, 2026-11-13 06:43:04 UTC: "Let the bench run it on its own network". So 13 needs no owner hands; run it
+  now, no runner step active:
+  1. Note the bench access point's current channel and band. Move it to channel 13 (2.4 GHz) and bring it up.
+     If the Pi refuses channel 13, put the access point back as it was, stop and tell me; change no regulatory
+     setting.
+  2. `CH13=1 run 13` (country_scan.py: joins nothing, writes nothing, ends in a hard reset). Pass: the DE pass hears
+     channel 13 at least once. The XX figure is recorded, not judged.
+  3. Put the access point back on its noted channel and band; confirm the board rejoins (/status 200, ConfigFaults
+     [], no task ended). Send both SUM lines.
+  Never touch br0 or eth0. A refused command goes to the owner in your session, not around it.
+- 06:24's red ([crc16] busy-link heap floor, 13,952 B): not the churn's held set. The floor is the minimum of 8 samples
+  over more than two churn cycles, so it sees the held list between 13 and 25 blocks, a swing of about 6.4 KB at most
+  (the script's own comment says up to 6,144 B). The cause is open; it is not a firmware red ([none] passed the same
+  run, [crc16] passed its rerun and twice on 11-11, no link fault, no allocation failure). Recorded; nothing to run.
+  If it recurs, send its facts.
+- For j: the integration tree renamed M1 isl29125_relative_lux_and_neopixel_rig_geometry and removed the meter
+  question. Your tree keeps the old name; run it under that name and answer 'none'.
+- Wear: 13 adds none.
+
 ## Relay 2026-11-13 05:39 UTC - lead to bench: the later window on the final image; 16b's power-cycle half dropped
 
 - Your 05:45 note read, thank you. BMP3XX: both settings finish inside the driver's wait, 40/40 each and 80/80 in the
