@@ -154,7 +154,7 @@ is read.
 | each I2C bus's answering addresses (`i2c0`'s MPRLS among them) | to be read: the `addresses` fact of `bus_topology_autodetect_and_hazard_sweep.py`, which `flash/test_bus_concurrency.py`'s sweep test notes | | |
 | FRAM part | to be read: the `rdid` fact of `fram_raw_dump.py`, saved by every session's start | | |
 | SCD30 NVM state (temperature offset, altitude, ambient pressure, ASC) | to be read: the standard-state fixture's SCD30 snapshot at a session start | | |
-| NeoPixel rig geometry (distance, ambient) | to be read: the manual `isl29125_relative_lux_and_neopixel_rig_geometry` | | |
+| NeoPixel rig geometry (distance, ambient) | about 20 mm, an opaque cap over the LED and the sensor (0.9 lx with the LED dark) | the manual `isl29125_relative_lux_and_neopixel_rig_geometry`, the owner at the bench | 2026-11-13 |
 | the router's DHCP reservation keyed to the uplink's MAC | to be read: the owner's answer | | |
 | the BME688 on UART0 (GP16/GP17) still attached | to be read: the owner's answer | | |
 | bench host OS and stale packages | to be read: the bench host's `/etc/os-release` and `apt list --upgradable` | | |
@@ -496,15 +496,16 @@ the rig needs:
 
 Every assertion is **relative** - continuity across the switch, no chatter, hue/saturation invariance
 while the level moves, gain-ratio convergence. Absolute lux and CCT against a WS2812's three narrow
-emission lines are meaningless and are asserted nowhere; the reference-meter half is the manual
-tier's job. CLAUDE.md's FRAM rule applies in its sharpest form to every script here - see "A hardware
-run overwrites the production modules' FRAM chunks" below before treating any log as evidence.
+emission lines are meaningless and are asserted nowhere; the manual tier checks relative values
+only, with no reference meter (owner, 2026-11-13). CLAUDE.md's FRAM rule applies in its sharpest
+form to every script here - see "A hardware run overwrites the production modules' FRAM chunks"
+below before treating any log as evidence.
 
 The rig as last recorded (the manual step saves `rig-geometry.json` into its run's evidence):
 
 | distance | ambient | recorded |
 |---|---|---|
-| to be read | to be read | the manual `isl29125_relative_lux_and_neopixel_rig_geometry` |
+| about 20 mm | an opaque cap over the LED and the sensor (0.9 lx with the LED dark) | 2026-11-13, the manual `isl29125_relative_lux_and_neopixel_rig_geometry` |
 
 ## ISL29125 bench-rig facts, before reading any result
 
