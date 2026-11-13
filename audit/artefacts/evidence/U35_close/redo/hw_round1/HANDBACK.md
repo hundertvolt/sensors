@@ -44049,3 +44049,20 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   unsynced in hotspot mode (W35) overwriting 08:25's. Since then: BackupTS 1794558919, NTP synced.
 - Next: the power-cycle run once more, the AP's stations kicked right after the replug (BenchBridge().kick_all_stations(),
   the runner's own post-reflash step), so the board rejoins inside the 120 s.
+
+## Bench 2026-11-13 08:45 UTC - j: the power-cycle rerun: the boot restored the newest backup; the test reads too early against a stale BackupTS (test-side); LastTaskEnd None
+
+- The owner on 08:34: "I actually moved the breadboard while I was connecting a wire to the RUN pin (but left the wire
+  open). Anyhow, there might have been a flicker." With 08:37's ResetReason-1 note: 08:34 was the bench, not firmware.
+- Rerun (08:37: once, with the kick; logs/day8_20261113/power_cycle2.out): BackupTS read 1794558919 (08:35:19). The
+  owner: "8:38:20: unplugged USB. 8:38: 40: plugged back" (kernel: disconnect 08:38:19, ttyACM0 08:38:42). Stations
+  kicked 08:39:09, Enter 08:39:10; the board served at once (ResetReason 1). FAIL: "the boot restored {'BackupTS':
+  None, 'RestoreTS': None}, not the backup of 1794558919".
+- What the board did: GET /status a minute later: RestoreTS 1794559099 = 08:38:19 UTC, the SGP40's next 180 s backup
+  (08:35:19 + 180 s), written one second before the cut; BackupTS since 1794559188 (08:39:48). So the boot restored the
+  newest backup across a genuine power loss. The test fails on its own two counts: it compares against the BackupTS
+  read before a backup period could pass, and reads /status once on the first answer, before the SGP40's restore has
+  run. Test-side; no further rerun (08:37: once).
+- 08:37 item 1: GET /status now: LastTaskEnd None (this boot), ResetReason 1, ConfigFaults []; errcount non-zero:
+  SYSTEM 53 (newest E44), ISL29125 1 (E13), SGP40 30, WIFI 23 (+W38, W79, W38 in this boot), CFGMGR_* 6. E44 and E13
+  predate this boot; their boot is not in what the board holds. Status before and after each j step from here.
