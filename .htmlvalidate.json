@@ -5,6 +5,7 @@
         "html-validate:a11y"
     ],
     "rules": {
+        "no-unknown-attributes": "error",
         "require-sri": ["error", { "target": "crossorigin" }]
     }
 }

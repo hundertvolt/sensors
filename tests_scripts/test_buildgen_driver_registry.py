@@ -2,12 +2,20 @@
 documented fallback table), and the _NAME-constant parser instance-name collision detection relies
 on. See SPECIFICATION.md Part L.1's acceptance criterion #1."""
 
+import ast
+import os
+import subprocess
+import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, _class_needs_setup, class_has_read_triggers, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @pytest.fixture
@@ -16,57 +24,76 @@ def src_dir(repo_root: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    "driver,module,class_name,kind,needs_setup",
+    ("driver", "module", "class_name", "kind", "needs_setup"),
     [
-        ("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", False),
+        ("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", True),
         ("sgp40", "asy_sgp40_driver", "SGP40_Reader", "sensor", True),
-        ("bmp3xx", "asy_bmp3xx_driver", "BMP3xx_Reader", "sensor", True),
+        ("bmp3xx", "asy_bmp3xx_driver", "BMP3XX_Reader", "sensor", True),
         ("isl29125", "asy_isl29125_driver", "ISL29125_Reader", "sensor", True),
-        ("fram", "asy_fram_manager", "AsyFramManager", "service", True),
+        ("fram", "asy_fram_manager", "FRAMManager", "service", True),
         ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", False),
-        ("notification", "asy_notification_service", "NotificationCoordinator", "service", True),
-        ("uart_link", "asy_uart_link_driver", "UartLinkExerciser", "service", True),
+        ("notification", "asy_notification_service", "NotificationService", "service", True),
+        ("uart_link", "asy_uart_link_driver", "UARTLinkDriver", "service", True),
     ],
 )
 def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, class_name: str, kind: str, *, needs_setup: bool) -> None:
-    info = resolve_driver(driver, src_dir, "dev")
+    info = resolve_driver(driver, src_dir, "fixture")
     assert info == DriverInfo(driver, module, class_name, kind, src_dir / f"{module}.py", needs_setup)
 
 
+def test_a_plain_sensor_reader_subclass_needs_setup(tmp_path: Path) -> None:
+    # SensorReader.setup() sets the reader's own logger up, so every reader joins the boot batch.
+    (tmp_path / "asy_plain_driver.py").write_text("class Plain_Reader(SensorReader):\n    pass\n", encoding="utf-8")
+    assert resolve_driver("plain", tmp_path, "fixture").needs_setup is True
+
+
+def test_read_triggers_are_declared_by_the_reader_class_itself(tmp_path: Path) -> None:
+    (tmp_path / "asy_trig_driver.py").write_text("class Trig_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n", encoding="utf-8")
+    (tmp_path / "asy_tick_driver.py").write_text("class Tick_Reader(SensorReaderConfig):\n    def get_timer_starters(self):\n        return []\n", encoding="utf-8")
+    assert class_has_read_triggers(resolve_driver("trig", tmp_path, "fixture")) is True
+    assert class_has_read_triggers(resolve_driver("tick", tmp_path, "fixture")) is False
+
+
 def test_resolve_driver_unknown_driver_raises(src_dir: Path) -> None:
-    with pytest.raises(BuildError, match="unknown driver"):
-        resolve_driver("nonexistent_chip", src_dir, "dev")
+    with pytest.raises(BuildError, match="unknown driver") as raised:
+        resolve_driver("nonexistent_chip", src_dir, "fixture")
+    assert raised.value.rule == "driver.unknown"
 
 
-def test_resolve_driver_bmp3xx_naming_convention_is_not_a_naive_uppercase(src_dir: Path) -> None:
-    # The whole point of AST-based resolution: BMP3xx_Reader isn't "bmp3xx".upper() + "_Reader"
-    # ("BMP3XX_Reader") - a naive string-transform resolver would get this wrong.
-    info = resolve_driver("bmp3xx", src_dir, "dev")
-    assert info.class_name == "BMP3xx_Reader"
-    assert info.class_name != "bmp3xx".upper() + "_Reader"
+def test_resolve_driver_reads_the_class_name_not_a_naive_uppercase(tmp_path: Path) -> None:
+    # The whole point of AST-based resolution: every real driver's class now matches the naive
+    # "<driver>".upper() + "_Reader", so a driver file whose class does not proves the AST read.
+    (tmp_path / "asy_chipx_driver.py").write_text("class ChipX_Reader(SensorReader):\n    pass\n", encoding="utf-8")
+    info = resolve_driver("chipx", tmp_path, "fixture")
+    assert info.class_name == "ChipX_Reader"
+    assert info.class_name != "chipx".upper() + "_Reader"
 
 
 def test_resolve_driver_file_with_no_reader_subclass(tmp_path: Path) -> None:
-    (tmp_path / "asy_bogus_driver.py").write_text("class NotAReader:\n    pass\n")
-    with pytest.raises(BuildError, match="no SensorReader/SensorReaderConfig subclass"):
-        resolve_driver("bogus", tmp_path, "dev")
+    (tmp_path / "asy_bogus_driver.py").write_text("class NotAReader:\n    pass\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="no SensorReader/SensorReaderConfig subclass") as raised:
+        resolve_driver("bogus", tmp_path, "fixture")
+    assert raised.value.rule == "driver.no-reader-class"
 
 
 def test_resolve_driver_file_with_two_reader_subclasses_is_ambiguous(tmp_path: Path) -> None:
-    (tmp_path / "asy_dual_driver.py").write_text("class Foo_Reader(SensorReader):\n    pass\n\n\nclass Bar_Reader(SensorReaderConfig):\n    pass\n")
-    with pytest.raises(BuildError, match="ambiguous"):
-        resolve_driver("dual", tmp_path, "dev")
+    (tmp_path / "asy_dual_driver.py").write_text("class Foo_Reader(SensorReader):\n    pass\n\n\nclass Bar_Reader(SensorReaderConfig):\n    pass\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="ambiguous") as raised:
+        resolve_driver("dual", tmp_path, "fixture")
+    assert raised.value.rule == "driver.ambiguous-reader-class"
 
 
 def test_resolve_driver_syntax_error_in_driver_file(tmp_path: Path) -> None:
-    (tmp_path / "asy_broken_driver.py").write_text("class Foo(:\n")
-    with pytest.raises(BuildError, match="syntax error"):
-        resolve_driver("broken", tmp_path, "dev")
+    (tmp_path / "asy_broken_driver.py").write_text("class Foo(:\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="syntax error") as raised:
+        resolve_driver("broken", tmp_path, "fixture")
+    assert raised.value.rule == "source.syntax-error"
 
 
 def test_resolve_driver_override_table_missing_file(tmp_path: Path) -> None:
-    with pytest.raises(BuildError, match="does not exist"):
-        resolve_driver("fram", tmp_path, "dev")
+    with pytest.raises(BuildError, match="does not exist") as raised:
+        resolve_driver("fram", tmp_path, "fixture")
+    assert raised.value.rule == "driver.module-missing"
 
 
 def test_service_drivers_frozenset_matches_override_table() -> None:
@@ -82,44 +109,82 @@ def test_singleton_service_drivers_excludes_uart_link() -> None:
 
 
 @pytest.mark.parametrize(
-    "driver,expected_name",
+    ("driver", "expected_name"),
     [("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("isl29125", "ISL29125"), ("fram", "FRAM"), ("neopixel", "NEOPIXEL"), ("notification", "NOTIFY"), ("uart_link", "UART")],
 )
 def test_parse_name_constant_real_drivers(src_dir: Path, driver: str, expected_name: str) -> None:
-    info = resolve_driver(driver, src_dir, "dev")
-    assert parse_name_constant(info.source_path, "dev", driver) == expected_name
+    info = resolve_driver(driver, src_dir, "fixture")
+    assert parse_name_constant(info.source_path, "fixture", driver) == expected_name
 
 
 def test_parse_name_constant_confirms_notify_is_not_notification(src_dir: Path) -> None:
-    # SPECIFICATION.md Part L.3's confirmed-real bug case: NotificationCoordinator's _NAME is
+    # SPECIFICATION.md Part L.3's confirmed-real bug case: NotificationService's _NAME is
     # "NOTIFY", not "NOTIFICATION" - instance_name()/_NAME is a different naming space than the
     # TOML driver identity ("notification") wiring resolves against.
-    info = resolve_driver("notification", src_dir, "dev")
-    name = parse_name_constant(info.source_path, "dev", "notification")
+    info = resolve_driver("notification", src_dir, "fixture")
+    name = parse_name_constant(info.source_path, "fixture", "notification")
     assert name == "NOTIFY"
     assert name != "notification".upper()
 
 
 def test_parse_name_constant_missing(tmp_path: Path) -> None:
     path = tmp_path / "asy_foo_driver.py"
-    path.write_text("class Foo_Reader(SensorReader):\n    pass\n")
-    with pytest.raises(BuildError, match="no module-level _NAME"):
-        parse_name_constant(path, "dev", "foo")
+    path.write_text("class Foo_Reader(SensorReader):\n    pass\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="no module-level _NAME") as raised:
+        parse_name_constant(path, "fixture", "foo")
+    assert raised.value.rule == "source.name-missing"
 
 
 def test_parse_name_constant_non_string(tmp_path: Path) -> None:
     path = tmp_path / "asy_foo_driver.py"
-    path.write_text("_NAME = 42\n")
-    with pytest.raises(BuildError, match="not a plain/const"):
-        parse_name_constant(path, "dev", "foo")
+    path.write_text("_NAME = 42\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="not a plain/const") as raised:
+        parse_name_constant(path, "fixture", "foo")
+    assert raised.value.rule == "source.name-not-literal"
 
 
 def test_needs_setup_returns_false_when_the_class_is_absent_from_the_file(tmp_path: Path) -> None:
     # The scan walks the whole module looking for the named class; a file that simply doesn't
     # define it must answer "no setup needed" rather than raise.
-    import ast
-
-    from buildgen.driver_registry import _class_needs_setup
 
     tree = ast.parse("class SomethingElse:\n    pass\n")
     assert _class_needs_setup(tree, "X_Reader") is False
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        pytest.param(lambda path: parse_name_constant(path, "fixture", "chip"), id="parse_name_constant"),
+        pytest.param(lambda path: class_has_read_triggers(DriverInfo("chip", "asy_chip_driver", "Chip_Reader", "sensor", path, needs_setup=True)), id="class_has_read_triggers"),
+    ],
+)
+def test_an_unreadable_driver_file_is_a_build_error_not_a_raw_oserror(tmp_path: Path, call: "Callable[[Path], object]") -> None:
+    path = tmp_path / "asy_chip_driver.py"  # never written
+    with pytest.raises(BuildError, match="cannot read") as raised:
+        call(path)
+    assert (raised.value.rule, raised.value.fix) == ("src.unreadable", "restore asy_chip_driver.py in the source directory")
+
+
+def test_the_driver_files_read_the_same_under_any_locale(repo_root: Path) -> None:
+    # Driver files hold non-ASCII text; read under an ASCII locale with UTF-8 mode off, they must still parse.
+    probe = (
+        "import sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; "
+        "from buildgen.driver_registry import class_has_read_triggers, parse_name_constant, resolve_driver; "
+        "info = resolve_driver('scd30', Path(sys.argv[1]) / 'src', 'fixture'); "
+        "print(info.class_name, class_has_read_triggers(info), parse_name_constant(info.source_path, 'fixture', 'scd30'))"
+    )
+    env = {"PATH": os.environ.get("PATH", ""), "LC_ALL": "C", "LANG": "C"}
+    done = subprocess.run([sys.executable, "-I", "-X", "utf8=0", "-c", probe, str(repo_root)], env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.split() == ["SCD30_Reader", "False", "SCD30"]
+
+
+def test_the_driver_facts_follow_a_file_rewritten_at_the_same_path(tmp_path: Path) -> None:
+    # Every fact is cached by the file's text, not its path: a rewritten file is read again.
+    path = tmp_path / "asy_chip_driver.py"
+    path.write_text('_NAME = const("ONE")\n\n\nclass One_Reader(SensorReader):\n    pass\n', encoding="utf-8")
+    first = resolve_driver("chip", tmp_path, "fixture")
+    assert (first.class_name, parse_name_constant(path, "fixture", "chip"), class_has_read_triggers(first)) == ("One_Reader", "ONE", False)
+    path.write_text('_NAME = const("TWO")\n\n\nclass Two_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n', encoding="utf-8")
+    second = resolve_driver("chip", tmp_path, "fixture")
+    assert (second.class_name, parse_name_constant(path, "fixture", "chip"), class_has_read_triggers(second)) == ("Two_Reader", "TWO", True)
