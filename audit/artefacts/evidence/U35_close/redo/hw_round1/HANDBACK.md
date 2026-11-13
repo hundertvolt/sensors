@@ -43917,3 +43917,20 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   that would settle it (the churn's held count at each sample) the script does not report.
 - After each run: GET /status 200, ResetReason 21, ConfigFaults [], no task ended.
 - Next: the config_reset test alone (FORCE_WEAR=7f, PYTEST_K, --allow-persistence-write via gated).
+
+## Bench 2026-11-13 06:30 UTC - config_reset alone PASS; 05:39's items 1-3 done; j and 13 wait for the owner
+
+- `test_config_reset_deletes_every_config_file_and_reboots` alone (FORCE_WEAR=7f, PYTEST_K, --allow-persistence-write
+  via gated) 06:23:25-06:25:15, PASSED (1 passed, 111 deselected; NOT CLEAN only for the skipped lower levels).
+  Note: "after the boot: ResetReason 7". It runs on its scratch store and asserts the production files unchanged
+  (kept == before): the board keeps the build's 8. round1 appended `passed: 7f 2026-11-13 06:25:15` (fde03bb0).
+- GET /status after: 200, STA connected, ResetReason 21, ConfigFaults [], no task ended, MemFree 75712.
+- The error logs moved, all by the flash tier, none by the product: 4b's FRAM erase test wiped them (WIFI 37 -> 0,
+  SGP40 49 -> 7, WEBSERVER 1 -> 0; read and saved at 05:36 first, logs/day8_20261113/status_before.json), and its
+  isolated scripts left SYSTEM's chunk holding test seeds E125/E126 (error_catalog: "written only by hardware test
+  scripts") plus one E115, counter 52. That same shape (seeds, an E115, counters 49/51) stood after the full flash
+  tiers of 11-05 and 11-11 (logs/4b.log), so it is the tier's known footprint (CLAUDE.md's isolated-FRAMManager
+  caveat), not firmware evidence. CFGMGR_* 4 -> 6: the config reset's boot.
+- Wear today: FC 1 (row 3), config_reset's owned scratch writes (this one test), NVM 0.
+- 05:39's items 1-3 done. Item 4 (j: M1 first, the power-cycle run, the pin-reset run, the two pulls, the bridge
+  under its timers; `CH13=1 run 13`) waits for the owner's word. M1 runs with reference_lux "none" (05:50 note).
