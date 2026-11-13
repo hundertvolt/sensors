@@ -43875,3 +43875,13 @@ meant for this campaign: nothing to act on. Sent to the lead too.
     "bench check owed" can read this.
 - After: GET /status 200, ResetReason 21 (the script's Ctrl-C), ConfigFaults [], error counters unchanged, BMP3XX 0.
 - Wear today: FC 0, FS 0, NVM 0. The board is serving on the round image. Next: j, 13, 16b when the owner says.
+
+## Bench 2026-11-13 05:50 UTC - the owner: no lux meter on the bench, ever; relative values are enough for j
+
+- The owner, 2026-11-13 ~05:50 UTC, verbatim: "And btw I don't have a lux meter, that test is and will be impossible.
+  But relative values are okay, I don't need bare ground truth".
+- What this means for j (M1, tests_hardware/manual/manual_sensor_accuracy.py:72): its pass bar is already relative
+  (three readings of one scene within the repeatability tolerance on one RangeAct, then a continuous range switch);
+  the reference reading is "a recorded data point, never pass/fail" and the prompt accepts 'none'. So j runs as
+  written with reference_lux "none", plus the rig geometry record. No change asked of the test here; any doc line that
+  still promises a reference-meter reading is yours to word.
