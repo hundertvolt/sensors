@@ -25,6 +25,7 @@ import json
 import platform
 import sys
 from pathlib import Path
+from typing import cast
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -32,15 +33,15 @@ sys.path.insert(0, str(REPO_ROOT))
 from buildgen.api_reference import api_reference_json, generate_api_reference  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.buildspec import MANDATORY_FILES  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.definitions import generate_definitions  # noqa: E402 - the repo root is on sys.path from the line above
-from buildgen.driver_registry import parse_name_constant, parse_source_file  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.driver_registry import parse_name_constant  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.errors import BuildError, BuildInternalError  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.generate import generate_device  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.graph import build_construction_order  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.jsontypes import JsonDict  # noqa: E402 - the repo root is on sys.path from the line above
-from buildgen.model import DeviceModel, instance_label  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.model import DeviceModel, TomlDoc, instance_label  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.source_ast import parse_source  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.twin_wiring import compute_twin_wiring  # noqa: E402 - the repo root is on sys.path from the line above
-from buildgen.validate import _DEVICE_WIRING_CONSUMERS, _owns_config_store  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.validate import _DEVICE_WIRING_CONSUMERS, _WDT_TIMEOUT_MS, _checked_str, _uart_bus_value, _uart_links, device_max_connections, module_int_const  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.version import current_build_date  # noqa: E402 - the repo root is on sys.path from the line above
 
 # Every file a generation reads besides the device TOMLs: the catalog and lwIP table (buildgen/definitions.py,
@@ -58,11 +59,15 @@ _NATIVE_EMITTER = ("x86", "amd64", "i386", "i486", "i586", "i686", "armv", "risc
 BOOT_PHASES = ("build_system", "BOOT_SETUP", "run_setups", "BOOT_TASKS", "start_tasks", "BOOT_TIMERS", "start_timers", "BOOT_NTP", "ntp_force_sync", "BOOT_DONE", "supervise_tasks")
 
 
-def _config_log_on_fram(path: Path, device: str) -> bool:
-    # False where a class in the module sets _CFG_LOG_FRAM = False at class level, keeping its config store's log off
-    # FRAM (asy_base_classes.SensorReaderConfig reads it); read from the driver source, so buildgen names no module.
-    text, _tree = parse_source_file(path, device, path.name)
-    return not _sets_config_log_off(text, str(path))
+@functools.lru_cache(maxsize=64)
+def _declares_config_store(source: str, filename: str) -> bool:
+    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
+    for node in ast.walk(parse_source(source, filename)):
+        if isinstance(node, ast.ClassDef) and any(isinstance(b, ast.Name) and b.id == "SensorReaderConfig" for b in node.bases):
+            return True
+        if isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id == "ConfigManager") or (isinstance(node.func, ast.Attribute) and node.func.attr == "ConfigManager")):
+            return True
+    return False
 
 
 def _device_outputs(device_toml: Path, out_dir: Path, build_date: str) -> "dict[Path, str] | None":
@@ -99,8 +104,8 @@ def _expected_setups(model: DeviceModel, order: "list[str | tuple[str, str]]") -
 
 
 def _fram_backed_loggers(model: DeviceModel, src_dir: Path) -> "list[str]":
-    # Every logger a FRAM-wired module keeps on FRAM: its own, its CFGMGR_<name> where it owns a config store whose
-    # log stays on FRAM, and conn's captive DNS server; the FRAM store's own log is never among them.
+    # Every logger a FRAM-wired module keeps on FRAM: its own, its CFGMGR_<name> where it owns a config store, and
+    # conn's captive DNS server; the FRAM store's own log is never among them.
     by_label = {spec.label: spec for spec in model.instances.values()}
     names = []
     for label in _fram_wired(model):
@@ -113,7 +118,7 @@ def _fram_backed_loggers(model: DeviceModel, src_dir: Path) -> "list[str]":
         else:
             path, name = spec.driver_info.source_path, spec.resolved_name
         names.append(name)
-        if _owns_config_store(path) and _config_log_on_fram(path, model.device):
+        if _owns_config_store(path):
             names.append("CFGMGR_" + name)
         if label == "conn":
             names.append(parse_name_constant(src_dir / MANDATORY_FILES["dns"], model.device, MANDATORY_FILES["dns"]))
@@ -205,6 +210,16 @@ def _native_emitter() -> bool:
     return platform.machine().lower().startswith(_NATIVE_EMITTER)
 
 
+def _owns_config_store(path: Path) -> bool:
+    # Whether the module builds a ConfigManager: a SensorReaderConfig subclass gets one from its base, any
+    # other class constructs it. The store logs as CFGMGR_<name>, beside the module's own logger.
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise BuildError("<src>", f"cannot read {path} to find its config store: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", field=path.name) from e
+    return _declares_config_store(source, str(path))
+
+
 def _portable_copies(portable_dir: Path) -> "dict[Path, str] | None":
     # Every src/ module with a @micropython.native or .viper function, each such function replaced by an import of its
     # twin; checked on every host, so a native function with no twin fails here first, not on an arm64 host later. Only
@@ -240,17 +255,6 @@ def _remove_all_but(out_dir: Path, kept: "set[Path]") -> bool:
     if stale:
         print(f"Pruned {len(stale)} stale output(s): {', '.join(p.relative_to(out_dir).as_posix() for p in stale)}")
     return True
-
-
-@functools.lru_cache(maxsize=64)
-def _sets_config_log_off(source: str, filename: str) -> bool:
-    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
-    for node in ast.walk(parse_source(source, filename)):
-        if isinstance(node, ast.ClassDef):
-            for stmt in node.body:
-                if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and stmt.value.value is False and any(isinstance(t, ast.Name) and t.id == "_CFG_LOG_FRAM" for t in stmt.targets):
-                    return True
-    return False
 
 
 def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list[str]") -> "dict[str, str]":
@@ -293,6 +297,12 @@ def _write_through_rename(files: "dict[Path, str]") -> bool:
     return True
 
 
+def device_max_connections_by_name(device: str) -> int:
+    # The ceiling devices/<device>.toml builds, devices/ and src/ found from this script's own location, so a host
+    # instrument naming a device needs no path of its own.
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
+
+
 def expected_facts(model: DeviceModel, src_dir: Path = REPO_ROOT / "src") -> JsonDict:
     # What the generated module must do at boot, derived from the model alone, never read back from
     # the generated text: the oracle the mock and twin boot scenarios assert a real run against.
@@ -326,6 +336,21 @@ def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:
     with (out_dir.parent / "generated_src.lock").open("a", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         return _generate_tree(out_dir, if_stale=args.if_stale)
+
+
+def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> int:
+    # The device's smallest hard consumer of loop time in ms (Part F.3), read by the twin's loop-lag scenario and the
+    # bench lag test: the watchdog's room beside one supervisor sleep, and each uart_link's reply timeout less its two
+    # polls, its idle poll and one GC pause (agent, 2026-10-21).
+    task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
+    consumers = [_WDT_TIMEOUT_MS - task_check_s * 1000]
+    reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))
+    buses = cast("dict[str, TomlDoc]", model.doc.get("bus", {}))
+    for spec in _uart_links(model):
+        bus = _checked_str(spec.fields["bus"])
+        poll_wait, poll_idle = (_uart_bus_value(src_dir, buses[bus], n) for n in ("poll_wait_ms", "poll_idle_ms"))
+        consumers.append(reply_ms - (2 * poll_wait + poll_idle + gc_pause))
+    return min(consumers)
 
 
 if __name__ == "__main__":

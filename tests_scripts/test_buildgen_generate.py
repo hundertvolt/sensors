@@ -222,8 +222,8 @@ def test_real_device_hands_every_setup_to_one_list_in_the_fixed_order(device: st
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_module_neither_feeds_nor_collects_and_constructs_without_awaiting(device: str) -> None:
-    # Every boot feed sits in SystemService (run_setups(), start_tasks()), and nothing collects; the module keeps gc
-    # for MemFree's gc.mem_free().
+    # Every feed and every boot placement collect sits in SystemService (run_setups(), start_tasks());
+    # the module keeps gc for MemFree's gc.mem_free().
     source = _real(device).module_source
     assert "gc.collect(" not in source
     assert "feed_watchdog(" not in source
@@ -448,9 +448,9 @@ def test_real_device_expected_facts_name_the_fram_backed_loggers(device: str) ->
     assert not {spec.resolved_name for spec in specs if spec.driver == "fram"} & set(loggers), loggers
 
 
-def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> None:
-    # A class-level _CFG_LOG_FRAM = False (read from the driver source, never named in buildgen/) keeps the
-    # module's CFGMGR_ log RAM-only while the module's own log stays on FRAM.
+def test_a_fram_wired_scd30_keeps_its_config_log_on_fram_too() -> None:
+    # Like every other config logger: the SCD30's own log and its CFGMGR_ log are both FRAM-backed (owner, 2026-11-13:
+    # "I NEVER decided that FRAM logging for the sensor should go. So put it back in.").
     checked = []
     for device in devices_with("scd30"):
         result = _real(device)
@@ -459,7 +459,7 @@ def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> Non
         assert isinstance(wired, list) and isinstance(loggers, list)
         for spec in result.model.instances.values():
             if spec.driver == "scd30" and spec.label in wired:
-                assert spec.resolved_name in loggers and f"CFGMGR_{spec.resolved_name}" not in loggers, (device, loggers)
+                assert spec.resolved_name in loggers and f"CFGMGR_{spec.resolved_name}" in loggers, (device, loggers)
                 checked.append(device)
     assert checked, "no device wires an scd30 to FRAM - the check compares nothing"
 

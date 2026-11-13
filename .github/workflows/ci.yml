@@ -381,8 +381,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-24.04
-    # @tunable ci.unit_tests_timeout_min = 175
-    timeout-minutes: 175
+    # @tunable ci.unit_tests_timeout_min = 90
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
@@ -407,8 +407,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-24.04
-    # @tunable ci.unit_tests_gc_threshold_timeout_min = 175
-    timeout-minutes: 175
+    # @tunable ci.unit_tests_gc_threshold_timeout_min = 90
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
@@ -569,8 +569,8 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (uv sync, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      # The list ensure_apt_packages() installs below, read as it reads it, and this job's own limit, read from its tag above,
-      # for the mirror check and package cache around that install; like every step of theirs it cannot fail the job (B.10.1).
+      # The list ensure_apt_packages() installs below, read as it reads it, for the mirror check and package cache around
+      # that install; like every step of theirs it cannot fail the job (B.10.1).
       - name: The ARM toolchain's apt packages
         id: apt-packages
         continue-on-error: true
@@ -578,15 +578,12 @@ jobs:
           source scripts/_require_python.sh
           require_python311
           python3 - >> "$GITHUB_OUTPUT" <<'PYEOF'
-          import re
           import sys
           from pathlib import Path
           sys.path.insert(0, "toolchain")
           import setup_toolchain as st
           versions = st.load_versions(Path("toolchain/versions.toml"))
           print("list=" + " ".join(versions["toolchain"]["apt_packages"]))
-          limit = re.search(r"@tunable ci\.firmware_build_verify_timeout_min = (\d+)", Path(".github/workflows/ci.yml").read_text(encoding="utf-8"))
-          print(f"bound-s={int(limit[1]) * 60}")
           PYEOF
       - name: Check the apt mirror and restore cached packages
         id: apt
@@ -594,8 +591,6 @@ jobs:
         with:
           family: firmware
           packages: ${{ steps.apt-packages.outputs.list }}
-          bound-s: ${{ steps.apt-packages.outputs.bound-s }}
-          bound-from: ci.firmware_build_verify_timeout_min
       # A cache miss fails the picotool step below by name (no cached build tree), never skipping the
       # build.
       #

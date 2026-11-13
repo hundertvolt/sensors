@@ -22,10 +22,10 @@ import tomllib
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _GIT = shutil.which("git") or "git"
 
-# The legacy tree is reference-only (CLAUDE.md legacy rule) and stays out of every check. The audit
-# working set is excluded until its close deletes it; arduino/ and ext/ are not this project's text.
-SHARED_EXCLUDED_PREFIXES = ("legacy/", "arduino/", "ext/", "audit/", "datasheets/", "node_modules/")
-SHARED_EXCLUDED_FILES = frozenset({"PROJECT_AUDIT_PLAN.md", "uv.lock", "package-lock.json"})
+# The legacy tree is reference-only (CLAUDE.md legacy rule) and stays out of every check;
+# arduino/ and ext/ are not this project's text.
+SHARED_EXCLUDED_PREFIXES = ("legacy/", "arduino/", "ext/", "datasheets/", "node_modules/")
+SHARED_EXCLUDED_FILES = frozenset({"uv.lock", "package-lock.json"})
 
 _HASH_SUFFIXES = frozenset({".sh", ".toml", ".yml", ".yaml", ".ini", ".cfg", ".mk", ".gitignore", ".gitmodules"})
 _SLASH_SUFFIXES = frozenset({".js", ".mjs", ".cjs", ".ts", ".css"})

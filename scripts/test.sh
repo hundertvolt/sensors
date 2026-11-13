@@ -461,8 +461,8 @@ tests_scripts_pid=$!
 # none is solved by raising everyone's default, which would make a genuine future hang 2-3x slower to detect. The
 # scenario harness has its own: one job boots a twin per scenario (measured figures: Part E.3.1 and Part N).
 declare -A per_file_timeout_overrides_s=()
-# @tunable runner.scenarios_timeout_s = 2555
-per_file_timeout_overrides_s[scenarios]=2555
+# @tunable runner.scenarios_timeout_s = 1200
+per_file_timeout_overrides_s[scenarios]=1200
 
 # SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged ones included; the twin tier checks its logs alike.
 # Both markers, from their one definition: src/'s degrade handlers log str(e), so a caught allocation failure prints

@@ -31,7 +31,8 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
+from buildgen.validate import module_float_const, module_int_const
+from scripts._generate_sensortask_modules import device_max_connections_by_name
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
@@ -140,10 +141,9 @@ _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own co
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
 # instance's name appends "_<name_ext>" (instance_name()). Not driver.upper(): uart_link's is "UART".
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM", "uart_link": "UART"}
-# The registered error sources not FRAM-backed, exempt from Run 5c's loss sweep: FRAMManager's own log (the store
-# cannot persist its failures through itself) and CFGMGR_SCD30 (RAM-only, owner, 2026-09-29: 'no extra FRAM chunk').
-# _sensortask_scenarios.py pins the same set from the real object graph.
-_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM", "CFGMGR_SCD30"})
+# The registered error source not FRAM-backed, exempt from Run 5c's loss sweep: FRAMManager's own log (the store
+# cannot persist its failures through itself). _sensortask_scenarios.py pins the same set from the real object graph.
+_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM"})
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being faulted" check)
 # vs which Run 4 asserts came back at 0: with FRAM gone in Run 3 nothing they logged persisted. SGP40 and "fram" are
 # each absent for their own reason; digital_twin/README.md has both accounts in full.

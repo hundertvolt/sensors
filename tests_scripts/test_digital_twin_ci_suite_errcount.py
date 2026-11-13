@@ -146,11 +146,10 @@ def test_run_5c_faults_every_chip_instance_but_never_the_store_or_a_link(ci_suit
     assert set(ci_suite._BOUNDED_FAULT) == set(ci_suite._SUSTAINED_FAULT) - {"fram", "uart_link"}
 
 
-def test_the_error_sources_exempt_from_run_5cs_loss_sweep_are_the_store_and_the_ram_only_config_log(ci_suite: ModuleType) -> None:
+def test_the_error_source_exempt_from_run_5cs_loss_sweep_is_the_store(ci_suite: ModuleType) -> None:
     # Everything else in errcount is FRAM-backed and must come back across a commanded reboot. FRAMManager
-    # cannot persist its own history through the store that failed, and CFGMGR_SCD30 is RAM-only (owner,
-    # 2026-09-29: 'no extra FRAM chunk'); _sensortask_scenarios.py pins the same set from the real object graph.
-    assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["CFGMGR_SCD30", "FRAM"]
+    # cannot persist its own history through the store that failed; _sensortask_scenarios.py pins the same set.
+    assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["FRAM"]
     names = set(ci_suite._DRIVER_ERRCOUNT_NAME.values())
     assert ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES.issubset(names | {f"CFGMGR_{name}" for name in names})
 

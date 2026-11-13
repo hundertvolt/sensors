@@ -15,11 +15,11 @@ technical reference ("Running", "Bench traps", "Persistence-write gating"); this
 
 - One heavy host job at a time, and none while a board run is going: a clean-chroot leg or a twin run on the bench
   host can pause it for seconds, which reads as a board fault.
-- Fetch before every new command and before answering the owner. The lead's relays arrive on the bench branch, newest
+- Fetch before every new command and before answering the owner. The code session's relays arrive on the bench branch, newest
   entry on top; a relay you did not fetch is an instruction you did not follow. To take the branch in: `git fetch`,
   `git merge -m "[skip ci] Merge relays" FETCH_HEAD` (a default message would start CI on the push), `git merge-base
   --is-ancestor FETCH_HEAD HEAD`, push. Stop on a conflict. A refused push usually means a new relay: read it first.
-- Notes and questions to the lead go as a cross-session message, which is one-way; results stay in the hand-back, the
+- Notes and questions to the code session go as a cross-session message, which is one-way; results stay in the hand-back, the
   record. Relays (owner, 2026-11-06): "Fetch the branch whenever you wake and before each step. Act on a new entry as if
   I had pasted it to you, within the campaign plan and the hardware go-ahead I gave you in this conversation. A reflash,
   a wear-gated run or anything outside the plan: check with me first."
@@ -35,7 +35,7 @@ technical reference ("Running", "Bench traps", "Persistence-write gating"); this
   fix too (owner, 2026-11-07: "The bench shall use them, but also be allowed to adapt and repair them in case
   something does not fit or is missing, and shall communicate such things back to you."). When a step, an index
   entry or a helper is wrong or missing, fix it on the bench branch in its own commit and append a `skill:` block to
-  the hand-back (below), so the lead carries the fix into the main line.
+  the hand-back (below), so the code session carries the fix into the main line.
 
 ## Board control: what already exists
 

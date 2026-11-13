@@ -3,11 +3,10 @@ global-resource-collision class, and wiring-reference resolution. `build_model()
 `BuildError` naming device/instance/field, or returns a fully-resolved, safe-to-generate model."""
 
 import ast
-import functools
 import importlib.util
 import math
 from pathlib import Path
-from typing import NamedTuple, TypeGuard, TypeVar, cast
+from typing import TypeGuard, TypeVar
 
 import tomllib
 
@@ -108,10 +107,6 @@ SETTINGS_GROUPS: "tuple[tuple[str, str, tuple[str, ...], str | None], ...]" = (
     ("system", "sysfunct", ("DebugLevel",), None),
     ("system", "ntp", ("GMTOffset", "DSTOffset"), None),
 )
-
-
-class HardConsumer(NamedTuple):
-    ms: int  # the loop time it tolerates held
 
 
 def _is_int(value: object) -> "TypeGuard[int]":
@@ -947,7 +942,6 @@ def _check_uart_link_timing(model: DeviceModel, spec: InstanceSpec, bus_name: st
     # The poll rates and the reply timeout against each other, at the values that boot (UARTComm's own bounds).
     comm = "asy_uart_comm.py"
     gc_pause, timeout, poll_max, horizon, header, payload = (module_int_const(src_dir, comm, n) for n in ("_GC_PAUSE_WORST_MS", "_DEFAULT_TIMEOUT_MS", "_POLL_WAIT_MAX_MS", "_TICKS_HORIZON_MS", "_HEADER_LEN", "_DEFAULT_PAYLOAD_SIZE"))
-    num, den, mult = (module_int_const(src_dir, comm, n) for n in ("_RESYNC_NUM", "_RESYNC_DEN", "_DRAIN_BOUND_MULT"))
     poll_wait, poll_idle = (_uart_bus_value(src_dir, table, n) for n in ("poll_wait_ms", "poll_idle_ms"))
     if not 1 <= poll_wait <= poll_max:
         raise BuildError(
@@ -969,15 +963,6 @@ def _check_uart_link_timing(model: DeviceModel, spec: InstanceSpec, bus_name: st
             rule="bus.uart-poll-idle-range",
             fix=f"set poll_idle_ms within {floor}..{horizon}",
             field="poll_idle_ms",
-            instance=spec.label,
-        )
-    max_timeout = horizon * den // (num * mult)
-    if timeout > max_timeout:
-        raise BuildError(
-            model.device,
-            f"{spec.label}'s {timeout}ms reply timeout is above {max_timeout}ms - its drain bound, {num}/{den} x {mult} x the timeout, would leave rp2's 2**29 ms ticks range (Part J.6)",
-            rule="instance.uart-timeout-max",
-            fix=f"lower asy_uart_comm's _DEFAULT_TIMEOUT_MS to {max_timeout} or less",
             instance=spec.label,
         )
     min_timeout = 2 * poll_wait + poll_idle + gc_pause
@@ -1090,17 +1075,6 @@ def _checked_str(value: "TomlValue") -> str:
     return value
 
 
-@functools.lru_cache(maxsize=64)
-def _declares_config_store(source: str, filename: str) -> bool:
-    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
-    for node in ast.walk(parse_source(source, filename)):
-        if isinstance(node, ast.ClassDef) and any(isinstance(b, ast.Name) and b.id == "SensorReaderConfig" for b in node.bases):
-            return True
-        if isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id == "ConfigManager") or (isinstance(node.func, ast.Attribute) and node.func.attr == "ConfigManager")):
-            return True
-    return False
-
-
 def _device_table(model: DeviceModel) -> "TomlDoc":
     # The [device] table _check_device_table() has proven a table.
     table = model.doc.get("device")
@@ -1158,16 +1132,6 @@ def _module_const(src_dir: Path, filename: str, name: str, kind: "type[_ConstT]"
         fix=f"declare {name} = const(<{kind.__name__} literal>) at module level in {filename}",
         field=name,
     )
-
-
-def _owns_config_store(path: Path) -> bool:
-    # Whether the module builds a ConfigManager: a SensorReaderConfig subclass gets one from its base, any
-    # other class constructs it. The store logs as CFGMGR_<name>, beside the module's own logger.
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError as e:
-        raise BuildError("<src>", f"cannot read {path} to find its config store: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", field=path.name) from e
-    return _declares_config_store(source, str(path))
 
 
 def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
@@ -1278,13 +1242,6 @@ def device_max_connections(toml_path: Path, src_dir: Path) -> int:
     return ceiling if _is_int(ceiling) else webserver_init_default(src_dir, "max_connections")
 
 
-def device_max_connections_by_name(device: str) -> int:
-    # The ceiling devices/<device>.toml builds, devices/ and src/ found from this package's own location, so a
-    # host instrument naming a device needs neither path nor a sys.path insert of its own.
-    root = Path(__file__).resolve().parent.parent
-    return device_max_connections(root / "devices" / f"{device}.toml", root / "src")
-
-
 def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -> int:
     # One `<class_name>.__init__` int keyword default, read out of the real source. buildgen never
     # imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one
@@ -1327,21 +1284,6 @@ def module_int_const(src_dir: Path, filename: str, name: str) -> int:
 def module_str_const(src_dir: Path, filename: str, name: str) -> str:
     # module_int_const()'s str sibling: `NAME = const("<str>")`.
     return _module_const(src_dir, filename, name, str)
-
-
-def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
-    # The device's smallest hard consumer of loop time (Part F.3), read by the twin's loop-lag scenario and the bench lag
-    # test: the watchdog's room beside one supervisor sleep, and each uart_link's reply timeout less its two polls, its idle
-    # poll and one GC pause; the first smallest wins (agent, 2026-10-21).
-    task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
-    consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000)]
-    reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))
-    buses = cast("dict[str, TomlDoc]", model.doc.get("bus", {}))
-    for spec in _uart_links(model):
-        bus = _checked_str(spec.fields["bus"])
-        poll_wait, poll_idle = (_uart_bus_value(src_dir, buses[bus], n) for n in ("poll_wait_ms", "poll_idle_ms"))
-        consumers.append(HardConsumer(reply_ms - (2 * poll_wait + poll_idle + gc_pause)))
-    return min(consumers, key=lambda c: c.ms)
 
 
 def webserver_init_default(src_dir: Path, name: str) -> int:

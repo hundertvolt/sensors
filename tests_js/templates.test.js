@@ -988,13 +988,14 @@ describe("buildErrcountGroup", () => {
         expect(mustQuery(wrapper, '[data-rollup="nodata"]').classList.contains("hidden")).toBe(true);
     });
 
-    it("colours a counted module with only warnings in its history as a warning, on the row's one severity", () => {
+    it("marks every non-zero count for the red count, a module with only warnings in its history included", () => {
         const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT));
         clickAction(wrapper, "all");
         const sgp40 = rowAt(wrapper, 1);
         expect(sgp40.dataset.worst).toBe("W");
-        expect(mustQuery(sgp40, ".errcount-row").hasAttribute("data-has-errors")).toBe(false);
+        expect(sgp40.dataset.hasErrors).toBe("true");
         expect(mustQuery(sgp40, ".errcount-row-count").textContent).toBe("3");
+        expect(rowAt(wrapper, 0).dataset.hasErrors).toBe("false");
     });
 
     it('"Show flagged" reveals only modules whose worst entry is an error or warning', () => {

@@ -413,32 +413,6 @@ def test_the_apt_cache_runs_around_every_apt_install() -> None:
     assert not problems, "\n".join(problems)
 
 
-def test_every_mirror_check_sizes_its_rate_on_its_own_fetching_bound(tmp_path: Path) -> None:
-    # The required rate is the bytes left over the bound they are fetched under: the firmware job's own timeout-minutes
-    # (apt has no limit of its own); Playwright's install passes none, so the floor alone decides there.
-    problems = []
-    job = _jobs()["firmware-build-verify"]
-    firmware = _steps(job, 6)
-    listed = [step for step in firmware if re.search(r"^\s+id: apt-packages$", step, re.MULTILINE)]
-    restore = [step for step in firmware if _APT_RESTORE_USES in step]
-    limit = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
-    output = tmp_path / "output"
-    run = "\n".join(_run_lines(listed[0])) if len(listed) == 1 else "false"
-    done = subprocess.run(["/bin/bash", "-e", "-c", run], cwd=_REPO, env={"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False, timeout=30)
-    if limit is None or done.returncode != 0 or f"bound-s={int(limit[1]) * 60}\n" not in output.read_text(encoding="utf-8"):
-        problems.append(f"firmware-build-verify: the apt-packages step prints bound-s, this job's own timeout-minutes in seconds: {done}")
-    if len(restore) != 1 or "bound-s: ${{ steps.apt-packages.outputs.bound-s }}" not in restore[0] or "bound-from: ci.firmware_build_verify_timeout_min" not in restore[0]:
-        problems.append("firmware-build-verify: apt-cache-restore takes bound-s from apt-packages and names ci.firmware_build_verify_timeout_min")
-    steps = _action_steps(_PLAYWRIGHT_ACTION)
-    restore = [step for step in steps if _APT_RESTORE_USES in step]
-    if len(restore) != 1 or "bound-" in restore[0]:
-        problems.append("playwright-chromium: apt-cache-restore takes no bound, so the floor alone sets the required rate")
-    check = [step for step in _action_steps(_APT_RESTORE_ACTION) if "ci_apt_cache.py check" in step]
-    if len(check) != 1 or '--bound-s "$BOUND_S" --bound-from "$BOUND_FROM"' not in check[0] or "BOUND_S: ${{ inputs.bound-s }}" not in check[0]:
-        problems.append("apt-cache-restore: the check passes its bound-s and bound-from inputs to ci_apt_cache.py check")
-    assert not problems, "\n".join(problems)
-
-
 def test_no_apt_cache_step_can_fail_a_job() -> None:
     # A failed check, restore, save or list edit warns and carries on; only the real install's own failure gates.
     loud = [f"{path.parent.name}: {step.splitlines()[0].strip()}" for path in (_APT_RESTORE_ACTION, _APT_SAVE_ACTION) for step in _action_steps(path) if not re.search(r"^\s+continue-on-error: true$", step, re.MULTILINE)]
