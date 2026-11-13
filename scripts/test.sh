@@ -319,7 +319,7 @@ if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     max_parallel=1
 fi
 
-# Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts first.
+# Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts ahead of src/.
 # It runs before tests_scripts/ is backgrounded: that tier creates and deletes zz_test_ device fixtures, and the
 # generator globs devices/*.toml, so generating first keeps every fixture out of the generated tree.
 echo "== Generating buildgen device modules into build/generated_src/"
@@ -581,8 +581,8 @@ run_test_file() {
     # frozen-in modules resolvable - drop it and `import asyncio` breaks with no clue why.
     #
     # "frozen_modules" for the generated module's own `import frozen_html` (Part A.9 for why that
-    # cannot be ".frozen" itself), and "build/generated_src" FIRST so a device module resolves to
-    # the freshly generated one rather than any same-named file elsewhere on the path.
+    # cannot be ".frozen" itself), and "build/generated_src" ahead of src/ (only build/portable_src's copies
+    # precede it) so a device module resolves to the freshly generated one, not a same-named file elsewhere.
     if [ "$coverage" = "1" ]; then
         runner=(tests/_coverage_runner.py "$test_file" "$raw_dir/$(_job_tag "$test_file${device:+[$device]}").json")
     elif [ -n "${GC_THRESHOLD:-}" ]; then
