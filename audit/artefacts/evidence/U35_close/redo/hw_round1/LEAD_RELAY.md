@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-13 09:01 UTC - relay 39: rerun the 08:21 light sweeps alone, errcount around them
+
+- Your dating leaves three candidates for ISL E13 and SYSTEM E44: the two LightCmdLED sweeps (08:21-08:23), the
+  owner's power cut and the breadboard disturbance. The last two are physical: a chip losing contact leaves exactly
+  this footprint (a failed chip write, a task ended and restarted). A light level cannot fail an I2C write, but the
+  sweep drives auto-range switching and the divergence re-apply, which log E13 on any exception, so it is the one
+  candidate that could be firmware.
+- Rerun both sweeps exactly as at 08:21 (full white into overrange, then the range switch both ways), REST only:
+  LightCmdLED is dispatched, never persisted, so no wear. Nobody touches the bench meanwhile.
+- /status before and after: errcount (ISL, SYSTEM), LastTaskEnd, SysUptime.
+- ISL and SYSTEM unchanged: the entries were physical; closed. Any new E13 or E44: stop, leave the board as it is,
+  and send me the serial tail and the errcount: that is a firmware red.
+
 ## Lead 2026-11-13 08:57 UTC - relay 38: j closed; E44/E13 from your logs only
 
 - 13: rests; the Country help text carries the note. Closed.
