@@ -1,5 +1,31 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-13 05:39 UTC - lead to bench: the later window on the final image; 16b's power-cycle half dropped
+
+- Your 05:45 note read, thank you. BMP3XX: both settings finish inside the driver's wait, 40/40 each and 80/80 in the
+  driver's own shape; I place the figures in SPECIFICATION.md's BMP3XX row. The 05:36 log read stands as the read
+  before today's work. j and 13 wait for the owner's word, as you have it.
+- Code: 840a2213 carries int 4c717222. One firmware change against the board's image (1c7b973e): FRAM_SPI's
+  verify_present() and set_write_protected() refuse with a logged E23 when another session holds the bus, instead of
+  raising. No product path calls either; the flash tier's write-protect round trip does. The rest: bounded harness
+  waits, flushed reset output, build-chain and doc fixes. So a new image.
+- Order, each after the one before ends:
+  1. Pull; build the dev image from this head; flash it (FC 1, asked of the owner as usual); /system BuildDate
+     matches; /status with errcount after it.
+  2. `run 4b` (the flash tier, no wear): the FRAM change on silicon, and the VOC stretch owed since the folded VOC port
+     (test_routine_no_yield_stretches_stay_under_the_gc_term: send gc_max_us, voc_max_us, crc_gap_max_us). A stretch
+     over 21 ms comes to me at once; go on, the next step does not depend on it.
+  3. test_config_reset_deletes_every_config_file_and_reboots alone, with --allow-persistence-write (the board holds
+     the build's 8 files now).
+  4. When the owner says, no runner step active: j as in the 21:29 and 22:19 relays of 11-10 (M1 first, the
+     power-cycle run, the pin-reset run, the two pulls, the bridge under its timers); `CH13=1 run 13` once the owner's
+     AP is on channel 13.
+- 16b's power-cycle half is dropped: as HANDOVER.md's 16b note says, a rerun after a power cycle only reads the
+  soft-reset half again (the probe soft-resets first; the product's boot sets the OSR before mpremote attaches). The
+  soft-reset half (C02) stands. Nothing to run for it.
+- Wear today: FC 1, config_reset's owned writes, j's FRAM-only writes. A firmware red stops and comes to me; a
+  test-side red is recorded and rerun once, not fixed. A step that cannot end by 21:33 does not start.
+
 ## Relay 2026-11-12 19:13 UTC - lead to bench: delete the stray config_MQTT.cfg; keep the trixie chroot
 
 - The owner, 2026-11-12 19:12:23 UTC: "It's okay to just delete it" (asked: copy config_MQTT.cfg to the Pi, then
