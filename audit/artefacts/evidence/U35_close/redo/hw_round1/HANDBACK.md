@@ -44079,3 +44079,18 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - /status before (08:40) and after (08:44): LastTaskEnd None both; ConfigFaults []; errcount unchanged except NTP 0 -> 1
   (E71 NTP_NO_REPLY, the first fetch right after the join; NTPSynced False 30 s into the boot). No new E44 or E13.
 - Next in j: the two pulls (FRAM unplug/replug, UART crossover pull), status before and after each.
+
+## Bench 2026-11-13 08:55 UTC - j: both pulls PASS, no reboot, no task end
+
+- fram_unplug_replug_recovery (logs/day8_20261113/frampull.out): the owner pulled SCK, MOSI, MISO and CS ("off",
+  Enter 08:47:50). Seconds from the pull to the first FRAM log entry: **36.4 s**. Reconnected ("on", ~08:49:03).
+  Codes from the gap: FRAM 0 -> 6 (W26 FRAM_WEL_NOT_SET, E102 FRAM_STATUS_WRITE, E100 FRAM_BLOCK_WRITE, twice);
+  SGP40 +1, E110 SGP_BACKUP_WRITE (its 180 s backup inside the gap). Recovery: the next SGP40 backup landed, BackupTS
+  1794559765 = 08:49:25, ~22 s after the replug. SysUptime 82 -> 358 (no reboot), LastTaskEnd None. PASS.
+- uart_crossover_pull_recovery (uartpull.out): GP0<->GP9 and GP1<->GP8 pulled ("off", Enter 08:51:39), back ("back",
+  Enter 08:52:27). Test's line: "first failed transfer after the pull: 0.8 s; Failures 0 -> 12; codes logged:
+  {'UART_init': ['E81', '+11 past the ring'], 'UART_resp': ['E80', 'E22']}; transfers resumed after the replug:
+  0.5 s". E81 UART_NO_ACK x12 (initiator), E80 UART_FRAME_INVALID and E22 TIMEOUT (responder). SysUptime 388 -> 551,
+  LastTaskEnd None, Transfers 353 -> 460. PASS.
+- /status before and after each: no new E44, no new E13, no task end.
+- Left in j: the bridge by `env --tier bench` under its timer with a second armed by hand: asked of the owner first.
