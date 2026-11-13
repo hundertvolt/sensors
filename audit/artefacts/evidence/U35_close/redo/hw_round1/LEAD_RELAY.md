@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-13 09:04 UTC - relay 40: relay 39 withdrawn; E13+E44 closed
+
+- Do not run relay 39: your code reading settles it. The sweep cannot end the task (no read error, and `_init_isl()`
+  runs only at task start, :779).
+- The boot is 08:28:43, not 07:46:54: your 07:55:54 errcount read lies inside the 07:46:54 boot, minutes after its
+  task start, and shows ISL 0 and SYSTEM 52.
+- Cause: the cold power-up after the owner's 31 s cut, with the flicker the owner reports at the plug-in. The
+  ISL29125 datasheet (POR section) says the chip powers down into Reset whenever VDD dips below its POR level and
+  ignores a START during power-up. A supply bounce during the init's configure() burst fails it; the supervisor
+  restarted the task, and the next init succeeded. That is the designed handling, with no firmware change.
+- Not systematic: the later cold boots (08:34:11 POR, the power-cycle rerun) and the RUN-pin reset left no E13/E44.
+- Nothing more on the board today. Keep it serving.
+
 ## Lead 2026-11-13 09:01 UTC - relay 39: rerun the 08:21 light sweeps alone, errcount around them
 
 - Your dating leaves three candidates for ISL E13 and SYSTEM E44: the two LightCmdLED sweeps (08:21-08:23), the
