@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-13 07:58 UTC - lead to bench: 13 not judged yet; one read-only look at the Pi's own log
+
+- Your 08:00 read: not a firmware red yet. The product's W37 under DE leaves the same open point as the scan: did the
+  Pi transmit on 13 at all? `iw dev` reports the channel the interface was set to; brcmfmac is publicly reported to
+  refuse 12-13 in AP mode in its firmware (kernel lines like "Set Channel failed ... -20") while the host shows the
+  channel. The bench AP was heard on no channel in either run, which fits a silent Pi.
+- The script's resets are mine: it re-inits the radio without the product's settle waits (2 s after active(False),
+  1 s after deinit, asy_wifi_service.py). The product's own switches today (to its hotspot and back) worked.
+- One look, read-only, no board step and no Wi-Fi change: the Pi's kernel and NetworkManager log for 06:44-06:50 and
+  07:45-07:53 (e.g. `journalctl -k` and `journalctl -u NetworkManager` over those windows), filtered to brcmf, channel
+  and AP-start lines. Send those lines without network names or keys.
+- Then 13 rests; nothing more on it today unless I say. Wear: none.
+
 ## Relay 2026-11-13 07:39 UTC - lead to bench: 13 again, the Pi on DE, the DE pass only
 
 - Your 07:00 read: inconclusive, not red. The bench AP was heard on no channel, so most likely the Pi never beaconed
