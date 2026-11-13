@@ -43885,3 +43885,14 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   the reference reading is "a recorded data point, never pass/fail" and the prompt accepts 'none'. So j runs as
   written with reference_lux "none", plus the rig geometry record. No change asked of the test here; any doc line that
   still promises a reference-meter reading is yours to word.
+
+## Bench 2026-11-13 05:58 UTC - 05:39: the owner's go; row 3 on 840a2213 PASS (FC 1); 4b starting
+
+- Asked the owner for 05:39's reflash, 4b and the config_reset run; the owner (~05:55 UTC): "Yes, all three".
+- `run 3 3` 05:52:14-05:56:18, rc=0: built from 77a092f4 (840a2213's code plus my notes; src/ against 1c7b973e:
+  asy_fram_driver.py, and one comment's actor in asy_webserver_service.py), flashed in one picotool pass, then
+  `SUM image board_BuildDate=2026-11-13T05:52:18Z record_BuildDate=2026-11-13T05:52:18Z match=1`.
+- GET /status after it: ResetReason 2, ConfigFaults [], no task ended, MemFree 75040; every errcount as at 05:36
+  (WIFI 37, SGP40 49, CFGMGR_* W22 4/5, WEBSERVER 1, the rest 0).
+- (A first launch at 05:51 never started: round1.sh has no exec bit, so it runs through bash, as yesterday.)
+- FC today: 1 (logs/day8_20261113/fc_ledger.txt). Next: `run 4b 4b`, then config_reset alone.
