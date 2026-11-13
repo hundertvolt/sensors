@@ -44094,3 +44094,16 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   LastTaskEnd None, Transfers 353 -> 460. PASS.
 - /status before and after each: no new E44, no new E13, no task end.
 - Left in j: the bridge by `env --tier bench` under its timer with a second armed by hand: asked of the owner first.
+
+## Bench 2026-11-13 09:05 UTC - j done; the bridge item left out on the owner's word
+
+- Asked the owner for j's last item (delete br0 and let `env --tier bench` recreate it under its timer, a second B.13
+  timer by hand, the current AP credentials carried over); the owner asked "what is that risky test good for, what is
+  its added value?". My answer: it is BACKLOG.md's one check of ensure_bench_bridge()'s creation path on the Pi and the
+  basis of tool.bench_bridge_recovery_arm_s / tool.bench_bridge_up_poll_s; it touches no firmware and no audit
+  result; it costs the host's network for its duration and, on a failed creation, may need the console; recommended
+  not running it in this campaign, keeping it for when the bridge really is rebuilt. The owner, 2026-11-13 ~09:03 UTC:
+  "yes, leave it out".
+- So the bridge item stays open (BACKLOG.md's entry unchanged), not done. Every other part of j is done: M1 PASS, the
+  power-cycle run (newest backup restored; test-side red), the RUN-pin run PASS, both pulls PASS.
+- The board serves on the round image, AP on channel 6, nothing running. Wear today: FC 1, config_reset's owned writes.
