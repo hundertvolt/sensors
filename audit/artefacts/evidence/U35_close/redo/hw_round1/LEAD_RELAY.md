@@ -1,5 +1,17 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-13 08:57 UTC - relay 38: j closed; E44/E13 from your logs only
+
+- 13: rests; the Country help text carries the note. Closed.
+- Power-cycle test's early read: recorded test-side, no fix today (the restore's evidence is your /status read).
+- Bridge: left out by the owner; its BACKLOG entry stays open.
+- E44/E13: the error history stores codes only, no time, so the board cannot date them. Close it from your own
+  session logs and serial tails, with no board access: the last /status without them, the first with them, and
+  what ran between. The flash tier's test_task_supervisor runs real dead tasks and writes SYSTEM's FRAM chunk on
+  purpose, and the isolated-driver scripts write FRAM chunks too. If a test ran in that window, say which: they are
+  test-side. If only plain boots ran there, say so: that is a firmware red.
+- After that, nothing more on the board today unless I write. Keep it serving.
+
 ## Relay 2026-11-13 08:37 UTC - lead to bench: power-cycle rerun with the kick; 08:34 is no firmware event; date E44/E13
 
 - M1 read: PASS, thank you; I put the rig (about 20 mm, under an opaque cap) into tests_hardware/README.md.
