@@ -154,7 +154,7 @@ is read.
 | each I2C bus's answering addresses (`i2c0`'s MPRLS among them) | to be read: the `addresses` fact of `bus_topology_autodetect_and_hazard_sweep.py`, which `flash/test_bus_concurrency.py`'s sweep test notes | | |
 | FRAM part | to be read: the `rdid` fact of `fram_raw_dump.py`, saved by every session's start | | |
 | SCD30 NVM state (temperature offset, altitude, ambient pressure, ASC) | to be read: the standard-state fixture's SCD30 snapshot at a session start | | |
-| NeoPixel rig geometry (distance, ambient) | to be read: the manual `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` | | |
+| NeoPixel rig geometry (distance, ambient) | about 20 mm, an opaque cap over the LED and the sensor (0.9 lx with the LED dark) | the manual `isl29125_relative_lux_and_neopixel_rig_geometry`, the owner at the bench | 2026-11-13 |
 | the router's DHCP reservation keyed to the uplink's MAC | to be read: the owner's answer | | |
 | the BME688 on UART0 (GP16/GP17) still attached | to be read: the owner's answer | | |
 | bench host OS and stale packages | to be read: the bench host's `/etc/os-release` and `apt list --upgradable` | | |
@@ -488,7 +488,7 @@ the rig needs:
   at a fixed, recorded distance -
   close enough that full-brightness white crosses the 375 lx range's top into the 10000 lx range.
   Record the geometry through the manual tier's
-  `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`.
+  `isl29125_relative_lux_and_neopixel_rig_geometry`.
 - Ambient excluded (enclosure or darkened room). Ambient above the low range puts the whole run on
   the high range and fails with "only range N was ever used" - a rig fault, not a driver one.
 - Nothing else driving the pixel: these scripts write the pixel directly, past `request_signal()`'s
@@ -496,15 +496,16 @@ the rig needs:
 
 Every assertion is **relative** - continuity across the switch, no chatter, hue/saturation invariance
 while the level moves, gain-ratio convergence. Absolute lux and CCT against a WS2812's three narrow
-emission lines are meaningless and are asserted nowhere; the reference-meter half is the manual
-tier's job. CLAUDE.md's FRAM rule applies in its sharpest form to every script here - see "A hardware
-run overwrites the production modules' FRAM chunks" below before treating any log as evidence.
+emission lines are meaningless and are asserted nowhere; the manual tier checks relative values
+only, with no reference meter (owner, 2026-11-13). CLAUDE.md's FRAM rule applies in its sharpest
+form to every script here - see "A hardware run overwrites the production modules' FRAM chunks"
+below before treating any log as evidence.
 
 The rig as last recorded (the manual step saves `rig-geometry.json` into its run's evidence):
 
 | distance | ambient | recorded |
 |---|---|---|
-| to be read | to be read | the manual `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` |
+| about 20 mm | an opaque cap over the LED and the sensor (0.9 lx with the LED dark) | 2026-11-13, the manual `isl29125_relative_lux_and_neopixel_rig_geometry` |
 
 ## ISL29125 bench-rig facts, before reading any result
 
@@ -584,7 +585,7 @@ named beside it; a script runs rendered (`harness.render_device_script()`), and 
 | A script that boots the firmware's `main()` installs an always-printing unretrieved-task report first (the product's `PrintLog` report at level 1, or a script-local one) | `tests_scripts/test_exception_handler_contract.py` |
 | A heap-measuring script sets `gc.threshold` itself and reports it as its first fact | `tests_scripts/test_device_script_gc_threshold.py` |
 | A STATE-dispatched script needs the `persistence_write` marker only on the runs that pass a writing STATE | `tests_scripts/test_persistence_write_marker_completeness.py` |
-| Run it in the twin first, at both GC stages (`scripts/record_twin_instrument_runs.py`; the flash tier once per stage, refused if its twin board never took the stage): each entry's `stages` holds `"-1"` and `"32768"`, each `pass` or `exception`, and its `result` is `exception` if any stage failed; a script a flash test runs is charged with the outcomes of the flash tests that run it, not its whole module's. Then commit the record | review (the committed record returns on the final tree) |
+| Run it in the twin first, at both GC stages (`scripts/record_twin_instrument_runs.py`; the flash tier once per stage, refused if its twin board never took the stage): each entry's `stages` holds `"-1"` and `"32768"`, each `pass` or `exception`, and its `result` is `exception` if any stage failed; a script a flash test runs is charged with the outcomes of the flash tests that run it, not its whole module's | review |
 | Park the shared rig (the NeoPixel) dark in a `finally` | `tests_scripts/test_device_script_rig_parking.py` |
 | Feed the watchdog in short steps: `_shared/watchdog.py`'s fed waits, at most 2 s a step | `tests_scripts/test_device_script_watchdog.py` |
 | Shared code lives in `_shared/`, inlined at render by `# @include _shared/<name>.py` | review |
@@ -951,23 +952,24 @@ writes restored in the script, so it runs only with `--allow-persistence-write` 
 Each `ResetReason` code (SPECIFICATION.md Part A.8 holds the meanings), the test that proves it and
 its level. Every bench test reads the code from `GET /status` after a serving boot, with the FRAM
 evidence saved first; `bench/test_reset_reasons.py` then reads the watchdog's REASON bits on the
-board itself and asserts the half each reset kind sets.
+board itself and asserts the half each reset kind sets. The last column holds the date each code
+was read back on `dev`'s final images.
 
 | code | test that proves it | level | on silicon |
 |---|---|---|---|
-| 0 | `bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown` | L4 | not yet run |
-| 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns; `test_console_soft_reset_keeps_the_reset_record` holds a valid record across its cut, so its 1 also shows the cut cleared the scratch registers) | manual | not yet run |
-| 2 | with SDA held across a `machine.reset()` and a watchdog reset, each with its REASON bit: `flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel`; after a fault inside the running graph that stops every feed: `flash/test_task_supervisor.py::test_a_fault_inside_the_running_graph_stops_every_feed_and_the_watchdog_resets` | L4, L3 | not yet run |
-| 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed`; a reboot at a boot's first answer: `bench/test_system_commands_over_rest.py::test_a_reboot_at_a_boots_first_answer_resets_cleanly` | L4, L3 | not yet run |
-| 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) | L4 | not yet run |
-| 6 | `bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed`; the fallback itself on L3: `flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm` (`reboot_fallback_starves_the_watchdog.py`) | L4, L3 | not yet run |
-| 7 | `flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`; `bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults` | L3, L4 | not yet run |
-| 8 | `flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty`; `bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log` | L3, L4 | not yet run |
-| 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | not yet run |
-| 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5; 11 after a power-on, a Ctrl-D soft reset with phase 1 marked and no record (`reset_code_invalid_record.py`'s STATE `boot_phase` calls `begin_boot()`): `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
-| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM entry write never returning (the loop with it), the watchdog's reset, timer bit, reads the recorded 20; mode `escape`: no handler records it, the dead-task entry writes 20 before its held write) | L4 | not yet run |
-| 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; a harness hard reset of the serving board, whose `mpremote` Ctrl-C ends `main.py` before its `machine.reset()`: `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
-| 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | not yet run |
+| 0 | `bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown` | L4 | 2026-11-11 |
+| 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns; `test_console_soft_reset_keeps_the_reset_record` holds a valid record across its cut, so its 1 also shows the cut cleared the scratch registers) | manual | 2026-11-13 (the power cut and the RUN pin) |
+| 2 | with SDA held across a `machine.reset()` and a watchdog reset, each with its REASON bit: `flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel`; after a fault inside the running graph that stops every feed: `flash/test_task_supervisor.py::test_a_fault_inside_the_running_graph_stops_every_feed_and_the_watchdog_resets` | L4, L3 | 2026-11-11 |
+| 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed`; a reboot at a boot's first answer: `bench/test_system_commands_over_rest.py::test_a_reboot_at_a_boots_first_answer_resets_cleanly` | L4, L3 | 2026-11-11; 2026-11-13 (five warm reboots) |
+| 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) | L4 | 2026-11-11 |
+| 6 | `bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed`; the fallback itself on L3: `flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm` (`reboot_fallback_starves_the_watchdog.py`) | L4, L3 | 2026-11-11 |
+| 7 | `flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`; `bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults` | L3, L4 | 2026-11-12; 2026-11-13 |
+| 8 | `flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty`; `bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log` | L3, L4 | 2026-11-11 |
+| 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | 2026-11-11 |
+| 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5; 11 after a power-on, a Ctrl-D soft reset with phase 1 marked and no record (`reset_code_invalid_record.py`'s STATE `boot_phase` calls `begin_boot()`): `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | 2026-11-11 |
+| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM entry write never returning (the loop with it), the watchdog's reset, timer bit, reads the recorded 20; mode `escape`: no handler records it, the dead-task entry writes 20 before its held write) | L4 | 2026-11-11 |
+| 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; a harness hard reset of the serving board, whose `mpremote` Ctrl-C ends `main.py` before its `machine.reset()`: `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | 2026-11-11 |
+| 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | 2026-11-11 |
 
 ## System commands
 
@@ -992,7 +994,8 @@ the reset:
   first backup (`GET /status` `BackupTS`), as does the cut erase of code 9, so no later boot reads a
   blank backup chunk (agent, 2026-11-06). FRAM is outside the wear budget.
 - **`reboot`** and **`bootloader`** run the reboot sequence - record, flush, pause, reset - and the
-  reply precedes the reset within its bound (codes 3 and 4); a hung shutdown step ends in a watchdog
+  reply precedes the reset within its bound (code 3; `bootloader`'s BOOTSEL round trip loses the
+  record, read back as code 2); a hung shutdown step ends in a watchdog
   reset read as command incomplete (code 9).
 - **`mempause`** pauses storage; a reboot with storage paused still resets attributed (L3), and L4
   races `erasefram`, `reboot` and `mempause` at once, then `reboot` and `bootloader` at once.
@@ -1323,26 +1326,32 @@ assumption, not at a product bug.
   drops it (`lib/lwip/src/core/ipv4/icmp.c:258-283`, lwIP `77dcd25`), and a UDP socket's state stays
   `STATE_ACTIVE_UDP` (`extmod/modlwip.c:1008`, v1.29.0), which sets no error flag in modlwip's poll
   (`:1646-1666`).
-- **Open on silicon, each with the instrument that settles it** (none has run yet):
+- **Open on silicon, each with the instrument that settles it**:
   - what the CYW43 firmware drops while a flash write holds interrupts off -
     `bench/test_network_resilience.py::test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link`;
   - whether DMA reads update UARTRSR's error flags as CPU reads do -
     `flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only`;
-  - whether the reset record survives a RUN-pin reset - `manual/manual_persistence.py::test_run_pin_reset_keeps_or_clears_the_record` -
-    and that the bootloader reboot loses it - `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed`;
   - the SCD30's answer to a read with no command before it - `scd30_conformance_probe.py`'s
     `C03_read_before_a_command` - and after an NVM write cut by power loss -
     `manual/manual_persistence.py::test_power_loss_mid_scd30_nvm_write`;
   - the FRAM breakout's MISO idle level - `fram_conformance_probe.py`'s `A01_miso_idle_byte`;
   - the FRAM CS level at power-off - unmeasured, a limitation (SPECIFICATION.md C.3.1, `FRAM_SPI`'s
     CS pad);
-  - the seconds from a FRAM pull to its first FRAM log entry, and a pulled crossover jumper's first
-    failed transfer, codes and recovery - `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`
-    and `::test_uart_crossover_pull_recovery`;
   - why the hotspot join can still exhaust its five attempts with the re-verify in place -
     `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()`;
   - whether the SCD30's soft reset at every boot restarts its automatic self-calibration's
     first-week search, which no reading of the sensor's interface shows (no ASC progress readout).
+- **Answered on silicon, 2026-11-11 to 2026-11-13** (the dev bench, the final images):
+  - the bootloader reboot loses the reset record, read back as code 2 (2026-11-11) -
+    `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed`;
+  - a RUN-pin reset clears the reset record: ResetReason 1 after one with a valid record held -
+    `manual/manual_persistence.py::test_run_pin_reset_keeps_or_clears_the_record`;
+  - a FRAM pull: the first FRAM log entry 36.4 s after it (W26, E102, E100; SGP40's backup in the gap
+    E110), backups written again ~22 s after the replug, no reboot -
+    `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`;
+  - a crossover pull: the first failed transfer 0.8 s after it (E81 initiator; E80, E22 responder),
+    transfers again 0.5 s after the replug, no reboot -
+    `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery`.
 
 ## Sensor, FRAM and supervisor coverage on silicon
 

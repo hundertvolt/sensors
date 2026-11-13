@@ -79,6 +79,27 @@ required or requested, or that was developed into a good shape, leans to "keep",
 gate: a fix whose only reason was removed overkill is obsolete and goes, its knowledge preserved
 (owner, 2026-11-06).
 
+**Restraint in practice** (the owner's rulings, each standing): a change answers a concrete,
+non-hypothetical fault — "building upon hypothetical findings is a clear no-go" and "Hypothetical
+findings which are suspicious to be real need to be verified" (owner, 2026-10-28) — so a bound that
+holds by construction is welcome, while a task, timer, flag, retry or timed check for a trigger
+nobody observed is not ("hardcoded delay checks like this are a very bad, very awkward pattern",
+owner, 2026-10-28). The target is "all gaps closed, (really) agreed on features implemented, and
+from there on minimal, efficient and lean changes" (owner, 2026-11-07), "minimal and optimal at the
+same time through smart design", asked "on micro, intermediate and macro level" (owner,
+2026-11-09); a fault is fixed at its root, "not something derived over multiple steps", with "no
+runaway fixing chains, and don't drift into fixing tests, concentrate on the quality of the
+firmware and the buildgen" (owner, 2026-11-11). Modules are libraries, "not every feature must be
+immediately used, as long as it is a real feature" (owner, 2026-10-23), and "Before removing any
+function which could be a feature which is just unused, ask me" (owner, 2026-11-09). Tests: "The
+unit tests shall have good quality, but don't need deep dives" (owner, 2026-10-28), machinery built
+only to verify a review being a temporary tool (owner, 2026-10-28, paraphrase); planted faults are
+"a good measure for complex measurement tests" and "not required for the straightforward tests"
+(owner, 2026-10-23); "be careful with such negative tests. they are extremely prone to become
+overkill." (owner, 2026-11-11); "prefer to keep existing, working tests, i would not like something
+removed which is good." (owner, 2026-11-13). A later clear owner decision supersedes an earlier
+rule (owner, 2026-11-10; CLAUDE.md's decision records).
+
 ## 0.3 Structural patterns
 
 Each pattern is carried by the Part named (agent, 2026-07-13):
@@ -595,7 +616,7 @@ so the move shifted none of Part H.7's serving walls.
 
 **When the Microdot pin moves** (a recorded decision, `THIRD_PARTY_LICENSES.md`), re-check against
 the new source, then update the hash test (`tests_scripts/test_vendored_microdot.py`): the stand-ins
-`_RequestLike`/`_Holder` (`asy_api_response.py`) and `_MicrodotApp`/`_StreamLike`
+`_RequestLike` (`asy_api_response.py`) and `_MicrodotApp`/`_StreamLike`
 (`asy_webserver_service.py`) against `Request`, `Microdot` and the stream calls `handle_request()`
 makes (`ext/microdot.py:288`, `:942`, `:1415-1440`, `:400-434`); `MUTED_SOCKET_ERRORS` still holding
 errno 32 (`:56-61`), which the head guard's quiet refusal relies on; `Request.max_readline`,
@@ -840,8 +861,8 @@ under the implicit FRAM-wiring rule below the list):
    `config_stores` are providers, not lists — `sysfunct.setup()` calls each once (step 15), after
    every module exists.
 9. `scd30 = SCD30_Reader(i2c0, 8, trigger_s=3, ..., cfg_path=cfg_path, log=log_fram)` — **chunk 8**; six
-   of its keys live on-sensor and the three FRC settings in its config file (C.4.3), so it has a `cfgmgr` whose
-   `CFGMGR_SCD30` log is RAM-only (`_CFG_LOG_FRAM = False`): no chunk of its own. Constructed before
+   of its keys live on-sensor and the three FRC settings in its config file (C.4.3), so it has a `cfgmgr` —
+   **chunk 9**, the same "own chunk, then cfgmgr chunk" shape. Constructed before
    `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a direct `ValueRef(scd30, ...)` reference
    to this already-built object as its `temperature`/`humidity`, so the producer must exist
    first — a pure Python name-resolution requirement, not a FRAM one (chunk order is random-access
@@ -849,21 +870,21 @@ under the implicit FRAM-wiring rule below the list):
    here for readability. Any order is valid: the chunk layout is fixed within one build and need
    not survive a reflash (owner, 2026-09-26).
 10. `sgp40 = SGP40_Reader(i2c1, temperature=ValueRef(scd30, 'Temp'), humidity=ValueRef(scd30,
-    'Hum'), backup=SgpBackup(fram, ntp.ntp_clock_valid), ..., log=log_fram)` — **chunk 9** (error
-    log), then its own `cfgmgr` — **chunk 10**, then the VOC backup its `__init__` draws from
+    'Hum'), backup=SgpBackup(fram, ntp.ntp_clock_valid), ..., log=log_fram)` — **chunk 10** (error
+    log), then its own `cfgmgr` — **chunk 11**, then the VOC backup its `__init__` draws from
     `backup.store` (**timestamped chunk**, not part of this numbering).
     `scd30` is referenced directly for both values (C.14.3's generalized per-value
     measurement wiring) — a `ValueRef(source, field)`, no wrapping callback; the two resolve
     independently, so a future device could compensate temperature and humidity from two different
     sensors.
-11. `bmp3xx = BMP3XX_Reader(i2c1, address=0x77, ..., log=log_fram)` — **chunk 11**, own `cfgmgr`
-    — **chunk 12**. No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres`
+11. `bmp3xx = BMP3XX_Reader(i2c1, address=0x77, ..., log=log_fram)` — **chunk 12**, own `cfgmgr`
+    — **chunk 13**. No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres`
     stays a static config value even though `wozi` physically has a live BMP388 — A.4's own note),
     so unconstrained by ordering-hazard #1. (`dev`-only `isl29125` follows the identical
     "own chunk, then cfgmgr chunk" shape, positioned here too when present.)
 12. `notification = NotificationService(neopixel.request_signal, ntp.cettime,
     signals=(NotificationSignal('WarnCO2', ValueRef(scd30, 'CO2'), _FIELD_WARN_CO2, (1, 0, 0)), ...),
-    ..., log=log_fram)` — **chunk 13**, own `cfgmgr` — **chunk 14**. Its three signals (each a
+    ..., log=log_fram)` — **chunk 14**, own `cfgmgr` — **chunk 15**. Its three signals (each a
     `ValueRef` — `scd30`/`"CO2"`, `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) are constructor
     arguments, checked and appended to its schema before its own `cfgmgr` is built.
 13. Nothing completes a module after construction (Part C.4.3): `conn`'s LED, `sysfunct`'s
@@ -895,7 +916,7 @@ under the implicit FRAM-wiring rule below the list):
     ..., error_sources=_collect_error_sources()), serving=ServingLimits(..., host=web_host,
     port=web_port), uptime_s=sysfunct.get_uptime, static=StaticSite(mount="/html",
     index_file="index.html", is_hotspot_active=conn.is_hotspot_active), log=log_fram)`
-    — **chunk 15** (under the same implicit-if-FRAM-present rule as every other
+    — **chunk 16** (under the same implicit-if-FRAM-present rule as every other
     mandatory-infra module); no on-flash config, no `cfgmgr`. `static=` registers the static route
     pair last, so an exact-match API route always wins.
 15. **The one-time setup batch**: `run_setups(_collect_setups())` awaits, in order, `fram` (first:
@@ -906,7 +927,7 @@ under the implicit FRAM-wiring rule below the list):
     `sysfunct.setup()` resolves its `level_setters` and `config_stores` providers, which read every
     module including `webserver` (step 14), satisfied by batching after construction. Every logger
     store is set up here, first in its module's `setup()`, so no logger is set up lazily by a task.
-    `run_setups()` feeds the watchdog after every unit, with no collect between them (I.4(f.1)) — a
+    `run_setups()` feeds the watchdog after every unit and runs the I.4(f.1) placement collects — a
     one-time, boot-only, non-looping feed site, safe however many modules a device wires: it cannot
     degenerate into something that keeps feeding a genuinely hung system. `feed_watchdog()` itself
     is a no-op on a watchdog-less build, once the reset phase starves, and once a system
@@ -914,10 +935,10 @@ under the implicit FRAM-wiring rule below the list):
     whose file is absent writes it here, once, with its schema defaults (C.7.3; owner, 2026-10-01);
     the set of modules whose file existed but was unreadable or damaged is fixed when the batch ends
     and published as `/status` `ConfigFaults` (A.8; owner, 2026-10-01). A `uart_link` instance's
-    `setup()` allocates its receive DMA ring, held for the program's life, among the long-lived
-    survivors (I.4(f.1); owner, 2026-10-05).
+    `setup()` allocates its receive DMA ring, held for the program's life, so the placement collects
+    put it with the long-lived survivors (I.4(f.1); owner, 2026-10-05).
     The stretches between feeds are Part N rows: `boot.unfed_stretch_1_ms` (from `WDT()` to the
-    batch's first feed), `boot.setup_unit_stretch_ms` (one unit, between
+    batch's first feed), `boot.setup_unit_stretch_ms` (one unit and its placement collect, between
     two of the batch's feeds), `boot.unfed_stretch_2_ms` (from its last feed to the supervisor's
     first) and `system.scan_budget` (one supervisor pass, its escalation included). No unit asks for
     a timed wait but a `uart_link`'s boot drain (`asy_uart_comm.py`'s `_drain()`, from its
@@ -929,18 +950,18 @@ under the implicit FRAM-wiring rule below the list):
 
 | Stretch | What runs unfed | Bound's source |
 |---|---|---|
-| 1 (`boot.unfed_stretch_1_ms`) | the boot entry's `WDT()` → every product import (the device module and every module it imports) → every construction (allocation only, no bus I/O beyond each driver's `Pin`/bus constructor; each `I2C` constructor runs the boot bus clear, C.3, up to 11 SCL waits of one bus timeout) → the webserver's construction → `fram.setup()` → the batch's first feed | the measured module import (~1.1 s), construction (~0.14 s) and `fram.setup()` (6 ms) below; a collect ≤ 21 ms measured (I.1); the boot clears' summed worst case, at most 4.4 s on two buses at the bound (Part N `i2c.timeout_max_us`) |
-| 2 (`boot.unfed_stretch_2_ms`) | the batch's last feed → `start_tasks()`: per task its starter and an `asyncio.sleep_ms(1000 // N)` (at most 1,000 ms of sleeps in all) → `start_timers()` (the unstaggered timer starters, then the trigger stagger, last start below 1,000 ms, C.9.1) → `ntp_force_sync()` (sets an event, no I/O) → `supervise_tasks()` starts the supervisor task → its first pass and its feed | the stagger's and the task starts' own arithmetic; each started task's first slice up to its first `await` has no bound in code and is measured |
+| 1 (`boot.unfed_stretch_1_ms`) | the boot entry's `WDT()` → every product import (the device module and every module it imports) → every construction (allocation only, no bus I/O beyond each driver's `Pin`/bus constructor; each `I2C` constructor runs the boot bus clear, C.3, up to 11 SCL waits of one bus timeout) → the webserver's construction → `run_setups()`'s first `gc.collect()` → `fram.setup()` → the batch's first feed | the measured module import (~1.1 s), construction (~0.14 s) and `fram.setup()` (6 ms) below; a collect ≤ 21 ms measured (I.1); the boot clears' summed worst case, at most 4.4 s on two buses at the bound (Part N `i2c.timeout_max_us`) |
+| 2 (`boot.unfed_stretch_2_ms`) | the batch's last feed → `start_tasks()`: one `gc.collect()`, then per task its starter, an `asyncio.sleep_ms(1000 // N)` and a collect (at most 1,000 ms of sleeps in all) → `start_timers()` (the unstaggered timer starters, then the trigger stagger, last start below 1,000 ms, C.9.1) → `ntp_force_sync()` (sets an event, no I/O) → `supervise_tasks()` starts the supervisor task → its first pass and its feed | the stagger's and the task starts' own arithmetic; each started task's first slice up to its first `await` has no bound in code and is measured |
 
-**Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 15
+**Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 16
 `PrintLogHistoryStore` chunks plus 1 timestamped chunk; the Neopixel takes none): WifiService →
 its own `CFGMGR_WIFI` → CaptiveDNS → NTPClient → its own `CFGMGR_NTP` → SystemService → its own
-`CFGMGR_SYSTEM` → SCD30 (its `CFGMGR_SCD30` RAM-only, no chunk) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
+`CFGMGR_SYSTEM` → SCD30 → its own `CFGMGR_SCD30` → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
 (timestamped) → BMP3xx → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own
 `CFGMGR_ISL29125`) → NotificationService → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
 `UART_resp` — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
 Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
-`cfgmgr` but SCD30's, uses it — which modules may have one is the owner's rule at step 4 above; the order
+`cfgmgr`, uses it — which modules may have one is the owner's rule at step 4 above; the order
 is fixed within one build and free to change in the next (owner, 2026-09-26). (A device with no
 `[device.wiring].fram_target` keeps `conn`/`ntp`/`sysfunct`/
 `webserver` RAM-only and none of them draw a chunk at all; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
@@ -1367,7 +1388,10 @@ still must not run concurrently, for their ports (CLAUDE.md), not for this file 
 `digital_twin/` fakes `machine`/`network`/`neopixel` at the same raw bus-transaction mocking
 boundary `tests/machine.py` uses, but with real-time-firing `Timer`s and plausible sensor values,
 so a generated device module runs under the Unix-port interpreter and behaves like real
-hardware. Independent of `tests/`; the swap is pure `MICROPYPATH` ordering. How faithful each fake
+hardware (owner, 2026-08-08, `7f498c1`, paraphrase: every generated device module has a full
+Unix-port equivalent, runnable on a local computer, with the hardware unavailable there mocked at
+the lowest level of bus data exchange); `scripts/run_unix_port_integration.sh` runs one end to end.
+Independent of `tests/`; the swap is pure `MICROPYPATH` ordering. How faithful each fake
 is, and where it is not: `digital_twin/README.md`'s fidelity table. The twin answers NTP from a
 local responder (`digital_twin/unixport/_ntp_responder.py`), so a twin boot syncs its clock like a
 unit on its network: a booted device's first sync lands with a clean NTP log, the NTP client's tests
@@ -1884,8 +1908,9 @@ and its test result does (E.5.3), so it gets its own budget either way.
 - **`unit-tests`** keeps `needs: lint-and-typecheck` purely for sequencing, the standing hang
   backstop, with `if: !cancelled()` so a red lint never skips the tests (CLAUDE.md). The per-job
   timeouts in `scripts/test.sh` are the real hang defence; `timeout-minutes` covers a warm run
-  plus its largest single retry budget, one `scenarios[<device>]` job's 128 minutes (2,555 s x 3,
-  `runner.scenarios_timeout_s`; one file's is 12, 240 s x 3, `PER_FILE_TIMEOUT_S`), so a hung job
+  plus its largest single retry budget, 60 minutes for one `scenarios[<device>]` job (1,200 s x 3,
+  `runner.scenarios_timeout_s`) and for the pytest tier alike (one file's is 12, 240 s x 3,
+  `PER_FILE_TIMEOUT_S`), so a hung job
   still ends `FAIL` with the summary block printed; the six scenario jobs run at once, so six hung
   ones take no longer. The minutes are
   `ci.unit_tests_timeout_min` (Part N, with the measured runs behind them). The retried sync is the
@@ -1944,14 +1969,9 @@ and its test result does (E.5.3), so it gets its own budget either way.
      changed; `copy-in` lists each cached archive whose size and SHA-256 match the fresh index, and the
      step copies those into `/var/cache/apt/archives` with `sudo`;
   4. the mirror check, skipped when the cache holds every planned archive unless the caller passes
-     `always-check`. Its required rate is derived per job (agent, 2026-10-28): `ci.apt_mirror_rate_margin`
-     × the bytes still to fetch after copy-in over the bound of the step that fetches them, never under
-     the floor `ci.apt_mirror_min_bytes_per_s`. A caller with a bound passes it from the tag's own
-     site: `firmware-build-verify` its own job limit, `ci.firmware_build_verify_timeout_min` (1200 s,
-     read from its tag in `ci.yml`), since apt has no limit of its own, so its 588 MB needs 0.98 MB/s
-     and stays on the 1 MB/s floor; the Playwright action, whose install runs under its job's limit
-     alone, passes none, and the floor alone decides there. A fixed rate cannot tell
-     whether a set fits its bound, so a set large against it gets the derived rate. `check` takes
+     `always-check`. Its required rate is the floor `ci.apt_mirror_min_bytes_per_s` for every set: the
+     largest, `firmware-build-verify`'s 588 MB, needs 0.98 MB/s inside its job's 1200 s
+     (`ci.firmware_build_verify_timeout_min`, since apt has no limit of its own). `check` takes
      the smallest archive still to fetch holding the probe's budget, `ci.apt_mirror_probe_cap_s` × the required rate (the
      most a mirror at exactly that rate moves inside the cap, 10 MB on the floor), else the
      largest, and reads at most that much from each mirror of `/etc/apt/apt-mirrors.txt` in apt's
@@ -1961,7 +1981,7 @@ and its test result does (E.5.3), so it gets its own budget either way.
      rest of the job; with none fast enough the fastest measured goes first, and the warning lists the
      required rate and every measured one; the list keeps that mirror and all after it, so it is never
      left empty, and a list in any form but `URI<TAB>priority:N` lines is left as it is. The list, the
-     required rate with the bytes left and the bound it came from, and each probe's bytes, seconds and
+     required rate with the bytes left, and each probe's bytes, seconds and
      rate print into the job log, a drop as a `::warning::`; the new list is written beside the old
      one and renamed over it.
 
@@ -3170,7 +3190,7 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   writable; don't build a latch step unless the datasheet documents one.
 - **The bus session has a synchronous form, and a new SPI sensor driver should prefer it.**
   `SPIDevice.session_begin()`/`session_end()` do what `__aenter__`/`__aexit__` do between the lock
-  operations, for a caller that already holds the bus lock, with `write_sync()`/`readinto_sync()`/
+  operations, when no async session holds the bus (it refuses one), with `write_sync()`/`readinto_sync()`/
   `write_readinto_sync()` as the transfers. A wait inside the CS window, where a part's datasheet asks
   for one, **must** block — an awaited one hands the loop to another task with CS asserted and the bus
   locked — so the scheduling points belong in the coroutine that owns the operation, not in the CS
@@ -3905,8 +3925,7 @@ to) is not a C.7.2 case, and neither is a UART link whose `setup()` failed: it e
 both roles, and the supervisor's restart escalation is its path to a reboot. The refusals a device
 TOML can cause are build errors instead (`buildgen/validate.py`'s `_check_uart_link_buses()` and
 `_check_uart_link_roles()`, reading the thresholds out of `asy_uart_comm.py`): a reply timeout below
-2 × `poll_wait_ms` + `poll_idle_ms` + the GC pause, or above the ticks horizon its drain bound needs
-(`UART_TIMEOUT_PARAM`); a `poll_wait_ms` outside 1 … 9 ms (`UART_POLL_RATE`); an `rxbuf` below one
+2 × `poll_wait_ms` + `poll_idle_ms` + the GC pause (`UART_TIMEOUT_PARAM`); a `poll_wait_ms` outside 1 … 9 ms (`UART_POLL_RATE`); an `rxbuf` below one
 frame or one poll's arrivals, or an `rx_ring` below its floor (`UART_RXBUF`); a `max_transfer_bytes`
 below one payload (`BAD_ARG`); every other
 refusal needs code the generator never emits.
@@ -4135,14 +4154,21 @@ that SCD30 measurement keeps advancing; the bench tier lists it as an exception 
 configuration and readings across the broadcast (`bmp3xx_alone_survives_a_general_call.py`; no
 bench counterpart, E.6.6's `flash-only-bus-checks` row).
 
-**Standing rule — hazard test coverage, read before adding a new device on a shared resource or
-rewiring a bus (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this'; every shared
-resource, owner, 2026-09-26)**: every promoted I2C/SPI device, and every other shared resource
-(locks, FRAM, the config file, sockets, the heap), gets same-device read-vs-write concurrency
-coverage, cross-device interleaving coverage (if it shares a bus with another device on any
-device's wiring), and an address/command sweep confirming it never touches a foreign or reserved
+**Standing rule — crossover test coverage, read before adding a new device on a shared resource or
+rewiring a bus (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this'; owner, 2026-11-13:
+"tests shall cover crossover checks for I2C and SPI, and other shared ressources. Mostly to detect
+incompatibilities or races or real timing issues." and "yes, write it that way")**: (1) every
+promoted I2C/SPI device, FRAM included since it sits on SPI, gets same-device read-vs-write
+concurrency coverage, cross-device interleaving coverage (if it shares a bus with another device on
+any device's wiring), and an address/command sweep confirming it never touches a foreign or reserved
 address, and the recovery ladder's bus rungs (a held-SDA bus) at every tier that can reach them,
-across as many of four tiers as apply (cheapest first). On the I2C buses that means: a register read
+across as many of the four tiers as apply (cheapest first); (2) a shared resource that exists only
+in software — the locks, the settings file, the network sockets, the heap — gets its crossover tests
+in the twin, which runs the real firmware code, and the one physical timing case, a settings save
+briefly stalling the chip, is covered by the existing bench load test (tier 4 below, its config-write
+arms); (3) a new device is added to the existing crossover tests and their catalogue
+(`tests/_bus_hazard_catalog.py`) instead of getting new test files; (4) existing tests stay. On the
+I2C buses (1) means: a register read
 is two transfers (`writeto(..., stop=False)` then `readfrom_into()`) inside one bus session, with no
 sibling transfer between them; `scenario_bus_recovery_does_not_disturb_concurrent_siblings` runs on
 every generated I2C bus with two or more occupants; the split-session cases (SCD30, SGP40, BMP3XX)
@@ -4311,7 +4337,7 @@ logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM 
 | Captive DNS | `WifiService._configure_hotspot_ap()` on entering hotspot mode (`asy_wifi_service.py`) | it exists only in hotspot mode | hotspot mode; cancelled on leaving it, recreated on the next AP start | `CaptiveDNS.run()`: catches, persists `UNEXPECTED`, backs off |
 | LED flash | `WifiService._run_led_pattern()` (`asy_wifi_service.py`) | it exists only in the hotspot without a client, with a station on it, and with no readable Wi-Fi configuration — never in the silent mode, which is dark (A.4) | one task: a different pattern cancels it and starts its own; also cancelled by `_reset_wlan_connect_state()`, `_handle_reconnect_trigger()`, the window end (`_on_hotspot_window_end()`, which `reconnect_wifi()` runs too) and the entry into the silent mode; a cancel touches no LED | `_flash_led()`: persists `UNEXPECTED` and ends; the next request for the pattern restarts it |
 | Per-connection HTTP | `WebserverService._serve_loop()`'s `asyncio.start_server()`, one `_serve()` task per connection (`asy_webserver_service.py`) | one per accepted connection | one request, bounded by the outer cap (`outer_cap_s`) | `_serve()`: persists `UNEXPECTED` |
-| Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` or `STACK_EXHAUSTED` at the escalation, its code recorded before that write, a `MemoryError` there still arming the reset and a write that never ends leaving the watchdog's reset to read the code; its own fault persists one `SUPERVISOR_RAISED` entry, then it ends unfed and the watchdog resets (`ResetReason` 2, A.8) |
+| Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` or `STACK_EXHAUSTED` at the escalation, its code recorded before that write and a write that never ends leaving the watchdog's reset to read the code; its own fault persists one `SUPERVISOR_RAISED` entry, then it ends unfed and the watchdog resets (`ResetReason` 2, A.8) |
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
 | Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /uart`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
@@ -5429,8 +5455,9 @@ product behaviour (owner, 2026-10-20: "Firmware stays unaffected."). `tests_scri
 classifies every tagged count in one table.
 
 **Per-file overrides hold one row, the scenario harness**: each `scenarios[<device>]` job
-boots a twin per scenario (E.9), so it takes `runner.scenarios_timeout_s`, 5x the 511 s CI's slowest
-`dev` scenario job took (2026-10-20, at 32768, beside the whole suite), a hang backstop. No test file
+boots a twin per scenario (E.9), so it takes `runner.scenarios_timeout_s`, about 2.3x the 511 s CI's
+slowest `dev` scenario job took (2026-10-20, at 32768, beside the whole suite) and 1.2x the bench
+Pi4's 1,003 s (2026-11-05), a hang backstop. No test file
 has one: the slowest, `tests/test_sensortask.py` on `dev`, takes 56s at -1 and 82s at 32768
 (2026-10-13), inside the 240s default. Running all six of one family at once cost 114.8s/59.5s
 wall clock rather than 6x one file (2026-10-13), each build then mostly sleeping at the FRAM's CS
@@ -5795,7 +5822,8 @@ with `--allow-multi-day-rollover --allow-flash-cycle --rollover-image <image>`: 
 one flash cycle, counted in the round's budget — and polls for about two hours with the standard
 health verdicts; the next round flashes its own image. It runs no lower level itself, on top of a
 clean bench run, and the driven-clock proofs at L1 and L2 stay the per-commit proof (owner,
-2026-10-01: 'Test build with a starting offset').
+2026-10-01: 'Test build with a starting offset'). It passed on `dev` on 2026-11-12: about two hours
+across the wraps under one boot signature, NTP kept syncing and every sensor's timestamp advanced.
 
 ### E.6.4 Hotspot role-reversal (L4, single-radio)
 
@@ -6657,7 +6685,7 @@ from `ServingLimits`' seconds) raise `TimeoutError`, which `_serve()` turns into
 connection and its warning, a close wait's timeout logs its own warning, and a trace's timeout
 leaves its entry in RAM for the logger's next write (A.8). The supervisor's escalation entry is written inside its call: its
 reset code is recorded before it and the command gate refuses from then on, so a write that never
-finishes stops the loop and the watchdog's reset reads that code; a `MemoryError` building it still arms the reset. No `asyncio.wait_for()` is left
+finishes stops the loop and the watchdog's reset reads that code. No `asyncio.wait_for()` is left
 in `src/` (D.4). The FRAM path has no wait to bound: its operations run synchronously (C.8). A single `machine.I2C` or `machine.SPI` transfer is
 synchronous and cannot be wrapped: the ladder acts once it returns, and one that never returns is
 the watchdog's.
@@ -6774,10 +6802,10 @@ The budget rows, one per stretch:
 
 | Row | What | Value and derivation | Measured | Consumers | Guard | Part N |
 |---|---|---|---|---|---|---|
-| `feed.boot_first` | the boot entry's `WDT()` → every product import → every construction (each I2C bus's boot clear inside) → the first `fram.setup()` → the first setup feed | no wait in it is timed | module import ~1.1 s, construction ~0.14 s (dev silicon, 2026-09-25, A.7) | the whole `wdt.timeout_ms` | review of the generated boot (`buildgen/codegen.py`); the bench boot log (BACKLOG.md) | `boot.unfed_stretch_1_ms` |
-| `feed.setup_unit` | one setup unit between two feeds | no unit asks for a timed wait but a `uart_link`'s boot drain (each wait its bus's `poll_wait_ms`) | 79-91 ms per unit, 6 ms for `fram.setup()` (dev silicon, 2026-09-25); the worst case adds one config repair write, up to 2129 ms (`stall.flash_program`, a source trace; its silicon figure owed) | the whole `wdt.timeout_ms` | `_scenario_boot_feeds_the_watchdog` (`tests/_sensortask_scenarios.py`) | `boot.setup_unit_stretch_ms` |
+| `feed.boot_first` | the boot entry's `WDT()` → every product import → every construction (each I2C bus's boot clear inside) → the first placement collect → the first `fram.setup()` → the first setup feed | no wait in it is timed | module import ~1.1 s, construction ~0.14 s (dev silicon, 2026-09-25, A.7) | the whole `wdt.timeout_ms` | review of the generated boot (`buildgen/codegen.py`); the bench boot log (BACKLOG.md) | `boot.unfed_stretch_1_ms` |
+| `feed.setup_unit` | one setup unit and its placement collect between two feeds | no unit asks for a timed wait but a `uart_link`'s boot drain (each wait its bus's `poll_wait_ms`) | 79-91 ms per unit, 6 ms for `fram.setup()` (dev silicon, 2026-09-25); the worst case adds one config repair write, up to 2129 ms (`stall.flash_program`, a source trace; its silicon figure owed) | the whole `wdt.timeout_ms` | `_scenario_boot_feeds_the_watchdog` (`tests/_sensortask_scenarios.py`) | `boot.setup_unit_stretch_ms` |
 | `feed.boot_last` | the last setup feed → the task starts → the timer starts → the first NTP force sync → the supervisor's first feed | up to 2,000 ms of waits: N × `sleep_ms(1000 // N)` across the task starts and the trigger stagger's one-shots (last start below 1,000 ms), plus each started task's first slice | the stagger 0.79 s (dev silicon, 2026-09-25) | the whole `wdt.timeout_ms` | `_scenario_unfed_boot_stretch` (`tests/_sensortask_scenarios.py`); the bench boot log | `boot.unfed_stretch_2_ms` |
-| `feed.supervisor` | the supervisor's sleep and one pass between two of its feeds | 2000 ms of sleep (`_TASK_CHECK_TIME`), then one pass: at most 4 task ends (⌈(`_TASK_FAIL_MAX` + 1) / `_TASK_FAIL_INCREMENT`⌉), each one persisted entry, and 3 task starts, since the fourth end escalates before its restart, then the escalation's own entry write; on a `MemoryError` there the reset follows with no entry, and a write that never ends leaves the watchdog's reset to read the code recorded before it | one chunk write, 12.7 ms median on the chip (`stall.fram_entry`) | the whole `wdt.timeout_ms` | `_scenario_supervisor_scan_budget` (`tests/_sensortask_scenarios.py`); `test_the_escalation_decides_and_records_the_reset_before_its_entry_write` and `test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code` (`tests/test_asy_system_service.py`) | `system.scan_budget` |
+| `feed.supervisor` | the supervisor's sleep and one pass between two of its feeds | 2000 ms of sleep (`_TASK_CHECK_TIME`), then one pass: at most 4 task ends (⌈(`_TASK_FAIL_MAX` + 1) / `_TASK_FAIL_INCREMENT`⌉), each one persisted entry, and 3 task starts, since the fourth end escalates before its restart, then the escalation's own entry write; a write that never ends leaves the watchdog's reset to read the code recorded before it | one chunk write, 12.7 ms median on the chip (`stall.fram_entry`) | the whole `wdt.timeout_ms` | `_scenario_supervisor_scan_budget` (`tests/_sensortask_scenarios.py`); `test_the_escalation_decides_and_records_the_reset_before_its_entry_write` and `test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code` (`tests/test_asy_system_service.py`) | `system.scan_budget` |
 | `feed.reset_path` | the last feed → the reset: `_reboot()`'s record, flush and pause, then the countdown with nothing fed; the escalation feeds once after its entry before it stops feeding | 4000 ms countdown (`_RESET_DELAY`) after the record, flush and pause | — | the whole `wdt.timeout_ms` | `test_the_reset_delay_ends_before_the_watchdog_would` (`tests_scripts/test_tunables_register.py`) | `system.reset_delay_s` |
 | `feed.shutdown_step` | each step of the controlled shutdown sequence (A.8) between two of its own feeds | the park wait, at most one `_TASK_CHECK_TIME` and one pass; one 256-byte FRAM erase unit; one flash-filesystem operation, up to 400 ms per sector erase | — | the whole `wdt.timeout_ms` | `test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm` (`tests/test_asy_system_service.py`); `tests_hardware/flash/test_system_commands.py` | — |
 | `stall.flash_program` | one config flush: its one `with open()` write in `_write_file()` (`asy_config_manager.py`) runs littlefs's sector erases and page programs in one non-yielding stretch, interrupts off inside each erase and program (`ports/rp2/rp2_flash.c:168-174`, v1.29.0); on an accepted PUT's deferred flush, the one boot repair and the one boot write of an absent file's defaults (C.7.3) | 2129 ms (`_FLASH_HOLD_MAX_MS`, `asy_uart_comm.py`): 5 sector erases × 400 ms + 43 page programs × 3 ms, the largest generated config file at the W25Q16JV tSE/tPP maxima (typ. 45 ms per erase), traced through littlefs (J.6); interrupts off up to 400 ms at a time inside it | 70-207 ms of blocked loop per write, interrupts off 35-39 ms per sector erase (dev silicon, 2026-10-29; W25Q16JV tSE typical 45 ms); `device_scripts/flash_write_loop_gap.py` re-measures | `con.uart_reply` (crossed: a reply that reaches the ring during the hold is still read, since the reply wait, `_read_frame()` (`asy_uart_comm.py:692-703`), looks at the ring before its deadline: `_read_delimited()` takes buffered bytes ahead of `ready()`, and `ready()` reads the fill level ahead of the deadline (`asy_uart_driver.py:245-250`, `:702-710`); a reply this device's held loop has to send, its responder's or on `dev` either end's, both sharing the loop, misses the peer's deadline: one failed, counted transaction and a resync, J.7), `con.dns_query` (crossed, soft: a query whose reply the hold keeps from being read in time counts as unanswered, and the resolver asks the next server, then NTP retries), `con.led_frame` (crossed: the animation stands still up to the hold, a visible stutter), `con.uart_rx_ring` (not crossed: its floor is sized for this hold, J.6, and the DMA ring the receive path uses (owner, 2026-10-05, answering the review's open question on the UART receive path, in paraphrase: 'UART in the DMA ring buffer') receives with interrupts off, so no frame is lost; proved on silicon without a flash write by `device_scripts/uart_dma_ring_interrupts_off.py`), `con.uart_tx` (owed: measured on the bench, link transactions during config writes), `con.watchdog`; each crossing is an accepted degradation on all three flush occasions, an accepted PUT, the boot repair and the boot defaults write, and closed so by the owner with its consequences, no reset and no loss: a late answer, a late read, one LED stutter, a DNS retry and, on `dev`'s bench link, one failed and resynced transaction (owner, 2026-10-22, asked about the proposed next steps, both write sites back to the single write and the stall closed as an accepted degradation: "For your records, your suggested next steps are fine (go back to the single write).") | record only: `test_flash_write_loop_gap_is_recorded` (`tests_hardware/flash/test_memory_stress.py`, behind `--allow-persistence-write`) records the measured gap, the figure judged against its consumers here | — |
@@ -6785,9 +6813,9 @@ The budget rows, one per stretch:
 | `stall.i2c_transfer` | one `machine.I2C` transfer holds the loop up to the bus `timeout`, a register read (write then read) twice it (`ports/rp2/machine_i2c.c:125`, `:147`, v1.29.0) | 400,000 µs: two transfers at the largest bus `timeout`, 200,000 µs (every SCD30 bus); 50,000 µs (`_DEFAULT_TIMEOUT_US`, the rp2 default) where a bus states none | a failed transfer returns at the bus timeout, 50.9 ms and 200.9 ms at 50 and 200 ms (dev silicon, 2026-10-29) | `con.uart_reply`, `con.watchdog`, `con.dns_query`, `con.led_frame` (crossed: a stutter), `con.softirq_queue`; a wedged transfer is the recovery ladder's case (F.2) | the build rule `bus.i2c-timeout-range` (`buildgen/validate.py`) | `i2c.timeout_max_us` |
 | `stall.lwip_send` | a TCP write that meets `ERR_MEM`: at the pin it retries inside one C call, non-blocking sockets included, for up to 10 s (B.14.4) | none in C with the project's `modlwip_eagain` override (B.14.4): a non-blocking send returns `EAGAIN`, and a stuck connection retries cooperatively until an ACK or its per-call timeout reclaims it | — | `con.watchdog` (fixed by the override), every other task | B.14.4's override checks | — |
 | `stall.fram_command` | one FRAM command, its CS envelope, a plain call: the bus configured once, no lock, no yield (C.8) | ~250 µs per command, a chunk write's 12.7 ms over its 51 (`stall.fram_entry`) | medians of 300 calls on the dev chip (2026-11-10 image, frozen, 125 MHz, idle, `gc.threshold(32768)`), each with the harness's 22 µs call floor: an RDSR 143 µs, a WRDI 119 µs, a 1 B read 245 µs (13 B 260 µs), a 13 B write 809 µs as its 5 commands, `begin()` 185 µs once per operation; a bare `machine.SPI` RDSR 54 µs; re-measured on the next image, which drops the 2 µs CS settle at each edge | `con.routine_stall`; one UART poll floor, 80 B at 115200 baud = 6,944 µs (J.6) | `device_scripts/fram_command_hold_timing.py`, run by `tests_hardware/flash/test_fram_storage.py` | — |
-| `stall.gc` | one garbage collection | 21 ms, the worst measured pause (I.1) | I.1 | `con.uart_reply` (its floor holds it) | J.6's floor checks (`UARTComm._min_timeout()`, `buildgen/validate.py`); the re-measure by `device_scripts/loop_stretch_timing.py` on the full dev graph | `uart.gc_pause_worst_ms` |
-| `stall.voc_process` | one `vocalgorithm_process()` per SGP40 sample, no yield inside | owed | owed: `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` (`tests_hardware/flash/test_memory_stress.py`) | — |
-| `stall.crc` | a CRC over a buffer runs as native code with no yield inside (`crc_checks.py`), so one stretch is the whole buffer | 1.31 ms for 264 B, the SGP40 backup chunk's CRC32 (the frozen viper engine on the dev RP2040, 2026-11-10 image, median of 30, maximum 1.56 ms) | the 256-byte chunk's total and gap: owed, `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` | — |
+| `stall.gc` | one garbage collection | 21 ms, the worst measured pause (I.1) | I.1; 16.2 ms the worst measured by `device_scripts/loop_stretch_timing.py` on the dev RP2040, the 2026-11-13 image | `con.uart_reply` (its floor holds it) | J.6's floor checks (`UARTComm._min_timeout()`, `buildgen/validate.py`); the re-measure by `device_scripts/loop_stretch_timing.py` on the full dev graph | `uart.gc_pause_worst_ms` |
+| `stall.voc_process` | one `vocalgorithm_process()` per SGP40 sample, no yield inside | 9.81 ms, the worst of the last 20 of 60 steps | measured by `device_scripts/loop_stretch_timing.py` on the dev RP2040, the 2026-11-13 image (bench, 2026-11-13) | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` (`tests_hardware/flash/test_memory_stress.py`) | — |
+| `stall.crc` | a CRC over a buffer runs as native code with no yield inside (`crc_checks.py`), so one stretch is the whole buffer | 1.31 ms for 264 B, the SGP40 backup chunk's CRC32 (the frozen viper engine on the dev RP2040, 2026-11-10 image, median of 30, maximum 1.56 ms) | the 256-byte chunk: 1.75 ms whole; the largest gap between two loop wake-ups 3.31 ms, the script's own fact line inside it (`device_scripts/loop_stretch_timing.py`, the dev RP2040, 2026-11-13 image) | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` | — |
 | `stall.uart_call` | one UART driver call on the loop | 1,533 µs: a third (`_SPAN_FRACTION`) of one 53-byte frame's wire time at 115200 baud, 4,600 µs (`FRAME` in `device_scripts/uart_driver_read_never_blocks_the_loop.py`, F.5.8) | 126-132 µs (dev, 2026-09-25, F.5.8) | `con.uart_reply`, `con.routine_stall` | `device_scripts/uart_driver_read_never_blocks_the_loop.py` | — |
 | `stall.sync_wait` | the one synchronous wait `src/` makes on purpose: the I2C bus clear's half period | 5 µs per wait | — | `con.routine_stall` | — | — |
 | `stall.console` | `print()` at a raised `DebugLevel` while a USB host program holds the port open and does not read (A.5); never without such a host, and the shipped level prints no client-triggered line | 2 s per printed line (about: several writes, each up to 500 ms) | — | `con.uart_reply` (crossed: an accepted debug-mode limitation (owner, 2026-09-30, asked, in paraphrase, how to treat debug logging with a connected USB host that does not read: 'a', to accept it as one; A.5)), `con.led_frame` (crossed), `con.watchdog` (a busy log can still starve it: A.5 names the exits) | `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`tests_hardware/bench/test_network_resilience.py`, behind `--allow-persistence-write`) | — |
@@ -7012,6 +7040,7 @@ the 1.29 stubs. Backed by the RP2040 watchdog scratch registers: **28 bytes** in
 and by the RUN pin** (RP2040 datasheet §4.7.4: a `rst_n_run` from the RUN pin or a DVDD cycle resets
 the scratch registers, and §2.13.1 lists the watchdog among the blocks it resets; the pinned
 `docs/library/machine.rst` note: kept across a soft reset, lost on power-off and poweron-style resets).
+The RUN-pin case is confirmed on silicon (2026-11-13, tests_hardware/README.md).
 
 **Adopted for the reset reason** (owner, 2026-09-26: 'Use this mechanism, integrate it into the
 system service and its endpoints'), in RAM only, never flash or FRAM (owner, 2026-09-29: 'for sure
@@ -7589,7 +7618,7 @@ workaround.
 | Vitest coverage excludes `**/*.json` | `vitest.config.js` | `@vitest/coverage-v8` stops re-parsing non-JS files | H.8 |
 | Firefox from conda-forge, Edge from Microsoft's repository | `scripts/setup_cross_browser_toolchain.sh` | Ubuntu ships a non-snap Firefox and Playwright's own engines are reachable | H.7 |
 | Live-backend browser tests drive their own Playwright page through Vitest's Commands API (vitest-dev/vitest#7875) | `tests_js/_live_twin_command.js`, `_live_matrix_command.js`, `vitest.config.js` | Vitest's browser `page` can navigate to an external origin | H.7 |
-| `gc.threshold(32768)` (micropython#2057) | the generated boot entry | the allocator gains a placement or long-lived heap section; any change is the owner's (owner, 2026-09-18) | I.4 |
+| Boot-confined `gc.collect()` placement reset and `gc.threshold(32768)` (micropython#2057) | `src/asy_system_service.py`'s two boot lists; the generated boot entry | the allocator gains a placement or long-lived heap section; any change is the owner's (owner, 2026-09-18) | I.4 |
 | Strict RFC 8259 check before decoding response bodies (`json.loads()` accepts a doubled or missing comma) | `fakes/_strict_json.py` | `extmod/modjson.c` rejects malformed separators | `digital_twin/README.md` |
 | Twin HTTP client reads in fixed chunks, never `readexactly()`/`read(-1)` (`stream.py` re-concatenates) | `digital_twin/_http_client.py` | `extmod/asyncio/stream.py` reads without re-concatenating | `digital_twin/README.md` |
 | The Unix port's 9-element `gmtime()` normalised to 8 in the NTP tests | `tests/test_asy_ntp_client.py` | the Unix `modtime.c` returns 8 elements | F.7 |
@@ -7707,10 +7736,6 @@ backend-only or frontend-only validation/coercion policy change in this project.
   driver (C.2).
 - **Trigger divider** — `SensorReader._trigger_loop()`: a reader needing a slower rate than its 1 s
   base tick divides it here, every n-th tick setting the read event (C.9).
-- **Republishing a sample** — `SensorReader._republish(names, **changes)`: the last sample again with
-  some fields changed, in one data-lock hold, its own `TS` kept (SCD30's `FRCState` 0, M.2).
-- **Config-log placement** — `SensorReaderConfig._CFG_LOG_FRAM`: a reader class that sets it `False`
-  keeps its `CFGMGR_<name>` log in RAM (SCD30, A.7).
 - **Read-error escalation** — `SensorReader._error_check()` and its ladder hooks
   `_recover_device()`, `_init_done()`, with `I2C.clear()`/`I2C.recover()` as the
   bus rungs (C.7, F.2).
@@ -7783,8 +7808,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `__eq__`, no buffer protocol. `UARTComm` assembles every train without a caller destination in it
   (J.8; owner, 2026-10-05).
 - **Several SPI transfers under one bus-lock hold** — `SPIDevice.session_begin()`/`session_end()`
-  with `write_sync()`/`readinto_sync()`/`write_readinto_sync()`, for a caller already holding the
-  lock (C.3.1); a synchronous operation of many CS cycles, the FRAM path's, opens once with
+  with `write_sync()`/`readinto_sync()`/`write_readinto_sync()`, when no async session holds the
+  bus (C.3.1); a synchronous operation of many CS cycles, the FRAM path's, opens once with
   `begin_sync()` and frames each cycle on the methods it returns; never a new `async with` per transfer. The buses differ on purpose,
   since their methods are not equivalent: SPI has a synchronous session and I2C none — I2C has no
   CS, no per-session `configure()` and no settle to make synchronous, so it needs no multi-transfer
@@ -8052,12 +8077,13 @@ the span label `<id>-label`, a toggle's `data-value` (`true`/`false`/`unset`, an
 "—" with `aria-pressed="mixed"`), `p.field-warning`, `button.field-value.code-value[aria-expanded]`
 with its `p.code-description`, `[data-code-tone]` with `.code-number`, `button.history-entry-num`,
 `.errcount-module-list[data-filter]`, `[data-rollup="nodata"]` and an errcount row's `data-worst`
-(`E`/`W`/`N`/`none`, the row's one severity). **Each poll updates every card in place** — readonly
+(`E`/`W`/`N`/`none`, the row's one severity) and `data-has-errors` (`true` for a non-zero
+count, which shows red). **Each poll updates every card in place** — readonly
 values (a readonly toggle's state included), an editable number or string field's caption and
 placeholder, and the errcount card, through `updateFieldGroupValues()` and `updateErrcountGroup()`,
 keeping the nodes and the focus. An editable toggle or select is never repainted by a poll: it
-changes only by the user, or by `resetControl()` after an Apply, which takes the baseline the
-post-write GET reports.
+changes only by the user, or by `resetControl()` when an Apply resets a command (H.4's "After
+Apply").
 
 The template API, `js/templates.js`: `buildErrcountGroup(group, errcount|null)`,
 `buildFieldGroupCard(group, currentValues, groupIndex, display)`, `buildNavDrawer(defs, drawerEl)`,
@@ -8093,11 +8119,11 @@ call evades it.
 | Numeric coercion/validation | `type_or_range_error()` and the per-kind validators (`asy_config_manager.py`), mirrored in `mock-server.js` | Canonical for every numeric field (A.8, Part G). |
 | Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `LightCmdLED`, `ResetErrors`, plus every schema field carrying `dispatch=true` in its own `@web` tag (`ResetVOC`, `Calibrate` today — derive the set from the tags, never from this list alone) | None persisted — each re-dispatches fresh every submission. **This distinction is load-bearing beyond the UI**: a PUT to any *other* field is written straight through to the RP2040's flash filesystem by `asy_config_manager.py`'s own `json.dump()`, i.e. it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.persistence_write` gate exists and why a dispatch-only PUT is deliberately outside it. An enum field with no GET-matching state renders a blank placeholder by default. |
 | PUT-result coloring | 4-state (`Valid`/`Unchanged`/`Invalid`/`Failed`), colored at group and field level | Matches the backend vocabulary. A whole-request failure marks every field `Failed` individually. |
-| PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. Apply first re-reads the section (one GET before the PUT, so a value another client changed is the baseline), then asks the confirmations, an enum's chosen option label or a toggle's card submit label with "?" (A.8); a declined or suppressed confirmation sends nothing and reads "Not sent - the confirmation was declined.". A GET with an empty body raises the section banner (`"GET <url> returned an empty body"`); a non-ok GET reads `"GET <url> failed: <descr>"`, or `"... HTTP <n>"` without a `descr`. |
+| PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. Apply first asks the confirmations, an enum's chosen option label or a toggle's card submit label with "?" (A.8); a declined or suppressed confirmation sends nothing and reads "Not sent - the confirmation was declined.". A GET with an empty body raises the section banner (`"GET <url> returned an empty body"`); a non-ok GET reads `"GET <url> failed: <descr>"`, or `"... HTTP <n>"` without a `descr`. |
 | Per-device page-scheme mechanism | The definitions file itself | `render.js`/`nav.js` have zero device-specific branching. |
 | Submit-button labels | The identity and NTP groups keep legacy's "Apply & Reconnect" and "Apply & Resync" | Restored from the legacy pages (owner, 2026-09-29). |
-| Sparse PUT | Sent only on an explicit Apply, never retried or repeated (owner, 2026-09-26) | `collectGroupBody()`: a number or string input is sent whenever non-empty, even when equal to the stored value ("Unchanged" is the device's answer), a composite when any sub-input is filled, a plain toggle or enum when it differs from its baseline; a dispatch toggle only when On, a dispatch enum when an option is chosen, an always-executed toggle whenever it is set. Number input that is not plain decimal text is sent as typed, for the device to refuse (`parseNumberInput()`). |
-| After Apply | Stored inputs cleared, rejected ones kept, commands reset (owner, 2026-09-29) | Every dispatch toggle or enum returns to Off or its placeholder and every always-executed toggle to unset, whatever the answer; a submitted text or composite the device stored is cleared; a submitted plain toggle or enum the device stored shows the value the post-write GET reports (`resetSettledControls()`, `resetToBaseline()`). |
+| Sparse PUT | Sent only on an explicit Apply, never retried or repeated (owner, 2026-09-26) | `collectGroupBody()`: a number or string input is sent whenever non-empty, even when equal to the stored value ("Unchanged" is the device's answer), a composite when any sub-input is filled, a plain toggle or enum when it differs from its baseline, the value the card was built from or the one an Apply of it last stored. No GET moves a baseline, so a control the user left untouched is never sent and another client's change is never reverted (owner, 2026-11-13: "yes, only send what I changed"). A dispatch toggle is sent only when On, a dispatch enum when an option is chosen, an always-executed toggle whenever it is set. Number input that is not plain decimal text is sent as typed, for the device to refuse (`parseNumberInput()`). |
+| After Apply | Stored inputs cleared, rejected ones kept, commands reset (owner, 2026-09-29) | Every dispatch toggle or enum returns to Off or its placeholder and every always-executed toggle to unset, whatever the answer; a submitted text or composite the device stored is cleared; a submitted plain toggle or enum the device stored keeps the value sent, now its baseline (`resetSettledControls()`). |
 | Known accepted gap | An empty string can't be set via this UI for any field but one, the DNS fallback list, whose Clear button sends `""` (owner, 2026-09-26) | The sparse-PUT "blank = untouched" convention makes it structurally impossible (`PW`'s "open network" sentinel, which `PW`'s hint states as `"" = Open network`: a number or string field's hint lists its special values). Accepted (owner, 2026-08-22, `cc999c1`: leave as-is). |
 | Divergences from the legacy site | A whole-request Apply failure, which legacy only logged to the console, marks every submitted field Failed (agent, 2026-08-22; owner-reviewed, 2026-10-01). The Apply result is a left stripe on the card and on each field rather than legacy's full background recolour, keeping legacy's two levels (owner, 2026-08-21). The legacy favicon is inlined as a 16×16 image, so a page load still opens two connections (agent, 2026-09-30; owner-reviewed, 2026-10-02). The Altitude warning `"Ignored: <label> is set."` replaces legacy's "turn off continuous measurement" note (owner, 2026-09-29). `ContMeas` shows no state until it is set (agent, 2026-09-30; owner-reviewed, 2026-10-02). Inputs clear after an Apply as legacy's did, a rejected one keeping its value (owner, 2026-09-29). A failed GET is retried with a capped back-off (agent, 2026-09-30; owner-reviewed, 2026-10-01), and a changed build reloads the page (agent, 2026-09-30; owner-reviewed, 2026-10-01). Timestamps show as an age against the device clock (owner, 2026-09-29). The error and warning numbers are clickable for their description (owner, 2026-09-29: '... don't change the current look of the website, make the codes clickable and show the description on click'), and so are the status codes, `ResetReason` first (owner, 2026-10-02, asked about "The reset-reason and boot-phase numbers": 'Good, and make the numbers clickable in the website like the errno and wrnno numbers.'). The DNS fallback list has an explicit Clear (owner, 2026-09-26). | Every behaviour that departs from the legacy pages is listed here with its decider and date. |
 
@@ -8809,7 +8835,8 @@ moving them later. The C-level technique would need a fork of vendored MicroPyth
 forbids; **the Python-level analogue needs no fork** — allocate the long-lived objects first, in a
 phase with no churn. C.13's sync-`__init__`/async-`setup()` split already does that structurally
 (long-lived state in `__init__`, churn-prone I/O in `setup()`), which is why that scheme is a
-placement rule as much as a readiness one, and why (f.1)'s two boot lists need no collect. General embedded practice points the same way (arena
+placement rule as much as a readiness one, and why (f.1)'s two boot lists are the only places left
+where placement has to be managed explicitly. General embedded practice points the same way (arena
 or pool allocators grouped by lifetime, e.g. TensorFlow Lite Micro's fixed arena,
 <https://arxiv.org/pdf/2010.08678>): the principle transfers, the mechanism does not — no allocator
 can be installed under MicroPython's GC, and an asyncio webserver allocates continuously.
@@ -8868,8 +8895,7 @@ locks and lists, `SensorReaderConfig`'s `ConfigManager`, and the **hourly window
 A.8). `RegionBuffer` (per FRAM chunk operation, transient, fixed by its owner's size; allocated per
 operation by decision, agent, 2026-09-18): its bytearray; a failed allocation prints its text
 through its builder's logger and the buffer reads as `None`. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
-per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT; `_republish()`:
-the changed sample, per republish, replacing the last. `TickGrid`: one per 1 s or 10 s cadence,
+per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT. `TickGrid`: one per 1 s or 10 s cadence,
 construction, long-lived.
 
 **`asy_bmp3xx_driver.py`** — construction, long-lived, fixed: the reader and its `BMP3XX_I2C`. Per read:
@@ -9183,8 +9209,8 @@ exhaust memory or hold a large/growing allocation — not only once something ha
 **(a) Design for zero `MemoryError`s first — catching is a last-resort backstop for genuinely
 unavoidable, uncontrollable conditions, never an acceptable steady-state outcome of ordinary or
 worst-case load a well-designed code path should have avoided by construction.** A call site that
-can raise `MemoryError` from a caller-controllable or growing allocation catches
-`(MemoryError, OSError)` and degrades locally — but a caught `MemoryError`, even one that never
+meets an expectable, concrete (non-hypothetical) `MemoryError` from a caller-controllable or growing
+allocation catches `(MemoryError, OSError)` and degrades locally — but a caught `MemoryError`, even one that never
 crashes anything, is a design defect to fix at its source, not a handled case to accept. **Which
 call sites catch.** A function catches `(MemoryError, OSError)` only where it has a true alternative
 flow — a defined unavailable/`None`/`False` result its caller handles — and implements that flow
@@ -9211,7 +9237,8 @@ even further into the stable region, but must be tested and verified by itself.'
 whole suite — digital twin and real hardware alike, no relaxed bar for either — must run to
 completion with `gc.threshold(-1)` (MicroPython's real reactive-only default) and with no
 nonstandard `gc` settings or added `gc.collect()` calls anywhere in the business logic or the test's
-own setup propping it up (the firmware's own boot has none either, (f.1)). A test that only passes because a `MemoryError` was caught and
+own setup propping it up (the boot-confined placement reset in (f.1) is the one structural exception, part of the
+firmware's own boot rather than a test's setup — the suite must still clear this stage with it in). A test that only passes because a `MemoryError` was caught and
 logged without crashing anything is not a passing result at this stage — a caught-but-real
 allocation failure is exactly the signal this stage exists to catch, and "it didn't crash" is not
 the same claim as "it didn't happen."
@@ -9320,15 +9347,24 @@ never a swap of one mode for another, and never itself the explanation for why a
 (E.3) runs every file through `tests/_threshold_runner.py` with the shipped value set, and CI's own
 `unit-tests-gc-threshold` job does the same on every push.
 
-**(f.1) Boot placement, no collect.** The two one-time setup lists, `SystemService.run_setups()` and
-`start_tasks()`'s starter loop, run with no `gc.collect()` between their units, and `src/` calls no gc
-policy function at all: since the FRAM path became synchronous the batch makes too little churn to
-push the next module's permanent objects above the lowest fitting holes (the twin, worst of six
-devices: the batch's median new block 645,408 B below its seam, the whole sequence's 830,304 B,
-2026-11-10; `dev` with the former collects suppressed read 659,040 B below, where it read 153-156 KB
-above before, 2026-11-09). The bench re-checks it on silicon on the next image
-(`flash/test_heap_layout.py`). Record: the owner's 2026-09-18 approval of the boot-confined
-collects went with the churn they swept (lead, 2026-11-10).
+**(f.1) The one structural exception: a boot-confined placement reset.** `gc.collect()` between the
+units of the two *one-time* setup lists, both run by `SystemService`: `run_setups()` (one before
+the batch and one after each setup's feed) and `start_tasks()`'s starter loop (one before the loop,
+one after each starter) — **and nowhere else whatsoever**; the generated modules carry none. This is
+not a threshold, not hygiene, and **not** a fix for an allocation that failed: MicroPython's
+collector never moves an object, so nothing is compacted. What each call changes is *where the next
+allocations land* — `gc_collect_end()` resets the allocator's free-scan index to zero (`py/gc.c`),
+so the following module's permanent objects take the lowest fitting holes instead of being pushed
+above the batch's own churn high-water mark: placement discipline for the survivors those two lists
+create, at the only two points in the firmware's life where permanent objects are born in a known
+sequence, as the pinned documentation recommends (`docs/reference/constrained.rst:413-437` at
+`v1.29.0`: a demanded collection "is advantageous ... firstly to preempt fragmentation"). In the twin,
+`dev`'s setup batch places its median new block 1,194,272 B below its seam with the collects and
+665,216 B below with them suppressed, 1.80x deeper, the same bytes surviving (2026-11-13). Record:
+owner, 2026-09-18; owner, 2026-09-26: "gc.collect is allowed IN THE CODE at exactly the place you
+found it: in the one-time executed boot procedure."; owner, 2026-11-13: "that exception for gc was
+explicitly recorded and did much good for the device's memory fragmentation remediation. it should go
+back in."
 
 **Outside the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a
 baseline for a memory measurement or keeps an automatic collection out of a timing window about to
@@ -9351,10 +9387,11 @@ and every derived device's generated module and both boot entries, and reports e
 `gc.threshold(<value>)` (a zero-argument read is not one), `gc.disable()` and `gc.enable()` reached
 through a name bound to `gc` or to one of them, aliases and plain assignments included, with its
 qualified enclosing function (`<module>` at import time). Its one allowance table names a category
-for every row. `src/` and a generated module hold none, and each boot entry must hold exactly
+for every row. `src/` holds two rows, `asy_system_service.py`'s `SystemService.run_setups` and
+`SystemService.start_tasks`; a generated module holds none, and each boot entry must hold exactly
 its one module-level `gc.threshold(<int literal>)`. The same checker covers `tests/`, `digital_twin/`
-and `tests_hardware/`: a collect there is allowed only at a named measurement baseline or just
-before a timed window (`gc.collect()` is synchronous and complete on return,
+and `tests_hardware/`: a collect there is allowed only at a named measurement baseline, a boot-list
+mirror or just before a timed window (`gc.collect()` is synchronous and complete on return,
 `py/modgc.c:33-41`, `py/gc.c:604-620`, v1.29.0), plus the twin sampler and the collection pause F.3
 measures; a threshold set only where a runner sets its file's stage (`tests/_threshold_runner.py`,
 `tests/microtest.py`'s restore after each test, the twin runners' `--gc-threshold`) and in a device
@@ -9369,10 +9406,14 @@ naming each site outside the table, 2 when it cannot look: a file that does not 
 read (not UTF-8, gone, a broken link), no device or one that does not generate, or a scope with
 nothing to read — never a skip. It numbers lines as `ast` does.
 
-`tests_scripts/test_digital_twin_boot_contiguity.py` guards the *effect*. It boots all six real
-generated devices under the Unix port and asserts that each list's newly allocated blocks land
-low — the median's depth, the reach and the high-band count against the setup list's seam, measured
-through `tests_hardware/heap_map.py`, the board tier's own parser. The probe keeps the fakes' call
+`tests_scripts/test_digital_twin_boot_contiguity.py` guards the *effect*. It boots one real
+generated device per hardware family under the Unix port and asserts that each list's newly allocated
+blocks land low — the median's depth, the reach and the high-band count against the setup list's
+seam, measured through `tests_hardware/heap_map.py`, the board tier's own parser. Both arms meet those
+bounds, so its control is a ratio: on the device with the most setup units it runs a suppressed arm in
+the same suite (the probe rebinds `gc`, so no second image is needed) and asserts the live arm places
+the batch's median at least 1.5x deeper while the same bytes survive (within 1%), and that a real boot
+fires one collect per unit of each list plus one. The probe keeps the fakes' call
 logs empty, so the maps hold the firmware's own blocks: the fake SPI log's `init()` entries had been
 92-96% of every batch measurement. It fails a probe run whose output carries the PC tiers'
 unretrieved-task report, so a task that died mid-boot never passes as a measurement. The probe and
@@ -10971,8 +11012,7 @@ needs CPython 3.11 (`tomllib`, `datetime.UTC`).
   per-bus address exclusivity, instance-name/instance-label collision, bus-id collision, and every
   wiring-reference and required-field check, plus a `uart_link`'s bus parameters against
   `asy_uart_comm.py`'s own thresholds, read from source with its `_DEFAULT_PAYLOAD_SIZE` and
-  `_DEFAULT_TIMEOUT_MS`: a reply timeout below its floor or above the ticks horizon its drain bound
-  needs (89,478,485 ms), a `poll_wait_ms` outside 1 … 9 ms, a `poll_idle_ms` outside `poll_wait_ms`
+  `_DEFAULT_TIMEOUT_MS`: a reply timeout below its floor, a `poll_wait_ms` outside 1 … 9 ms, a `poll_idle_ms` outside `poll_wait_ms`
   … the tick horizon, an `rxbuf` or `rx_ring` below its floor, a `max_transfer_bytes` outside one
   payload … the protocol's largest train (J.6, C.7.2). Full coverage list in L.6; every failure is a
   `buildgen.errors.BuildError` naming the device, instance and field responsible.
@@ -11201,7 +11241,7 @@ could be wrong and refusing to proceed, rather than degrading (agent, 2026-09-09
   `instance.name-ext-singleton`, `instance.no-buildspec-row`, `instance.no-bus-kind-row`,
   `instance.not-an-array`, `instance.requires-without-bus`, `instance.single-table`,
   `instance.uart-crc-mode`,
-  `instance.uart-link-pair`, `instance.uart-role`, `instance.uart-timeout-max`,
+  `instance.uart-link-pair`, `instance.uart-role`,
   `instance.uart-transfer-cap`, `instance.wiring-not-table`; pin legality: `gpio.claimed-twice`,
   `gpio.no-function`, `gpio.not-usable`, `gpio.type`, `gpio.wrong-bus`, `gpio.wrong-role`; names and
   keys: `names.label-collision`, `names.logger-collision`, `names.not-an-identifier`; wiring:
@@ -11765,7 +11805,8 @@ board (owner, 2026-09-13, `05f4746`: 'Do not re-raise it as actionable').
 
 The SCD30 has no repeated start (Interface Description 1.1), so every read is a write, the wait,
 then a separate read; the 50 ms is inside the device-session hold, with the bus free across it for
-the siblings (bench check owed). Each read-task (re)start,
+the siblings, which share `dev`'s i2c1 with it (silicon: the 6 h HTTP soak of 2026-11-12 logged no
+SCD30 error). Each read-task (re)start,
 supervisor restarts included, sends a soft reset and waits 2 s and never a start-continuous
 command (owner, 2026-09-26). The soft reset (0xD304) puts the sensor into its power-up state
 (Interface Description 1.4.10); a power loss within ASC's first 7 days aborts its parameter search
@@ -11884,7 +11925,7 @@ it can move the VOC index, and its warning, before the algorithm settles (SGP40 
 | Wait | Value in the driver | Datasheet bound | Margin | Source |
 |---|---|---|---|---|
 | soft reset → ERR read | 2 ms | none documented for 0xB6 (BMP388 DS001 4.3.22) | — | Bosch reference sequence `bmp3_soft_reset()` (agent) |
-| forced-mode write → data read | one sleep of `_conversion_wait_ms()`: 3.9.2's typical time at the configured oversampling × 6/5, whole ms rounded up, plus one tick (158 ms at ×32/×32) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum at most 1.183× typical (Table 22) | ×1.2 against typical, at or above every Table 22 maximum | the datasheet (agent, 2026-11-09; bench check owed) |
+| forced-mode write → data read | one sleep of `_conversion_wait_ms()`: 3.9.2's typical time at the configured oversampling × 6/5, whole ms rounded up, plus one tick (158 ms at ×32/×32) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum at most 1.183× typical (Table 22) | ×1.2 against typical, at or above every Table 22 maximum | the datasheet (agent, 2026-11-09); bench, 2026-11-13, the dev BMP390, n = 40 per setting: write to data ready 5.83 ms median, 5.91 ms maximum at the configured ×1/×1 (7 ms wait), 129.24 ms median, 130.09 ms maximum at ×32/×32 (158 ms wait), each with up to 1.7 ms of write and polling overhead; data ready after the driver's one sleep 80 of 80 |
 
 AN006 5.2 verifies each trimming parameter against bounds it does not publish; the driver rejects an
 all-0x00/0xFF trim block, which catches the same memory fault class. The data burst is the seven
@@ -12177,18 +12218,17 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ci.web_unit_tests_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | derived (2026-10-20, the job's one run instrumented since 2026-11-10, agent): warm 3.40 and 3.37 min, the instrumented job's (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, the larger of the two cold `setup_toolchain.py setup` builds `scripts/_unix_port.sh ensure` ran on run `39335426899` (167 s in `unit-tests`, 220 s in `unit-tests-gc-threshold`: the test step's start to the pytest tier's launch, 3-4 s warm), the build the toolchain action's build step runs on a miss, so cold 7.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry a timed-out live test's three attempts, the first and `l0.vitest_timeout_retries`' two, × the concurrent-tabs test's 200 s, 10 min, over the Playwright install's 5 minutes (its bound until 2026-11-10), so (3.40 + 10) × 1.25 = 16.75, rounded up; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer run plus that retry | the job's steps or its tier grows, or the cold web run is measured |
 | `ci.web_put_matrix_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | derived (2026-10-20): warm 5.22 and 5.20 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 8.9 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry the Playwright install's 5 minutes (its bound until 2026-11-10), so warm 5.22 + 5 min decides; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer shard plus the install's bound | the job's steps or its tier grows, or the cold web run is measured |
 | `ci.web_cross_browser_smoke_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | derived (2026-10-20): warm 5.60 and 6.40 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 10.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry the Playwright install's 5 minutes (its bound until 2026-11-10), so warm 6.40 + 5 min decides; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.3× the warmer run plus the install's bound; a month's first Firefox install (a cache miss) is unmeasured | the job's steps or its tier grows, or the cold web run is measured |
-| `ci.apt_mirror_probe_cap_s` | 10 s | `scripts/ci_apt_cache.py` — `10` | the longest one mirror's probe runs (`check`, each read waiting only the time left), at most once per mirror of the runner's list, before apt's own fetch in every job running `.github/actions/apt-cache-restore` with an archive left to fetch (B.10.1); with the required rate (`ci.apt_mirror_rate_margin`, `ci.apt_mirror_min_bytes_per_s`) it sets the probe's byte budget, cap × that rate, the most a mirror at exactly that rate moves inside the cap (10 MB on the floor, which both sets use), so "fast enough" is "the budget, or the whole archive, inside the cap at that rate"; kept fixed rather than derived, so the probe costs at most 10 s a mirror whatever the set | estimated (agent, 2026-10-27) — measurement owed: the probe's seconds on a healthy runner node, from the next CI runs' logs, CI; one measurement so far, single observation (2026-10-27): on a 1.3 MB/s azure node (run 40603784233, job 122543124264) the 10 MB budget took 7.75 s, 1290 kB/s, against the install's steady 1.3 MB/s right after it (cmake's 11.2 MB in 8.7 s, gcc-arm-none-eabi's 57.5 MB in 43.9 s, libnewlib-arm-none-eabi's 49.2 MB in 37.2 s): the probe reads the node's real rate | attention; a slow node (45-130 kB/s, actions/runner-images#14823) moves at most 1.3 MB in the cap; a healthy one (30 MB/s or more) the 10 MB budget in about 0.3 s | the runner's mirror list or its slow-node pattern changes |
-| `ci.apt_mirror_min_bytes_per_s` | 1000000 B/s | `scripts/ci_apt_cache.py` — `1000000` | the floor of the mirror check's required rate (`check`): a probed mirror never counts as fast enough under it, whatever the set; it decides when the set is small against its bound (at `ci.apt_mirror_rate_margin` the firmware set's 588 MB over its job's 1200 s needs 0.98 MB/s) and alone when a caller passes none (Playwright's install), and the derived rate above it decides a set large against its bound | estimated (agent, 2026-10-27) — measurement owed: the rates the probe logs on healthy and slow runner nodes, from the next CI runs' logs, CI; one measurement so far, single observation (2026-10-27): a 1.3 MB/s azure node (job 122543124264) passed this floor | attention; about 8x the fastest slow node reported (130 kB/s; job 122430825421 fetched cmake's 11.2 MB at 112 kB/s) and a thirtieth of a healthy node's 30 MB/s | the runner's mirror list or its slow-node pattern changes |
-| `ci.apt_mirror_rate_margin` | 2.0 | `scripts/ci_apt_cache.py` — `2.0` | the mirror check's required rate: margin × the bytes still to fetch after copy-in over the bound of the step that fetches them (`ci.firmware_build_verify_timeout_min`, 1200 s, the firmware job's own limit, since apt has none of its own, read from that tag's own site; Playwright's install passes none, so the floor alone decides there), and never under `ci.apt_mirror_min_bytes_per_s`: the firmware set's 588 MB needs 0.98 MB/s, under the floor | estimated (agent, 2026-10-28) — measurement owed: the install's own rate against the probe's on the next CI runs that fetch (each probe and the required rate print in the job log), CI | attention; the fetch fits half its bound: the other half covers the node's rate drifting within an attempt and apt's per-archive work; a larger margin costs only probe time, since with no mirror fast enough the fastest measured still goes first | a fetching step's bound, a package set or the runner's slow-node pattern changes |
+| `ci.apt_mirror_probe_cap_s` | 10 s | `scripts/ci_apt_cache.py` — `10` | the longest one mirror's probe runs (`check`, each read waiting only the time left), at most once per mirror of the runner's list, before apt's own fetch in every job running `.github/actions/apt-cache-restore` with an archive left to fetch (B.10.1); with the required rate (`ci.apt_mirror_min_bytes_per_s`) it sets the probe's byte budget, cap × that rate, the most a mirror at exactly that rate moves inside the cap (10 MB), so "fast enough" is "the budget, or the whole archive, inside the cap at that rate"; kept fixed rather than derived, so the probe costs at most 10 s a mirror whatever the set | estimated (agent, 2026-10-27) — measurement owed: the probe's seconds on a healthy runner node, from the next CI runs' logs, CI; one measurement so far, single observation (2026-10-27): on a 1.3 MB/s azure node (run 40603784233, job 122543124264) the 10 MB budget took 7.75 s, 1290 kB/s, against the install's steady 1.3 MB/s right after it (cmake's 11.2 MB in 8.7 s, gcc-arm-none-eabi's 57.5 MB in 43.9 s, libnewlib-arm-none-eabi's 49.2 MB in 37.2 s): the probe reads the node's real rate | attention; a slow node (45-130 kB/s, actions/runner-images#14823) moves at most 1.3 MB in the cap; a healthy one (30 MB/s or more) the 10 MB budget in about 0.3 s | the runner's mirror list or its slow-node pattern changes |
+| `ci.apt_mirror_min_bytes_per_s` | 1000000 B/s | `scripts/ci_apt_cache.py` — `1000000` | the mirror check's required rate (`check`), the floor for every set: a probed mirror never counts as fast enough under it; the largest set, the firmware's 588 MB over its job's 1200 s, needs 0.98 MB/s | estimated (agent, 2026-10-27) — measurement owed: the rates the probe logs on healthy and slow runner nodes, from the next CI runs' logs, CI; one measurement so far, single observation (2026-10-27): a 1.3 MB/s azure node (job 122543124264) passed this floor | attention; about 8x the fastest slow node reported (130 kB/s; job 122430825421 fetched cmake's 11.2 MB at 112 kB/s) and a thirtieth of a healthy node's 30 MB/s | the runner's mirror list or its slow-node pattern changes, or a package set nears what the floor moves inside its job's limit |
 | `ci.lint_and_typecheck_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.38 min (run `39335426899`), warm 0.48 and 0.43 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 4.2× the warmer run plus the retried sync | the job's steps or its tier grows |
 | `ci.shellcheck_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.25 min (run `39335426899`), warm 0.27 and 0.28 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 5.1× the warmer run plus the retried sync | the job's steps or its tier grows |
 | `ci.actionlint_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.23 min (run `39335426899`), warm 0.23 and 0.35 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 4.8× the warmer run plus the retried sync | the job's steps or its tier grows |
 | `ci.zizmor_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.20 min (run `39335426899`), warm 0.18 and 0.22 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 5.4× the warmer run plus the retried sync | the job's steps or its tier grows |
-| `ci.unit_tests_timeout_min` | 175 min | `.github/workflows/ci.yml` — `175` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 10.4 min (run `39335426899`, the toolchain built inside `scripts/test.sh`), warm 8.9 and 9.7 min (runs `39344544377`, `38777834467`); largest single retry one `scenarios[<device>]` job's `runner.scenarios_timeout_s` × `runner.per_file_attempts`, about 128 min (one file's is 12); B.10.1's budget rule | 1.27× the warmer run plus one hung scenario job's retry budget, so its `FAIL` and the summary block print before CI cancels; that budget rests on the bench Pi4's unmeasured scenario time: measure on the bench | the job's steps or its tier grows, the toolchain cache key changes, or `runner.scenarios_timeout_s` or `runner.per_file_attempts` changes |
-| `ci.unit_tests_gc_threshold_timeout_min` | 175 min | `.github/workflows/ci.yml` — `175` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 14.0 min (run `39335426899`, the toolchain built inside `scripts/test.sh`; one scenario failed, no attempt was retried, so the whole suite ran), warm 10.1 and 9.0 min (runs `39344544377`, `38777834467`); largest single retry one `scenarios[<device>]` job's `runner.scenarios_timeout_s` × `runner.per_file_attempts`, about 128 min (one file's is 12); B.10.1's budget rule | 1.27× the warmer run plus one hung scenario job's retry budget, so its `FAIL` and the summary block print before CI cancels; that budget rests on the bench Pi4's unmeasured scenario time: measure on the bench | the job's steps or its tier grows, the toolchain cache key changes, or `runner.scenarios_timeout_s` or `runner.per_file_attempts` changes |
+| `ci.unit_tests_timeout_min` | 90 min | `.github/workflows/ci.yml` — `90` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 10.4 min (run `39335426899`, the toolchain built inside `scripts/test.sh`), warm 8.9 and 9.7 min (runs `39344544377`, `38777834467`); largest single retry one `scenarios[<device>]` job's `runner.scenarios_timeout_s` × `runner.per_file_attempts`, 60 min, equal to the pytest tier's `runner.tests_scripts_timeout_s` × `runner.per_file_attempts` (one file's is 12); B.10.1's budget rule | 1.29× the warmer run plus one hung job's retry budget, so its `FAIL` and the summary block print before CI cancels | the job's steps or its tier grows, the toolchain cache key changes, or `runner.scenarios_timeout_s`, `runner.tests_scripts_timeout_s` or `runner.per_file_attempts` changes |
+| `ci.unit_tests_gc_threshold_timeout_min` | 90 min | `.github/workflows/ci.yml` — `90` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 14.0 min (run `39335426899`, the toolchain built inside `scripts/test.sh`; one scenario failed, no attempt was retried, so the whole suite ran), warm 10.1 and 9.0 min (runs `39344544377`, `38777834467`); largest single retry one `scenarios[<device>]` job's `runner.scenarios_timeout_s` × `runner.per_file_attempts`, 60 min (one file's is 12); B.10.1's budget rule | 1.28× the warmer run plus one hung scenario job's retry budget, so its `FAIL` and the summary block print before CI cancels | the job's steps or its tier grows, the toolchain cache key changes, or `runner.scenarios_timeout_s` or `runner.per_file_attempts` changes |
 | `ci.unit_tests_coverage_timeout_min` | 95 min | `.github/workflows/ci.yml` — `95` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 11.7 min (run `39335426899`, restoring the cache `unit-tests` saved: it needs that job), warm 12.1 and 14.2 min (runs `39344544377`, `38777834467`); largest single retry the pytest tier's `runner.tests_scripts_timeout_s` × `runner.per_file_attempts`, 60 min (`--coverage` runs no scenario job; one file's is 12), so (14.2 + 60) × 1.25 = 92.7, rounded up; B.10.1's budget rule | 1.28× the warmer run plus a hung tier's retry budget, so its `FAIL` and the summary block print before CI cancels | the job's steps or its tier grows, or `runner.tests_scripts_timeout_s`, `runner.per_file_timeout_s` or `runner.per_file_attempts` changes |
 | `ci.digital_twin_e2e_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 10.6 min (run `39335426899`, restoring the cache `unit-tests` saved: it needs that job), warm 10.1 and 9.3 min (runs `39344544377`, `38777834467`), the slowest leg each time `dev` at 32768, the suite part; each leg now also runs the one exclusive-port-53 scenario (E.9), 54.5 s and 54.6 s for `dev` at -1 and 32768 on the shared x86 host (2026-11-04, single observation each); largest single retry none, its longest single bounded wait the escalation run's 2 min; B.10.1's budget rule | 1.54× the warmer leg, that scenario and that wait | the job's steps or its tier grows |
-| `ci.firmware_build_verify_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | the backstop of the ARM apt download, which has no limit of its own (B.4), and the bound the firmware set's required mirror rate is sized on (`ci.apt_mirror_rate_margin`), read from this tag by the job's `apt-packages` step | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 2.1 min (run `39335426899`, restoring the cache `unit-tests` saved), warm 2.9 and 2.5 min (runs `39344544377`, `38777834467`); B.10.1's budget rule, with 10.5 min kept for the ARM apt download (the worst case of the per-attempt limits it had until 2026-11-10) | 1.5× the warmer run plus 10.5 min for the apt download | the job's steps or its tier grows |
+| `ci.firmware_build_verify_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | the backstop of the ARM apt download, which has no limit of its own (B.4) | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 2.1 min (run `39335426899`, restoring the cache `unit-tests` saved), warm 2.9 and 2.5 min (runs `39344544377`, `38777834467`); B.10.1's budget rule, with 10.5 min kept for the ARM apt download (the worst case of the per-attempt limits it had until 2026-11-10) | 1.5× the warmer run plus 10.5 min for the apt download | the job's steps or its tier grows |
 
 **Runners (`scripts/`)**
 
@@ -12196,7 +12236,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min`, and the largest one inside `ci.unit_tests_coverage_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest job alone (`tests/test_sensortask.py`'s `dev` job: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | every per-file job, every `scenarios[<device>]` job and the backgrounded `tests_scripts/` tier, retried on a timeout only; a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop; owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the backstop rule changes |
-| `runner.scenarios_timeout_s` | 2555 s | `scripts/test.sh` — `2555` | each `scenarios[<device>]` job's per-attempt bound in place of `runner.per_file_timeout_s`, one job per device E.2.1 lists, all at once on CI; × `runner.per_file_attempts` (7,665 s, about 128 min) is the largest retry budget `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min` take in full, so a hung job ends `FAIL` with the summary block printed | measured 2026-10-15, the Unix-port twin, single observation: a standalone `dev` scenario-harness run took 396 s at gc -1, one device, nothing beside it; on GitHub's ubuntu-latest runners (2026-10-20, runs `39335426899`, `39344544377`) `dev` is the slowest device: its in-suite job at most 439 s at -1 and 511 s at 32768 (the pytest tier's start to the job's last line, beside the whole suite), its `digital-twin-e2e` harness-leg step 486-511 s | attention; 2.5× on the bench Pi4, the slowest local host (N.1): the 65 `dev` scenarios sum to 1,003 s at 32768 (2026-11-05); 4.5× on CI (563 s, run `39647170466`); 6.5× the standalone local run | a scenario or a device is added, a scenario's boot changes, or the host class changes |
+| `runner.scenarios_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | each `scenarios[<device>]` job's per-attempt bound in place of `runner.per_file_timeout_s`, one job per device E.2.1 lists, all at once on CI; × `runner.per_file_attempts` (3,600 s, 60 min) is the largest retry budget `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min` take in full, so a hung job ends `FAIL` with the summary block printed | measured 2026-10-15, the Unix-port twin, single observation: a standalone `dev` scenario-harness run took 396 s at gc -1, one device, nothing beside it; on GitHub's ubuntu-latest runners (2026-10-20, runs `39335426899`, `39344544377`) `dev` is the slowest device: its in-suite job at most 439 s at -1 and 511 s at 32768 (the pytest tier's start to the job's last line, beside the whole suite), its `digital-twin-e2e` harness-leg step 486-511 s | attention; 1.2× on the bench Pi4, the slowest local host (N.1): the 65 `dev` scenarios sum to 1,003 s at 32768 (2026-11-05); 2.1× on CI (563 s, run `39647170466`); 3.0× the standalone local run | a scenario or a device is added, a scenario's boot changes, or the host class changes |
 | `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound per attempt; × `runner.per_file_attempts` (3,600 s, 60 min) is its retry budget, the largest one inside `ci.unit_tests_coverage_timeout_min` | estimated (agent, `a092800`); the tier measured 698 s at either GC stage beside the MicroPython tier (2026-10-15) and 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | 1.7× the 698 s tier, a hang backstop | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` (4 tags) | every `timeout` in the runner, the per-file one sending SIGINT first (microtest's `ABORT` line, E.3.1); the EXIT trap's stop of the background jobs sends SIGKILL to what is left after twice it | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after the timeout's first signal (SIGINT for a test file, SIGTERM for the pytest tier) | unknown until measured | the interpreter's signal handling changes |
 | `runner.probe_iterations` | 500000 | `scripts/test.sh` — `500000` | the speed bands' calibration | measured: the bench Pi4 probes 120-139 ms (2026-11-07), the project's x86 sandbox 131-141 ms | both inside `runner.band_fast_ms`, the slowest at 56 % of it | the interpreter build changes |
@@ -12214,9 +12254,9 @@ applies it.
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `boot.unfed_stretch_1_ms` | from the boot entry's `WDT()` through every product import, every construction, the webserver's and the first `fram.setup()` (power-up wait plus one chunk-table read) to the first setup feed: < `wdt.timeout_ms` | rule — checked by review of the generated boot (`buildgen/codegen.py`); no wait in it is timed | `wdt.timeout_ms` (its margin is this row's) | estimated (agent, 2026-09-29) — measurement owed: a bench boot log with a `ticks_ms()` stamp at every feed, taken in a hardware session, L3 | bound, measured by the bench's boot-stretch run, a `ticks_ms()` stamp at every feed; unknown until measured: the product import took ~1.1 s on silicon (A.7); construction allocates and touches no bus beyond each driver's `Pin`/bus constructor, whose I2C boot bus clear is the one bounded wait — at worst 11 SCL waits of one bus timeout per I2C bus, about 2750 ms on a real device today, at most 4.4 s on two buses at `i2c.timeout_max_us` | a construction, the boot entry or the first setup unit changes |
-| `boot.unfed_stretch_2_ms` | from the last setup feed through `start_tasks()`'s task starts (N × `1000 // N` ms of sleeps), `start_timers()` (the trigger stagger, last start below 1,000 ms) and `ntp_force_sync()` (sets an event) to the first feed of the supervisor `supervise_tasks()` starts: ≤ 2,000 ms of waits plus each started task's first slice, < `wdt.timeout_ms` | rule — checked by the boot-stretch scenario in `tests/_sensortask_scenarios.py` (the waits' sum) and the bench measurement below | `wdt.timeout_ms`; `system.timer_base_period_ms` (the stagger's span) | estimated (agent, 2026-09-29) — measurement owed: a bench boot log with a `ticks_ms()` stamp at every feed, taken in a hardware session, L3 | bound, measured by the bench's boot-stretch run, a `ticks_ms()` stamp at every feed; 6,000 ms of `wdt.timeout_ms` over the 2,000 ms of waits; the tasks' first slices have no bound in code and are the measured term | the boot order, the stagger or the task-start spread changes |
-| `boot.setup_unit_stretch_ms` | one setup unit between two feeds, < `wdt.timeout_ms`; measured 79-91 ms per unit, 6 ms for `fram.setup()`, the whole batch 0.93 s (dev, the device with the most setup units, silicon, 2026-09-25, five hard resets) | rule — checked by `_scenario_boot_feeds_the_watchdog` in `tests/_sensortask_scenarios.py` on every generated device: one feed per unit, and no unit asks for a timed wait but a `uart_link`'s boot drain (each wait its bus's `poll_wait_ms`, their sum within the resync window × `_DRAIN_BOUND_MULT`) | `wdt.timeout_ms`, `boot.unfed_stretch_1_ms`, `boot.unfed_stretch_2_ms` | measured (dev, 2026-09-25) | 8000 / 91 ≈ 88× per unit; the worst case adds one config repair write, up to 2129 ms (`src/asy_uart_comm.py`'s flash hold, a source trace; its silicon figure owed, a hardware session) | a new setup unit with bus or flash I/O, a timed wait in any `setup()`, a littlefs or flash-driver change |
+| `boot.unfed_stretch_1_ms` | from the boot entry's `WDT()` through every product import, every construction, the webserver's, `run_setups()`'s first `gc.collect()` (≤ 21 ms measured, I.1) and the first `fram.setup()` (power-up wait plus one chunk-table read) to the first setup feed: < `wdt.timeout_ms` | rule — checked by review of the generated boot (`buildgen/codegen.py`); no wait in it is timed | `wdt.timeout_ms` (its margin is this row's) | estimated (agent, 2026-09-29) — measurement owed: a bench boot log with a `ticks_ms()` stamp at every feed, taken in a hardware session, L3 | bound, measured by the bench's boot-stretch run, a `ticks_ms()` stamp at every feed; unknown until measured: the product import took ~1.1 s on silicon (A.7); construction allocates and touches no bus beyond each driver's `Pin`/bus constructor, whose I2C boot bus clear is the one bounded wait — at worst 11 SCL waits of one bus timeout per I2C bus, about 2750 ms on a real device today, at most 4.4 s on two buses at `i2c.timeout_max_us` | a construction, the boot entry or the first setup unit changes |
+| `boot.unfed_stretch_2_ms` | from the last setup feed through `start_tasks()`'s task starts (N × `1000 // N` ms of sleeps, N + 1 collects), `start_timers()` (the trigger stagger, last start below 1,000 ms) and `ntp_force_sync()` (sets an event) to the first feed of the supervisor `supervise_tasks()` starts: ≤ 2,000 ms of waits plus each started task's first slice, < `wdt.timeout_ms` | rule — checked by the boot-stretch scenario in `tests/_sensortask_scenarios.py` (the waits' sum) and the bench measurement below | `wdt.timeout_ms`; `system.timer_base_period_ms` (the stagger's span) | estimated (agent, 2026-09-29) — measurement owed: a bench boot log with a `ticks_ms()` stamp at every feed, taken in a hardware session, L3 | bound, measured by the bench's boot-stretch run, a `ticks_ms()` stamp at every feed; 6,000 ms of `wdt.timeout_ms` over the 2,000 ms of waits; the tasks' first slices have no bound in code and are the measured term | the boot order, the stagger or the task-start spread changes |
+| `boot.setup_unit_stretch_ms` | one setup unit and its placement collect between two feeds, < `wdt.timeout_ms`; measured 79-91 ms per unit, 6 ms for `fram.setup()`, the whole batch 0.93 s (dev, the device with the most setup units, silicon, 2026-09-25, five hard resets) | rule — checked by `_scenario_boot_feeds_the_watchdog` in `tests/_sensortask_scenarios.py` on every generated device: one feed per unit, and no unit asks for a timed wait but a `uart_link`'s boot drain (each wait its bus's `poll_wait_ms`, their sum within the resync window × `_DRAIN_BOUND_MULT`) | `wdt.timeout_ms`, `boot.unfed_stretch_1_ms`, `boot.unfed_stretch_2_ms` | measured (dev, 2026-09-25) | 8000 / 91 ≈ 88× per unit; the worst case adds one config repair write, up to 2129 ms (`src/asy_uart_comm.py`'s flash hold, a source trace; its silicon figure owed, a hardware session) | a new setup unit with bus or flash I/O, a timed wait in any `setup()`, a littlefs or flash-driver change |
 | `system.scan_budget` | one supervisor pass with every supervised task dead, timed from the feed before it: on every device (more than three supervised tasks) the pass escalates at the first end past `system.task_fail_max` — 4 end entries, then the reboot's (one that never finishes stops the feed, and the watchdog's reset reads the code recorded before it), and 3 task starts — feeds once after the reboot's entry, and the `system.reset_delay_s` countdown follows with nothing fed, so `system.task_check_s` × 1000 + the pass < `wdt.timeout_ms` and the reset's record, flush and pause + `system.reset_delay_s` × 1000 < `wdt.timeout_ms`; the count does not grow with a device's tasks | rule — checked by the supervisor-scan scenario in `tests/_sensortask_scenarios.py` (entries, chip writes and sleeps counted per pass) and `tests/test_asy_system_service.py`'s `test_the_escalation_decides_and_records_the_reset_before_its_entry_write` | `wdt.timeout_ms`, `system.task_check_s`, `system.reset_delay_s` | estimated (agent, 2026-10-07) — measurement owed: one pass with every task ended, timed on the bench with its SYSTEM entries persisted to FRAM, L3 | bound, measured by `tests_hardware/device_scripts/supervisor_scan_timing.py`; unknown until measured: after the 2,000 ms sleep the pass has 6,000 ms for five SYSTEM entry writes and three task starts; at the 627-700 ms a chunk write measured under load (`rate.persisted_log`, dev, 2026-09-25) the four end entries and the reboot's take up to 3,500 ms, and after the feed the 4,000 ms countdown leaves 4,000 ms for the reset's record, flush and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |
 
 <!-- tunables:end -->

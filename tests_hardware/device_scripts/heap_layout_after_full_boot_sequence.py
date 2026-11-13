@@ -1,6 +1,6 @@
 """Isolated-driver device script: heap layout after BOTH one-time boot lists in the generated order (build_system(),
-run_setups(), start_tasks(), start_timers()), the supervisor never entered - the boot placement of SPECIFICATION.md
-Part I.4(f.1), no collect between the units. Report only: flash/test_heap_layout.py holds it to the twin's bound."""
+run_setups(), start_tasks(), start_timers()), the supervisor never entered - the boot placement reset of
+SPECIFICATION.md Part I.4(f.1). Report only: flash/test_heap_layout.py holds it to the twin's bound."""
 
 import asyncio
 import errno

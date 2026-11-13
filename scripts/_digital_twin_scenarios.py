@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING, NamedTuple, TypeVar
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections, module_float_const, module_int_const, smallest_hard_consumer
+from buildgen.validate import device_max_connections, module_float_const, module_int_const
+from scripts._generate_sensortask_modules import smallest_hard_consumer
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 
@@ -1265,7 +1266,7 @@ def _log_at_error_level(state: Path) -> "tuple[str, ...]":
 @scenario("loop_lag_under_combined_load", family="loop_lag")
 def _loop_lag_under_load(ctx: Context) -> None:
     """The loop's lag under a ceiling of GETs on every route, a FRAM-log fault storm and the links' exercisers stays under the device's smallest hard consumer, and settles once the load stops."""
-    bound_us = smallest_hard_consumer(load_device(REPO_ROOT / "devices" / f"{ctx.device}.toml"), SRC_DIR).ms * 1000
+    bound_us = smallest_hard_consumer(load_device(REPO_ROOT / "devices" / f"{ctx.device}.toml"), SRC_DIR) * 1000
     report_s = module_int_const(REPO_ROOT / "digital_twin", "run_generic_integration.py", "_LOOP_LAG_REPORT_MS") / 1000
     sgp40 = next((key for key, driver, _ext in ctx.instances if driver == "sgp40"), None)
     fault = ("--fault", f"{sgp40}:readfrom_into:{_LOOP_LAG_FAULTS}:{_SGP40_MEASURE_RAW:04X}") if sgp40 else ()

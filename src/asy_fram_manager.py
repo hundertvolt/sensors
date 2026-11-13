@@ -64,17 +64,6 @@ _WRN_FRAM_BLOCK_INVALID = const(63)
 # @limits max_size in {0x2000, 0x40000}
 
 
-def _begin(fram: FRAM_SPI, pr: PrintLogHistory) -> bool:
-    # One bus session per chunk operation (C.8): the bus's checks once, at its start; a refusal is the operation's one
-    # unexpected fault, as a raising command was.
-    try:
-        fram.begin()
-    except Exception as e:
-        pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
-        return False
-    return True
-
-
 def _owner_seed(owner: str, crc: CRCBase) -> int:
     # Seeds each owner's CRC differently: after a reflash that shifts the layout by whole chunks, a
     # chunk another owner wrote fails its CRC and reads blank, never as this owner's history.
@@ -175,7 +164,7 @@ class _FRAMBaseChunk:
         if len(image) != self.size + self.crc.length():
             self.pr.err_s("Data size", len(image), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
             return None
-        if not _begin(self.fram, self.pr):
+        if not self.fram.begin_or_refuse():
             return None
         valid, uninit, _match = self._read_chunk(image, self._block_addr[0])
         fault = self._read_fault
@@ -264,7 +253,7 @@ class _FRAMBaseChunk:
         if self.crc.add_into(image, self.size, init=self._crc_seed) is None:  # once for both blocks
             self.pr.err_s("CRC computation failed!", errno=_ERR_FRAM_CRC_FAILED)
             return False
-        if not _begin(self.fram, self.pr):
+        if not self.fram.begin_or_refuse():
             return False
         self.pr.all("Writing both blocks, one not IDLE first")
         if not self._write_chunk(image, -1):
@@ -322,7 +311,7 @@ class _FRAMBaseChunk:
         if self._mempause():
             self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=_WRN_FRAM_PAUSED)
             return False
-        if not _begin(self.fram, self.pr):
+        if not self.fram.begin_or_refuse():
             return False
         for n in range(len(self._block_addr)):
             if not self._clear_chunk(self._block_addr[n]):
@@ -334,7 +323,7 @@ class _FRAMBaseChunk:
     def invalidate(self) -> bool:
         # Marks both blocks blank (their status bytes only); no pause check: only the erase calls it, with the storage
         # paused.
-        return _begin(self.fram, self.pr) and all(self._handle_status_bytes(addr, _STATUS_UNINIT, check_idle=False) is not None for addr in self._block_addr)
+        return self.fram.begin_or_refuse() and all(self._handle_status_bytes(addr, _STATUS_UNINIT, check_idle=False) is not None for addr in self._block_addr)
 
 
 class FRAMChunkBuffer(RegionBuffer):
@@ -617,7 +606,7 @@ class FRAMManager:
             return False
         size = self.fram.get_size()
         for addr in range(0, size, _ERASE_UNIT):
-            if not (_begin(self.fram, self.pr) and self.fram.set_values(unit, addr)):  # each unit its own operation
+            if not (self.fram.begin_or_refuse() and self.fram.set_values(unit, addr)):  # each unit its own operation
                 self.pr.err("FRAM erase stopped at", addr)
                 return False
             step_done()

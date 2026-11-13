@@ -366,7 +366,6 @@ _ROWS: "dict[str, Row]" = {
     "instance.field-unknown": Row("generate", f"[{_DEVICE}/scd30.colour] ", doc=_set("@scd30", "colour", 1)),
     "instance.uart-transfer-cap": Row("generate", f"[{_DEVICE}/uart_link_init.max_transfer_bytes] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("max_transfer_bytes", 47))),
     "instance.uart-link-pair": Row("generate", f"[{_DEVICE}] ", doc=_paired(lambda d: table_at(d, "instance", -1).__setitem__("role", "initiator"))),
-    "instance.uart-timeout-max": Row("generate", f"[{_DEVICE}/uart_link_init] ", doc=_paired(), edits=(("asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS = const(1000)", "_DEFAULT_TIMEOUT_MS = const(100000000)"),)),
     "instance.requires-without-bus": Row(
         "generate", f"[{_DEVICE}/neopixel] ",
         edits=(("asy_neopixel_driver.py", '_NAME = const("NEOPIXEL")', '# @requires bus.timeout>=1\n_NAME = const("NEOPIXEL")'),),

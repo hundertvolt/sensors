@@ -1,4 +1,4 @@
-"""Flash-tier heap layout after the whole boot sequence, no collect between the boot lists' units: the twin's high-band
+"""Flash-tier heap layout after the whole boot sequence and its placement reset: the twin's high-band
 bound (tests_scripts/test_digital_twin_boot_contiguity.py) holds on silicon (SPECIFICATION.md Part I.4(f.1)); every
 figure is noted with the image it was taken on."""
 

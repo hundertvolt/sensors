@@ -390,11 +390,9 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     objects = _module_objects(module)
     assert sorted(name for name in wired if name in objects) == sorted(wired), (wired, sorted(objects))
     for name, obj in objects.items():
-        # A config log its class keeps off FRAM stays RAM-only on a FRAM-wired module (read from the class).
-        ram_config = getattr(obj, "cfgmgr", None) if not getattr(type(obj), "_CFG_LOG_FRAM", True) else None
         for logger in obj.get_loggers():
             chunk = getattr(logger, "fram", None)
-            if name in wired and (ram_config is None or logger is not ram_config.pr):
+            if name in wired:
                 assert chunk is not None, f"{name}'s logger {logger.name} holds no FRAM chunk"
             else:
                 assert chunk is None, f"{name}'s logger {logger.name} holds a FRAM chunk the build does not wire"
@@ -405,11 +403,10 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
 def _scenario_only_the_fram_manager_logs_in_memory(device: str) -> None:
     module = build(device)
     # scripts/_digital_twin_ci_suite.py's Run 5c sweeps the whole errcount table and exempts its
-    # _IN_MEMORY_ONLY_ERROR_SOURCES. Pinned from the real object graph: FRAMManager (the store cannot persist its
-    # own failures through itself) and the config logs a reader's class keeps off FRAM are the in-memory ones.
+    # _IN_MEMORY_ONLY_ERROR_SOURCES. Pinned from the real object graph: FRAMManager is the in-memory one (the store
+    # cannot persist its own failures through itself).
     in_memory = sorted(logger.name for logger in _all_loggers(module) if not isinstance(logger, PrintLogHistoryStore))
-    expected = sorted(["FRAM"] + _ram_only_config_logs(module))
-    assert in_memory == expected, f"{device}: only the FRAM manager's own log and the RAM-only config logs may be in-memory-only, found {in_memory}"
+    assert in_memory == ["FRAM"], f"{device}: only the FRAM manager's own log may be in-memory-only, found {in_memory}"
 
 
 class _DeadFramChip(FakeMB85RS64V):
@@ -1088,17 +1085,14 @@ def _expected_facts(device: str) -> "_Facts":
 
 def _expected_fram_chunk_owners(module: "ModuleType") -> "list[str]":
     # SPECIFICATION.md Part A.7's "Real FRAM chunk order", derived: the build's construction order (its expected facts)
-    # and the webserver last, each FRAM-wired module's loggers in its own order but a config log its class keeps off
-    # FRAM (_CFG_LOG_FRAM, read from the class, never named), an SGP40's VOC backup after its logs.
+    # and the webserver last, each FRAM-wired module's loggers in its own order, an SGP40's VOC backup after its logs.
     facts = _expected_facts(_device_of(module))
     owners = []
     for name in facts["boot_sequence"]["construction"] + ["webserver"]:
         if name not in facts["fram_wired"]:
             continue
         obj = getattr(module, name)
-        store = getattr(obj, "cfgmgr", None)
-        ram_config = store.pr if store is not None and not getattr(type(obj), "_CFG_LOG_FRAM", True) else None
-        owners += [logger.name for logger in obj.get_loggers() if logger is not ram_config]
+        owners += [logger.name for logger in obj.get_loggers()]
         if isinstance(obj, SGP40_Reader):
             owners.append(obj.name + "_VOC")  # the VOC backup's owner, read from the built reader
     return owners
@@ -1344,12 +1338,6 @@ def _queue_scd30_snapshot(fake_i2c: "machine.I2C", interval: int) -> None:
     # The six register replies of one SCD30 config snapshot (word + CRC-8 each), queued for its address
     # only: TempOffset 0, MeasInterval `interval`, AmbPres 0, Altitude 0, ForceCalRef 400, SelfCal 0.
     fake_i2c.read_queue_by_address.setdefault(0x61, []).extend(scd_register_frame(value) for value in (0, interval, 0, 0, 400, 0))
-
-
-def _ram_only_config_logs(module: "ModuleType") -> "list[str]":
-    # The config loggers a reader's class keeps off FRAM (_CFG_LOG_FRAM False): read from the class, never named.
-    owners = [getattr(module, name) for name in _present_optional_instances(module)]
-    return sorted(owner.cfgmgr.pr.name for owner in owners if getattr(owner, "cfgmgr", None) is not None and not getattr(type(owner), "_CFG_LOG_FRAM", True))
 
 
 def _ram_only_entries(logger: "PrintLogHistory") -> int:

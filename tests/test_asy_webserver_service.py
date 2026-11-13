@@ -4312,7 +4312,7 @@ class _OverflowingJson:
 
 def test_a_body_whose_decoding_meets_a_stack_overflow_records_it_and_reads_as_none() -> None:
     # The body reader's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
-    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None  # type: ignore[arg-type]
+    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None
     assert fatal_reported() is True
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 

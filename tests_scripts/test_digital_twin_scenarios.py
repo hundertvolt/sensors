@@ -19,7 +19,8 @@ from _script_loader import load_script_module
 
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import load_device
-from buildgen.validate import _WDT_TIMEOUT_MS, init_int_default, module_int_const, smallest_hard_consumer
+from buildgen.validate import _WDT_TIMEOUT_MS, init_int_default, module_int_const
+from scripts._generate_sensortask_modules import smallest_hard_consumer
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _HARNESS = _REPO_ROOT / "scripts" / "_digital_twin_scenarios.py"
@@ -234,7 +235,7 @@ def test_a_device_independent_scenario_runs_on_its_first_device_with_the_propert
 
 def test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source(harness: ModuleType) -> None:
     # The watchdog's room beside one supervisor sleep, and each uart_link's reply slack (SPECIFICATION.md F.3), read
-    # here from the sources; the twin scenario and the bench lag test both call buildgen's one export.
+    # here from the sources; the twin scenario and the bench lag test both call the generator script's one export.
     src = harness.REPO_ROOT / "src"
     task_check_s, reply_ms, gc_pause = module_int_const(src, "asy_system_service.py", "_TASK_CHECK_TIME"), module_int_const(src, "asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS"), module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
     linked = []
@@ -242,12 +243,12 @@ def test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source(ha
         doc = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))
         links = [doc["bus"][inst["bus"]] for inst in doc.get("instance", []) if inst.get("driver") == "uart_link"]
         expected = min([_WDT_TIMEOUT_MS - task_check_s * 1000] + [reply_ms - (2 * bus["poll_wait_ms"] + bus["poll_idle_ms"] + gc_pause) for bus in links])
-        assert smallest_hard_consumer(load_device(device_toml(device)), src).ms == expected, device
+        assert smallest_hard_consumer(load_device(device_toml(device)), src) == expected, device
         linked += [device] if links else []
     assert linked, "no device wires a uart_link, so the reply-slack consumer is never read"
     for reader in (harness.REPO_ROOT / "scripts" / "_digital_twin_scenarios.py", harness.REPO_ROOT / "tests_hardware" / "flash" / "test_memory_stress.py"):
         text = reader.read_text(encoding="utf-8")
-        assert re.search(r"^from buildgen\.validate import .*\bsmallest_hard_consumer\b", text, re.MULTILINE), f"{reader.name} does not import the export"
+        assert re.search(r"^from scripts\._generate_sensortask_modules import .*\bsmallest_hard_consumer\b", text, re.MULTILINE), f"{reader.name} does not import the export"
         assert "_GC_PAUSE_WORST_MS" not in text and "def smallest_hard_consumer" not in text, f"{reader.name} computes its own consumer"
 
 
@@ -281,7 +282,7 @@ def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_bo
 @pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load"), (4, "under load")], ids=["the boot window", "a load window", "the window straddling the stop"])
 def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
     # The window open when the readers stop closes on the next LOOP_LAG line: it holds load, so it is bound as a load window.
-    bound_us = smallest_hard_consumer(load_device(device_toml(device)), harness.SRC_DIR).ms * 1000
+    bound_us = smallest_hard_consumer(load_device(device_toml(device)), harness.SRC_DIR) * 1000
     figures = [240000, 3000, 2500, 2800, 2000]
     figures[over] = bound_us + 1
     failures, _printed, _evidence = _lag_run(harness, device, tmp_path, monkeypatch, capsys, figures[:4], (figures[4], 900, 900))

@@ -34,7 +34,6 @@ from buildgen.validate import (
     _check_wiring_reference,
     build_model,
     device_max_connections,
-    device_max_connections_by_name,
     init_int_default,
     module_float_const,
     module_int_const,
@@ -43,6 +42,7 @@ from buildgen.validate import (
 )
 from buildgen.value_wiring import ValueWiringField
 from buildgen.wiring import WiringField
+from scripts._generate_sensortask_modules import device_max_connections_by_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -1674,18 +1674,6 @@ def test_a_uart_poll_wait_ms_outside_one_to_nine_is_rejected(tmp_path: Path, src
     with pytest.raises(BuildError, match=rf"bus\.uart0: poll_wait_ms {poll_wait_ms} is outside 1 … 9") as info:
         _build(tmp_path, src_dir, doc)
     assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-poll-wait-range", "poll_wait_ms", "uart_link_init")
-
-
-def test_a_uart_link_timeout_above_the_ticks_horizon_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # The link's timeout default lives in asy_uart_comm; its drain bound, 3/2 x 4 x timeout, must stay
-    # inside rp2's 2**29 - 1 ms ticks range: (2**29 - 1) * 2 // 12 = 89,478,485 is the last that fits.
-    old = "_DEFAULT_TIMEOUT_MS = const(1000)"
-    doc = with_uart_pair(base_doc())
-    _build(tmp_path, _staged_src(tmp_path, src_dir, "asy_uart_comm.py", old, "_DEFAULT_TIMEOUT_MS = const(89478485)"), doc)
-    staged = _staged_src(tmp_path, src_dir, "asy_uart_comm.py", "const(89478485)", "const(89478486)")
-    with pytest.raises(BuildError, match=r"89478486ms reply timeout is above 89478485ms") as info:
-        _build(tmp_path, staged, doc)
-    assert (info.value.rule, info.value.instance) == ("instance.uart-timeout-max", "uart_link_init")
 
 
 @pytest.mark.parametrize("poll_idle_ms", [1, 4, 536870912])

@@ -644,9 +644,9 @@ the UDP shim; a plan naming a UART pair (`dev`) gets the bench's crossover jumpe
 `TwinBoard` launches it behind `Board`'s API (`pytest tests_hardware/flash --twin`), each board's
 FRAM, SCD30 and `mem_backup()` state and its filesystem (each run's working directory) in one
 directory kept across its runs, so nothing a script writes lands in the checkout.
-`scripts/record_twin_instrument_runs.py` writes the twin record (twin_record.json in
-`tests_hardware/`), each instrument's twin run at both GC stages. A script that cannot run here is an
-`exception` entry with its reason in the record, never listed in this file.
+`scripts/record_twin_instrument_runs.py` writes the twin record, each instrument's twin run at both
+GC stages, to twin_record.json in `tests_hardware/`, a local output that is not committed; a script
+that cannot run here is an `exception` entry there with its reason.
 
 ## Automated CI suite
 
@@ -772,7 +772,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    exactly, every *other* registered error source (`SYSTEM`/`NOTIFY`/`NTP`/`WEBSERVER`/`DNSSRV`, every
    FRAM-backed `CFGMGR_*`, every `uart_link` instance) at least what it held, the same set of sources
    registered, the storage pause *not* surviving (RAM-only), and a `ResetErrors` PUT clearing the
-   restored history on the chip. `FRAM` and `CFGMGR_SCD30` are the RAM-only sources, exempt from the
+   restored history on the chip. `FRAM` is the RAM-only source, exempt from the
    sweep, and `tests/_sensortask_scenarios.py` pins the same set from the real object graph. The same
    all-or-nothing claim is mirrored at the mock tier (`tests/test_fram_integration.py`) and on real
    silicon (`tests_hardware/flash/test_fram_storage.py`'s reset-race test).

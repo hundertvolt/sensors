@@ -221,14 +221,19 @@ Three standing practices:
   account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
   why this must **not** be generalised to `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals
   expose no partial-read API to clamp to (that case stays F.2's watchdog backstop).
-- **A new device on a shared resource — an I2C/SPI bus and every other shared resource (locks, FRAM,
-  the config file, sockets, the heap) — gets hazard test coverage across all four test tiers that
-  apply to it — never forget this** (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this';
-  every shared resource, owner, 2026-09-26): same-device read-vs-write concurrency, cross-device
-  interleaving if it shares a bus on any device, and an address/command sweep, at the mock, twin,
-  flash and bench levels. The files per level, the full checklist and the two real-hardware
-  write-safety constraints any new device's own on-chip NVM or the RP2040's own flash filesystem must
-  respect are SPECIFICATION.md Part C.8's standing rule — the one list, not restated here.
+- **Crossover tests on shared resources** (owner, 2026-11-13: "Mostly to detect incompatibilities or
+  races or real timing issues." and "yes, write it that way"): (1) the I2C and SPI buses, FRAM
+  included since it sits on SPI, get crossover tests at all four levels — mock, twin, flash, bench
+  (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this'): same-device read-vs-write
+  concurrency, cross-device interleaving if it shares a bus on any device, and an address/command
+  sweep; (2) shared resources that exist only in software (the locks, the settings file, network
+  sockets, memory) get crossover tests in the twin, which runs the real firmware code, and the one
+  physical timing case, a settings save briefly stalling the chip, is covered by the existing bench
+  load test; (3) a new device is added to the existing crossover tests and their catalogue instead of
+  getting new test files; (4) existing tests stay. The files per level, the full checklist and the
+  two real-hardware write-safety constraints any new device's own on-chip NVM or the RP2040's own
+  flash filesystem must respect are SPECIFICATION.md Part C.8's standing rule — the one list, not
+  restated here.
 - **Least wear in the production code: the central wear rule, ahead of the test rule below**
   (owner, 2026-10-22: "The least wear rule is even more important for the production code than for
   the tests, as it will run potentially for years. This is something to be added to our pillars, a
@@ -309,8 +314,13 @@ Three standing practices:
   already broken.** A caught `MemoryError` that merely didn't crash anything is a design defect to
   fix at its source, never a passing result; the whole suite passes first at `gc.threshold(-1)` with
   zero `MemoryError`s, caught-and-logged included, then at the shipped `gc.threshold(32768)`; every
-  memory gate matches `MemoryError` OR `memory allocation failed`; the firmware calls no
-  `gc.collect()`, and outside it a collect only sets a measurement baseline or keeps a collection out
+  memory gate matches `MemoryError` OR `memory allocation failed`. **One structural exception: the
+  boot-confined placement reset** — `gc.collect()` between the units of `SystemService`'s two one-time
+  lists (`run_setups()` and `start_tasks()`'s starter loop) and nowhere else in the firmware:
+  placement discipline for the survivors those lists create, not a threshold and not a fix for a
+  failing allocation (owner, 2026-09-18; owner, 2026-11-13: "that exception for gc was explicitly
+  recorded and did much good for the device's memory fragmentation remediation. it should go back
+  in."). Outside the firmware a collect only sets a measurement baseline or keeps a collection out
   of a window about to be timed. The scheme, the owner's rulings on it, the gates and the allowed
   sites: SPECIFICATION.md Part I (I.4).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
@@ -318,8 +328,10 @@ Three standing practices:
   BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (agent,
   2026-09-25) Which loggers are FRAM-backed follows the implicit FRAM-wiring rule: on a
   device whose TOML wires `fram_target`, every module built after `fram` logs into it, each
-  `SensorReaderConfig`'s own `CFGMGR_<name>` logger included, except `CFGMGR_SCD30`, which stays
-  RAM-only (owner, 2026-09-29, on the FRC settings: 'no extra FRAM chunk'); each device's resulting
+  `SensorReaderConfig`'s own `CFGMGR_<name>` logger included, `CFGMGR_SCD30` too (owner, 2026-11-13:
+  "the decision covered an extra FRAM piece for that specific recalibration suggestion (which was
+  overkill). But I NEVER decided that FRAM logging for the sensor should go. So put it back in.");
+  each device's resulting
   set: SPECIFICATION.md Part A.7. This is the one piece of real diagnostic evidence a reboot itself
   doesn't erase, and clearing it is irreversible. The same
   check applies inside the digital twin (`digital_twin/_fram_chip.py` models the same chunked FRAM
@@ -349,7 +361,8 @@ Three standing practices:
   drift, a changed upstream API) — is corrected in the same session, never silently worked around.
   Drift in a recorded rule or owner decision is not reworded: it goes to that list with its history
   (the original wording and intent, what it drifted to), and the work follows the rule as it stands
-  unless that breaks a test or the build, which is recorded there too.
+  unless a later owner decision supersedes it (decision records, below) or that breaks a test or the
+  build, which is recorded there too.
 - **Documentation contains current state, future targets, and rules/agreements — not the historic
   path that got there** (owner, 2026-09-25: 'Only facts, agreements, rules and technical explanations
   are desirable.'): each rule keeps one short technical reason and its "(owner, date)", a measured
@@ -375,6 +388,9 @@ Three standing practices:
   missing files, headings or numbered decisions (existing text allow-listed until rewritten; the
   list only shrinks). No owner trace never means the owner did not decide; the most recent owner
   decision wins (owner, 2026-09-26: 'in case of changes by myself take my most recent decision').
+  A later clear owner decision supersedes an earlier rule, and a rule an agent or a session wrote is
+  a proposal until the owner adopts it (owner, 2026-11-10: "if there are decisions into a different
+  direction which are clear and came in later, the more recent ones sopersede the older ones").
   A decision also names the facts it rests on; when one is shown false, the decision goes back to
   its maker with the new facts, neither kept nor overridden silently. A measurement names its
   condition (idle or loaded, which case, silicon or Unix port), and a budget row names its real
@@ -386,6 +402,9 @@ Three standing practices:
   names, and what that check answers is not asked; a cost in it carries its context — the lock or
   bus it holds, under which load, who waits meanwhile (D.8) — never an isolated figure
   (agent, 2026-11-07).
+- **Restraint** (owner, 2026-10-23 to 2026-11-13): no change built on a hypothetical finding, root
+  causes and no runaway chains, ask before removing a possibly unused feature, keep good working
+  tests — quoted in SPECIFICATION.md 0.2, "Restraint in practice".
 - **Every file opens with exactly one header comment block, and every comment block — header or
   inline — keeps to three prose lines, prefer fewer** (owner, 2026-09-14, re-confirmed 2026-09-18;
   every file of every language, owner, 2026-09-26): a concise header and a few short, genuinely
@@ -443,15 +462,12 @@ Three standing practices:
   recorded in this session earlier, but quite close to option a'; paraphrase of the workflow
   recorded 2026-09-25/26): research and cross-check first — code, docs, datasheets, external
   sources, harvest (owner, 2026-09-25: 'cross-check them … very important with external sources like
-  repos, documentation, datasheets'); owner questions only at requirement recording and in a
-  consolidation run, never during execution (owner, 2026-09-25: 'at the recording of the
-  requirements … or at the pre-work consolidation and extension run'); tests first, then the
+  repos, documentation, datasheets'); tests first, then the
   implementation, then coverage tests; a 'pause' is a self-set sync point — commit, push, the full
   local suite at both GC stages, CI green watched through event hooks only, a status note — not a
   wait for the owner (owner, 2026-09-25; owner, 2026-09-26: 'stop timed checks. Do hooks only.'); no
-  owner stop-points inside a unit, the report comes at its end (owner, 2026-09-26); an unforeseen
-  decision during execution is never asked: take the more conservative, more easily reversible
-  option grounded in sources, and log it as decided on the owner's behalf for review; hardware and
+  owner stop-points inside a unit, the report comes at its end (owner, 2026-09-26); a decision the
+  principles leave genuinely open goes to the owner (the 2026-11-07 rule above); hardware and
   out-of-scope items are parked (owner, 2026-09-25); an apparent contradiction with an owner
   requirement is a fine-tuning question, not a conflict (owner, 2026-09-25: 'they surely are not.
   Such cases always mean that there is a topic to be fine tuned'); a CI failure is a flake only if

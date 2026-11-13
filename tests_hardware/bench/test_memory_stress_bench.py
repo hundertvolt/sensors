@@ -14,7 +14,8 @@ from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, bench_dev
 from soak_durations import SOAK_DURATION_SECONDS
 
 from buildgen.model import load_device
-from buildgen.validate import module_float_const, smallest_hard_consumer
+from buildgen.validate import module_float_const
+from scripts._generate_sensortask_modules import smallest_hard_consumer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -219,7 +220,7 @@ def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_c
     allocation = [line for line in output.splitlines() if any(marker in line for marker in MEMORY_ERROR_MARKERS)]
     assert not allocation, "the loop-lag script reported an allocation failure, caught or not:\n" + "\n".join(allocation)
     facts = parse_facts(output)
-    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the flash test's and the twin scenario's one source
+    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR) * 1000  # the flash test's and the twin scenario's one source
     lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
     result_note(f"loop lag under HTTP load: max {lag_max} us, ended {facts.get('lag_max_at_ms')} ms after main() started, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); {record.answered} reads answered, per route {record.served}")
     unserved = [route for route in _HAMMER_PATHS if not record.served.get(route)]

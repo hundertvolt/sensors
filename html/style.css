@@ -466,12 +466,8 @@ button.field-value.code-value {
     color: var(--color-text-muted);
 }
 
-.errcount-row-wrapper[data-worst="E"] .errcount-row-count {
+.errcount-row-wrapper[data-has-errors="true"] .errcount-row-count {
     color: var(--color-danger);
-}
-
-.errcount-row-wrapper[data-worst="W"] .errcount-row-count {
-    color: var(--color-warn);
 }
 
 /* A module without data ("no data", "unavailable"): muted like an unavailable field value. */

@@ -35,9 +35,9 @@ from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
-from buildgen.validate import _WDT_TIMEOUT_MS, build_model, device_max_connections_by_name
+from buildgen.validate import _WDT_TIMEOUT_MS, build_model
 from scripts import _twin_process
-from scripts._generate_sensortask_modules import expected_facts
+from scripts._generate_sensortask_modules import device_max_connections_by_name, expected_facts
 
 if TYPE_CHECKING:
     from collections.abc import Callable

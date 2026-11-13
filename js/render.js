@@ -132,8 +132,8 @@ function buildAndWireFieldGroup(group, groupIndex, section, values, ctx) {
     const updateWarnings = wireWarnings(card, group, baseline);
 
     /**
-     * PUTs one body, shows its per-field results and resets the controls the result settles, then waits for the
-     * section's post-write GET; the shell counts it as a pending Apply the whole time.
+     * PUTs one body, shows its per-field results, resets the controls the result settles and makes each key the device
+     * stored the card's baseline, then waits for the section's post-write GET; the shell counts it as a pending Apply.
      * @param {Record<string, unknown>} groupBody
      */
     async function send(groupBody) {
@@ -142,10 +142,11 @@ function buildAndWireFieldGroup(group, groupIndex, section, values, ctx) {
         try {
             const results = await putAndShow(groupBody);
             resetSettledControls(card, group, groupBody, results);
+            const stored = Object.entries(groupBody).filter(([key]) => isStoredWord(results[key]));
+            ctx.baselines.set(card, { ...baseline(), ...Object.fromEntries(stored) });
             if (!ctx.isStopped()) {
                 await ctx.refreshAfterApply();
             }
-            resetToBaseline(card, group, groupBody, results, baseline());
             updateWarnings();
         } finally {
             button.disabled = false;
@@ -200,25 +201,18 @@ function buildAndWireFieldGroup(group, groupIndex, section, values, ctx) {
     }
 
     button.addEventListener("click", async () => {
-        button.disabled = true;
-        // Fresh baselines first: another client may have changed a value this page still shows.
-        if (!ctx.isStopped()) {
-            await ctx.refreshAfterApply();
-        }
         const groupBody = collectGroupBody(card, group, baseline());
         if (Object.keys(groupBody).length === 0) {
             // Nothing changed: skip the round trip rather than PUT an empty body.
             if (resultEl) {
                 resultEl.textContent = NOTHING_TO_SUBMIT;
             }
-            button.disabled = false;
             return;
         }
         if (!confirmEach(group, groupBody)) {
             if (resultEl) {
                 resultEl.textContent = CONFIRMATION_DECLINED;
             }
-            button.disabled = false;
             return;
         }
         await send(groupBody);
@@ -514,24 +508,6 @@ function resetSettledControls(card, group, groupBody, results) {
 }
 
 /**
- * After the post-write GET: each submitted plain toggle or enum the device stored shows the value it now reports.
- * @param {HTMLElement} card
- * @param {FieldGroup} group
- * @param {Record<string, unknown>} groupBody
- * @param {Record<string, unknown>} results
- * @param {Record<string, unknown>} currentValues
- */
-function resetToBaseline(card, group, groupBody, results, currentValues) {
-    for (const field of group.fields) {
-        const plain = (field.kind === "toggle" || field.kind === "enum") && field.dispatch !== true && field.alwaysExecuted !== true;
-        const box = fieldBoxOf(card, field);
-        if (plain && box !== null && Object.hasOwn(groupBody, field.key) && isStoredWord(results[field.key])) {
-            resetControl(box, field, resolveFieldValue(field, currentValues));
-        }
-    }
-}
-
-/**
  * @param {unknown} word
  * @returns {number} the word's STATUS_SEVERITY rank; -1, the worst, for an unknown word.
  */
@@ -602,7 +578,11 @@ export function renderSection(defs, section, mainEl, context = {}) {
         left.takenOver = true;
         onTheWire.signal.addEventListener("abort", () => left.onTheWire.abort(), { once: true });
     }
-    /** @type {WeakMap<HTMLElement, Record<string, unknown>>} */
+    /**
+     * Per card, the values it was built from plus each key an Apply stored; no GET moves it, so an untouched toggle
+     * or select is never sent (SPECIFICATION.md Part H.4, "Sparse PUT").
+     * @type {WeakMap<HTMLElement, Record<string, unknown>>}
+     */
     const baselines = new WeakMap();
     const needsStatus = section.rest.get !== "/status"
         && section.groups.some((group) => ("kind" in group && group.kind === "errcount") || ("fields" in group && group.fields.some((field) => field.statusPath !== undefined)));
@@ -698,7 +678,6 @@ export function renderSection(defs, section, mainEl, context = {}) {
             let card;
             if (existing instanceof HTMLElement) {
                 card = existing;
-                baselines.set(card, values);
                 updateFieldGroupValues(card, fieldGroup, values, display);
             } else {
                 card = buildAndWireFieldGroup(fieldGroup, groupIndex, section, values, {

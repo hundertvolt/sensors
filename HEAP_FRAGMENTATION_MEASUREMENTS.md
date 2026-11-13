@@ -381,10 +381,11 @@ archive §6, §6A, §7.
 - **Any single write-path component, the await chain, the per-call buffers** — none controls it.
 - **Combinations** — nothing composes; the outcome is a coincidence count (§M1).
 - **`gc.collect()` / `gc.threshold()` as the fix** — forbidden by `SPECIFICATION.md` I.4(e)-(g);
-  the boot lists where permanent objects are born run with no collect (I.4(f.1)).
+  the boot-confined collects of I.4(f.1) are placement discipline at the two lists where permanent
+  objects are born, never run-phase margin.
 
 What ships: the FRAM path restructured with the wire protocol byte-identical, synchronous and with no
-lock (`SPECIFICATION.md` C.8), with which the boot lists need no collect
+lock (`SPECIFICATION.md` C.8), and the boot-confined collects
 (I.4(f.1)); for serving, bounded assembly and chunked static reads (I.3), `max_connections = 6`
 (H.7) and the lwIP ensemble (B.14.2).
 

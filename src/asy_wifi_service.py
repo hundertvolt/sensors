@@ -79,7 +79,7 @@ _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 # @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true submitLabel="Apply & Reconnect"
 # @web SSID section=networking submitGroup=identity label="Wi-Fi SSID" bytes=true
 # @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true bytes=true special:""="Open network"
-# @web Country section=networking submitGroup=identity label="Country" bytes=true shape=countryCode description="Two uppercase letters (ISO 3166-1 alpha-2), e.g. DE."
+# @web Country section=networking submitGroup=identity label="Country" bytes=true shape=countryCode description="Two uppercase letters (ISO 3166-1 alpha-2), e.g. DE. Channels 12 and 13 are not verified on this board: keep the router on channels 1 to 11."
 # @web Hostname section=networking submitGroup=identity label="Hostname" bytes=true shape=hostLabel
 # @web HotspotPW section=networking submitGroup=identity label="Hotspot Password" mask=true bytes=true description="Password of the fallback hotspot (8-63 characters)."
 
