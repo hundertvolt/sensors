@@ -44005,3 +44005,28 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   move the board's station left (`AP-STA-DISCONNECTED`); no `AP-STA-CONNECTED` followed while the AP stood on 13.
 - So the host side reports a started AP on 13 under DE with no firmware refusal logged; whether brcmfmac's firmware
   actually beaconed on 13 is not in these logs. 13 rests; nothing more on it today. Wear: none.
+
+## Bench 2026-11-13 08:30 UTC - j: M1 PASS (operator judged), relative only; the rig recorded
+
+- The owner at the bench (~08:15 UTC): "I'm at the bench now: start j as in relay 33 step 4, M1 first" (05:39's
+  step 4: j as in 11-10 21:29 and 22:19). M1 run under its tree name
+  (`--only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`), its prompts answered through a pipe
+  (logs/day8_20261113/m1.out, m1_readings_*.txt, m1_sweeps.txt). PASS, exit 0.
+- The owner's rig: a cap over the board's WS2812 (GP18) and the ISL29125, LED aimed at the sensor, "about 20mm. I can
+  change that if needed" (owner); the light inside is the NeoPixel alone (0.9 lx with it dark).
+- Repeatability, unchanged scene (the WiFi LED overlay lit): 2256.96 / 2251.16 / 2259.10 lx, all RangeAct 10000:
+  0.35 % spread (bar 10 %). Reference: "none" (the owner has no meter, 05:50).
+- Range continuity, driven by `LightCmdLED` (dispatch-only, no write) triangle sweeps under the cap:
+  - R=G=B=255, T=60: 0 -> ~41 lx per colour step, overrange (10000, Overrange true) at the peak; on the way down the
+    one switch read 384.7 lx (10000) then 372.6 lx (375).
+  - R=G=B=15, T=60 (peak ~641 lx), each LED level held ~2 samples: rising 233.6 / 270.0 (375) -> 322.3 / 368.4
+    (10000); falling 137.5 (10000) -> 89.1 / 51.4 (375). The switch steps match the ramp's own step (~40 lx);
+    switch-up between 270 and 322 lx, switch-down between 137 and 89 lx.
+  - Overlap band, the same LED level on both ranges: L7 270.0 (375) vs 264.7 / 276.8 (10000); L6 233.6 vs 230.3;
+    below that the 10000 range reads low: L5 198.2 vs 184.0 / 182.2 (-8 %), L4 161.9 vs 137.3 / 137.5 (-15 %), i.e.
+    under 2 % of its full scale. Recorded, not a jump at the switch.
+- Recorded by the test: {'date': '2026-11-13', 'distance_mm': '20 (about, owner)', 'ambient': 'opaque cap over the LED
+  and sensor; no room light reaches the sensor (0.9 lx with the LED off)', 'reference_lux': 'none', 'neopixel_pin':
+  18}. The test asks the rig to go into tests_hardware/README.md's rig section with today's date: yours to word.
+- Next in j: real_fram_persistence_across_power_cycle (SGP40 BackupTS 1794558329 present), the RUN-pin run, the two
+  pulls, then the bridge (asked of the owner first).
