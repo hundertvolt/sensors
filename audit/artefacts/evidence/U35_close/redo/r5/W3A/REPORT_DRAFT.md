@@ -192,3 +192,20 @@ the last commit holding them is the head of `claude/u35-audit-archive`, beside `
 `claude/u35-int-backup`, none deleted. README's "Further reading" entry for them goes with them; tests_scripts'
 scan exclusions of `audit/` stay (harmless, and they keep a restored archive out of the scans). One merge into
 `main` as release 2.0, by the owner (hundertvolt/sensors#107), with the `v2.0` tag on the merge commit (owner).
+
+## 10. The final bird's-eye scan (2026-11-13, owner 10:30: "a final, global, bird's eye scan with fresh agents")
+- Six fresh scanners (firmware twice, build chain, test machinery, docs, decisions) against `25caf528`, four fresh
+  verifiers against their 43 findings (`redo/final_scan/`, consolidated in `FINAL_SCAN.md`). The product held: 65
+  owner-decided features and 21 confirmed gaps located, none reversed; the named drift leftovers gone.
+- Owner decisions from it (11:56-12:11): Apply sends only what the user changed; the boot placement reset back (its
+  11-10 removal by an agent reversed); SCD30's config log on FRAM (the 09-30 widening of "no extra FRAM chunk"
+  reversed); the crossover-test rule in its agreed shape; working tests stay.
+- Fixed in three lanes and one lead commit: the verified leftovers, the owner's restraint rulings and the
+  precedence rule in the standing rules, BACKLOG and the reset-code table reconciled with section 8, the agreed
+  upstream-findings entry, CI caps 175 -> 90 min, and the dead `audit/` scan exclusions (this replaces section 9's
+  "stay").
+- Release head `a6f28126` (claude/whole-project-audit-plan): checked locally (test.sh at -1 and 32768, the dev twin
+  suite and harness at both, npm, lint, three mypy passes, six firmware builds; dev image 94.2 %, 71,660 B free).
+- Bench (relay 41, owner 13:30 "Go ahead with the flash", HANDBACK 918b6d70): flash tier 18/18; survivors 36,368 B
+  (bound 41,000); largest free block after the build 72,128 B (was 35,136 B); boot placement highest 61 % (was 81 %);
+  the FRAM layout shift boots clean after one reboot; loop-lag's teardown W51 test-side (known).

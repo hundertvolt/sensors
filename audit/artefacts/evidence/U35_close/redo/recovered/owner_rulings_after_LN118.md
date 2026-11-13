@@ -1799,3 +1799,55 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-13 09:38:01 UTC - GitHub Actions blocked; run CI locally
 "Github Actions has exceeded monthly limits and remains blocked until December 1st. So we'll have to live with this until then. Let's run CI locally."
 (GitHub CI cannot run until 2026-12-01; the delete commit and anything after it are verified by running the CI suite locally instead.)
+
+## 2026-11-13 10:16:30 UTC - recall the audit's global view
+"Do you remember what we discussed about the global view on the audit? Especially concerning: * The most recent general decisions count and in doubt supersede earlier ones, especially if the earlier ones lack backing * the pillars and recorded decisions for the audit, including their updates * The runaway situations where often only hypothetical issues were fixed, the fixes introduced new gaps, and all of that branching and exploding over multiple stages * the runaway where the majority of effort went into the testing machinery instead of the fimware or the buildgen * the rule that no known gaps are left open or reopened, no gaps are introduced, agreed features are implemented (and not forgotten), but always as lean as possible, keeping changes to the main branch as small as reasonable Do you recall this, find it in the session, understand it as a big picture?"
+(The owner asks whether the session still holds the audit's big picture: newer general decisions win, the pillars and decision records with their updates, the two runaway patterns (hypothetical fixes cascading into new gaps; effort drifting into test machinery), and the closing rule: no open, reopened or new gaps, agreed features done, everything as lean as possible with small changes to main.)
+
+## 2026-11-13 10:30:59 UTC - final global bird's-eye scan with fresh agents
+"Over the closed out audit, with all the deviations corrected and its long duration, I would like a final, global, bird's eye scan with fresh agents, if these rulings hold and if all leftovers from drifts and mistakes are cleaned out."
+(Go for one final, global, bird's-eye scan of the closed audit's result by fresh agents: do the rulings hold across the release, and are all leftovers of the drifts and mistakes cleaned out. A scan, not a fix round.)
+
+## 2026-11-13 11:54:17 UTC - final scan: the five decisions first, one by one
+"start with the questions one by one"
+(Answer to "go ahead with the confirmed round?": first the five owner decisions from the final scan, asked one at a time; the confirmed round waits.)
+
+## 2026-11-13 11:56:07 UTC - final scan Q1: the website's Apply sends only what the user changed
+"yes, only send what I changed"
+(Decision on FWB-1: Apply goes back to the pre-audit rule - only the controls the user changed are sent; an untouched toggle or dropdown is never sent, so another client's change is never silently reverted. Website only.)
+
+## 2026-11-13 11:58:30 UTC - final scan Q2: the boot-confined gc.collect goes back in
+"no, that exception for gc was explicitly recorded and did much good for the device's memory fragmentation remediation. it should go back in."
+(Decision on DOCS-7/gc: the agent's 11-10 removal of the boot-confined gc.collect() between the units of the two one-time setup lists is reversed; the owner-approved exception (09-18, OR39.a) is restored in the firmware, with its record.)
+
+## 2026-11-13 12:01:34 UTC - final scan Q3: SCD30's config error log back on FRAM
+"that was absolutely not my intention, as the decision covered an extra FRAM piece for that specific recalibration suggestion (which was overkill). But I NEVER decided that FRAM logging for the sensor should go. So put it back in."
+(Decision on FWA-2: the owner's 09-29 "no extra FRAM chunk" covered only the extra FRAM piece for the FRC recalibration suggestion; it never covered the SCD30's FRAM logging. CFGMGR_SCD30 goes back to FRAM like every other FRAM-wired config logger; the special _CFG_LOG_FRAM flag and its scaffolding go, and the record crediting the widening to the owner (CLAUDE.md) is corrected.)
+
+## 2026-11-13 12:05:35 UTC - final scan Q4: shared-resource crossover tests (clarification, asks for a recommendation)
+"many things got mixed up there. tests shall cover crossover checks for I2C and SPI, and other shared ressources. Mostly to detect incompatibilities or races or real timing issues. It got blown up, sure. But the technical requirement of the original idea applies to the existing devices and to future devices. what would you recommend?"
+(Clarification on DOCS-4: the requirement stands for existing and future devices - crossover checks on I2C, SPI and the other shared resources, to find incompatibilities, races and real timing issues; what went wrong is the blow-up, not the requirement. The owner asks for a recommendation on its shape.)
+
+## 2026-11-13 12:07:26 UTC - final scan Q4: the crossover rule's shape; keep good working tests
+"yes, write it that way. and prefer to keep existing, working tests, i would not like something removed which is good."
+(Decision on DOCS-4: the standing rule becomes (1) I2C/SPI buses, FRAM included, crossover tests on all four levels per the 09-03 rule; (2) software-only shared resources (locks, settings file, sockets, memory) crossover tests in the twin, the physical settings-save stall covered by the existing bench load test; (3) a new device joins the existing crossover tests and catalogue; (4) existing devices checked once, a real hole filled, nothing more. Existing tests stay. General: existing, working tests are preferably kept; nothing good is removed.)
+
+## 2026-11-13 12:11:13 UTC - final scan Q5: the control checks stay
+"yes, keep them. as long as they don't block anything and do real good, it's ok"
+(Decision on TESTS-4 and the test-machinery cut: the planted-fault control checks stay, like the rest of the working test machinery; a test is kept as long as it blocks nothing and does real good. Only dead references to the removed audit folder and stale doc lines go.)
+
+## 2026-11-13 13:24:13 UTC - is there anything to test on the bench again? (question)
+"is there anything to test on the bench again?"
+(A question: whether the final fix round's firmware changes need a bench run.)
+
+## 2026-11-13 13:27:25 UTC - go: prepare the bench instructions after the checks
+"yes"
+(Answer to "prepare the bench instructions once the local checks are green and pushed?": yes - a short bench round on the new image: the boot memory layout and headroom tests, and the SCD30 config log on FRAM (clean start after the flash, present, survives a reboot); error logs read before the flash.)
+
+## 2026-11-13 13:30:31 UTC - bench now on the current version; go for the flash
+"you can already test the current version on the bench right now, it's idle and waiting for you. Go ahead with the flash."
+(Go: the bench round runs now on the combined fix-round tree, without waiting for the local checks; the flash of the new image on dev is approved. This session has no hardware access, so it goes out as relay 41 on the bench branch, relayed by the owner.)
+
+## 2026-11-13 14:06:08 UTC - bench go-ahead for relay 41 (relayed)
+"Yes, flash and run"
+(Relayed by the bench, said there at 13:32 bench time: the owner's hardware go-ahead in the bench session for relay 41's flash and runs.)
