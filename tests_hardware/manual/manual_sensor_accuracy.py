@@ -65,16 +65,15 @@ def test_sgp40_real_voc_index_response_to_real_stimulus() -> None:
 
 
 @register(
-    "isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry",
-    f"Compare the DUT's Lux against a reference light meter, and set up and record the NeoPixel rig geometry the flash tier's --allow-neopixel-sweep tests depend on. The bar is repeatability (+-{_ISL29125_REPEATABILITY_TOLERANCE_PCT:.0f}% across repeat readings of an unchanged scene) and range continuity; the reference reading is a recorded data point, never pass/fail.",
+    "isl29125_relative_lux_and_neopixel_rig_geometry",
+    f"Check the DUT's Lux on relative values, and set up and record the NeoPixel rig geometry the flash tier's --allow-neopixel-sweep tests depend on. The bar is repeatability (+-{_ISL29125_REPEATABILITY_TOLERANCE_PCT:.0f}% across repeat readings of an unchanged scene) and range continuity; there is no reference meter (owner, 2026-11-13).",
     "[USB+WiFi][MANUAL]",
 )
-def test_isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry() -> None:
+def test_isl29125_relative_lux_and_neopixel_rig_geometry() -> None:
     print_instruction(f"Under ordinary room light, fetch the DUT's reading three times ~10s apart: GET /measurements against {_DUT_IP_HINT}, note the ISL29125 Lux and RangeAct each time.")
     confirm("Press Enter once you've noted all three readings")
     state_expected_outcome(f"all three Lux values agree within +-{_ISL29125_REPEATABILITY_TOLERANCE_PCT:.0f}% of each other, and RangeAct is the same on all three (an unchanged scene must not make the auto-range chatter).")
     confirm_pass("Do all three agree that way, on one RangeAct? [y/N]")
-    reference_lux = input("    Enter the reference light meter's reading in lx for that same scene (or 'none' if no meter is available): ").strip()
     print_instruction("Now darken the scene enough to force the low range (cover the sensor partially, or switch the room lights off) and fetch the reading again.")
     state_expected_outcome("RangeAct changes to 375 and Lux falls accordingly - and the reported Lux does NOT jump discontinuously across the switch: the gain-ratio calibration makes the two ranges agree in the overlap band.")
     confirm_pass("Did the range switch with the value staying continuous? [y/N]")
@@ -82,7 +81,7 @@ def test_isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry() -> Non
     print_instruction(f"Finally, set up the NeoPixel rig the automated sweep needs: the on-board WS2812 (GP{pin} on this bench board) aimed at the ISL29125's window, at a fixed distance, ambient light excluded (an enclosure or a darkened room).")
     distance_mm = input("    Enter the LED-to-sensor distance in mm as actually set up: ").strip()
     ambient = input("    Describe the ambient condition (enclosure, darkened room, ...): ").strip()
-    record = {"date": dt.datetime.now(dt.UTC).date().isoformat(), "distance_mm": distance_mm, "ambient": ambient, "reference_lux": reference_lux, "neopixel_pin": pin}
+    record = {"date": dt.datetime.now(dt.UTC).date().isoformat(), "distance_mm": distance_mm, "ambient": ambient, "neopixel_pin": pin}
     evidence.save_json("rig-geometry.json", record)
     print_instruction(f"Recorded {record} in the run's evidence. Record the distance and ambient condition in tests_hardware/README.md's rig section with today's date.")
     state_expected_outcome("with that rig in place, `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` runs the two automated light programs and they pass; without it, both skip.")

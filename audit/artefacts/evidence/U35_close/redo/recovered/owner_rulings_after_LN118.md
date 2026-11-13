@@ -1719,3 +1719,67 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-12 15:15:45 UTC - the serving demand: A's condition
 "As long as it doesn't get close to a critical mark"
 (The owner's A holds on the condition that the serving demand stays clear of a critical margin against the memory actually free in operation.)
+
+## 2026-11-12 19:12:23 UTC - stray config_MQTT.cfg on the bench board
+"It's okay to just delete it"
+(Answer to the lead's question whether the bench may copy the leftover config_MQTT.cfg to the Pi and then delete it from the board: delete it, no copy needed. No firmware in the repo reads it; config_reset fails on the extra file.)
+
+## 2026-11-12 21:06:36 UTC - bench day 7 stopped early (relayed)
+"stop immediately"
+(Relayed by the bench at 21:05, said to the bench session, not here: the owner had the bench touch STOP at 21:05 instead of the planned 21:33. Nothing was running; the board is idle on the round image.)
+
+## 2026-11-13 05:32:36 UTC - bench window open (day 8)
+"Bench is up again, 16 to go"
+(The bench is back up for the next window, about 16 hours left in it; go ahead with the later-window items.)
+
+## 2026-11-13 05:39:30 UTC - day 8 owner steps (relayed)
+"Ready for another 16 hours" / "Go ahead with what you can do, I will tell you when I have time"
+(Relayed in the bench note stamped 05:45 (d2c357c3), said to the bench session at about 05:33: the window runs 05:33-21:33; the bench runs what needs no owner hands, and j, 13 and any power cycle wait until the owner says they have time.)
+
+## 2026-11-13 05:40:37 UTC - no lux meter; M1 on relative values (relayed)
+"And btw I don't have a lux meter, that test is and will be impossible. But relative values are okay, I don't need bare ground truth"
+(Relayed by the bench in its note stamped 05:50, said to the bench session: there is no reference lux meter now or later; the ISL29125 manual check M1 runs on relative values only, which its pass bar already is; no absolute-lux ground truth is wanted.)
+
+## 2026-11-13 05:57:47 UTC - go for relay 33 (relayed)
+"Yes, all three"
+(Relayed in the bench note stamped 05:58, said to the bench session at about 05:55: the owner's go for relay 33's three no-hands steps - the flash of the final image (one flash cycle), the flash tier 4b and the config_reset rerun.)
+
+## 2026-11-13 06:29:24 UTC - ISL29125 calibration parameter (question)
+"Question about the light sensor - if  you wanted to calibrate it with a lux meter, it probably has a tuning parameter (e.g. an offset). Where is that parameter at the moment?"
+(The owner asks where the light sensor's tuning parameter for a lux-meter calibration (e.g. an offset) lives today.)
+
+## 2026-11-13 06:38:57 UTC - purpose of the lux-meter reading (question)
+"And what did you want to measure and set with the lux meter at all?"
+(The owner asks what the planned lux-meter reading was meant to measure and what it would have set.)
+
+## 2026-11-13 06:41:09 UTC - the channel-13 test (question)
+"I also do not understand why you need me for that channel 13 test, and honestly I don't understand what it shall be good for"
+(The owner asks why test 13 needs them and what it is for at all.)
+
+## 2026-11-13 06:43:04 UTC - test 13 on the bench's own access point
+"Let the bench run it on its own network"
+(Answer to the lead's question: the channel-13 country test runs on the bench Pi's own access point, moved to channel 13 for the scan and back, with no owner hands; it is not dropped.)
+
+## 2026-11-13 07:39:19 UTC - finish test 13 with the Pi on DE
+"Yes, go ahead"
+(Answer to the lead's question: the bench reads the Pi's Wi-Fi regulatory country, sets it to DE until the Pi's next reboot if it is not DE, and reruns the channel-13 scan without the XX pass, the access point back on channel 6 afterwards.)
+
+## 2026-11-13 08:10:01 UTC - channel-13 test stopped; Country note
+"Yes, stop it and add the note"
+(Answer to the lead's question: test 13 stops without a verdict, and the Country setting's help text states that channels 12 and 13 are not verified on this board, with the router kept on channels 1 to 11.)
+
+## 2026-11-13 08:14:24 UTC - owner at the bench for j
+"i am at the bench now. we can start these tests!"
+(The owner is at the bench: j's hands-on items (M1, the power-cycle and pin-reset runs, the two pulls, the bridge) can start.)
+
+## 2026-11-13 08:40:30 UTC - j at the bench (relayed)
+"about 20mm. I can change that if needed" / "Not sure" / "there might have been a flicker"
+(Relayed in the bench notes stamped 08:30-08:45, said to the bench session: the NeoPixel rig's LED-to-sensor distance is about 20 mm under a cap and can be changed; asked whether USB or power was touched before the 08:34 power-on reset, first not sure, then that moving the breadboard while wiring RUN may have caused a flicker.)
+
+## 2026-11-13 08:57:12 UTC - bridge rebuild left out (relayed)
+"yes, leave it out"
+(Relayed by the bench at 09:05 bench time: the owner leaves the bench-bridge rebuild out of today; its BACKLOG entry stays open, not done.)
+
+## 2026-11-13 09:03:46 UTC - error entries not done; breadboard flicker (relayed)
+"We are not done with the error entries" / "it flickered more than once, and there might have been multiple incomplete boot attempts or brownouts"
+(Relayed by the bench at 09:35 bench time: the owner wants the E13/E44 pair explained, and reports repeated flicker on the breadboard move, possibly incomplete boots or brownouts.)

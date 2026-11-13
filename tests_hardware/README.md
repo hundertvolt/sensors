@@ -154,7 +154,7 @@ is read.
 | each I2C bus's answering addresses (`i2c0`'s MPRLS among them) | to be read: the `addresses` fact of `bus_topology_autodetect_and_hazard_sweep.py`, which `flash/test_bus_concurrency.py`'s sweep test notes | | |
 | FRAM part | to be read: the `rdid` fact of `fram_raw_dump.py`, saved by every session's start | | |
 | SCD30 NVM state (temperature offset, altitude, ambient pressure, ASC) | to be read: the standard-state fixture's SCD30 snapshot at a session start | | |
-| NeoPixel rig geometry (distance, ambient) | to be read: the manual `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` | | |
+| NeoPixel rig geometry (distance, ambient) | about 20 mm, an opaque cap over the LED and the sensor (0.9 lx with the LED dark) | the manual `isl29125_relative_lux_and_neopixel_rig_geometry`, the owner at the bench | 2026-11-13 |
 | the router's DHCP reservation keyed to the uplink's MAC | to be read: the owner's answer | | |
 | the BME688 on UART0 (GP16/GP17) still attached | to be read: the owner's answer | | |
 | bench host OS and stale packages | to be read: the bench host's `/etc/os-release` and `apt list --upgradable` | | |
@@ -488,7 +488,7 @@ the rig needs:
   at a fixed, recorded distance -
   close enough that full-brightness white crosses the 375 lx range's top into the 10000 lx range.
   Record the geometry through the manual tier's
-  `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`.
+  `isl29125_relative_lux_and_neopixel_rig_geometry`.
 - Ambient excluded (enclosure or darkened room). Ambient above the low range puts the whole run on
   the high range and fails with "only range N was ever used" - a rig fault, not a driver one.
 - Nothing else driving the pixel: these scripts write the pixel directly, past `request_signal()`'s
@@ -496,15 +496,16 @@ the rig needs:
 
 Every assertion is **relative** - continuity across the switch, no chatter, hue/saturation invariance
 while the level moves, gain-ratio convergence. Absolute lux and CCT against a WS2812's three narrow
-emission lines are meaningless and are asserted nowhere; the reference-meter half is the manual
-tier's job. CLAUDE.md's FRAM rule applies in its sharpest form to every script here - see "A hardware
-run overwrites the production modules' FRAM chunks" below before treating any log as evidence.
+emission lines are meaningless and are asserted nowhere; the manual tier checks relative values
+only, with no reference meter (owner, 2026-11-13). CLAUDE.md's FRAM rule applies in its sharpest
+form to every script here - see "A hardware run overwrites the production modules' FRAM chunks"
+below before treating any log as evidence.
 
 The rig as last recorded (the manual step saves `rig-geometry.json` into its run's evidence):
 
 | distance | ambient | recorded |
 |---|---|---|
-| to be read | to be read | the manual `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` |
+| about 20 mm | an opaque cap over the LED and the sensor (0.9 lx with the LED dark) | 2026-11-13, the manual `isl29125_relative_lux_and_neopixel_rig_geometry` |
 
 ## ISL29125 bench-rig facts, before reading any result
 
@@ -1323,26 +1324,31 @@ assumption, not at a product bug.
   drops it (`lib/lwip/src/core/ipv4/icmp.c:258-283`, lwIP `77dcd25`), and a UDP socket's state stays
   `STATE_ACTIVE_UDP` (`extmod/modlwip.c:1008`, v1.29.0), which sets no error flag in modlwip's poll
   (`:1646-1666`).
-- **Open on silicon, each with the instrument that settles it** (none has run yet):
+- **Open on silicon, each with the instrument that settles it**:
   - what the CYW43 firmware drops while a flash write holds interrupts off -
     `bench/test_network_resilience.py::test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link`;
   - whether DMA reads update UARTRSR's error flags as CPU reads do -
     `flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only`;
-  - whether the reset record survives a RUN-pin reset - `manual/manual_persistence.py::test_run_pin_reset_keeps_or_clears_the_record` -
-    and that the bootloader reboot loses it - `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed`;
+  - that the bootloader reboot loses the reset record - `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed`;
   - the SCD30's answer to a read with no command before it - `scd30_conformance_probe.py`'s
     `C03_read_before_a_command` - and after an NVM write cut by power loss -
     `manual/manual_persistence.py::test_power_loss_mid_scd30_nvm_write`;
   - the FRAM breakout's MISO idle level - `fram_conformance_probe.py`'s `A01_miso_idle_byte`;
   - the FRAM CS level at power-off - unmeasured, a limitation (SPECIFICATION.md C.3.1, `FRAM_SPI`'s
     CS pad);
-  - the seconds from a FRAM pull to its first FRAM log entry, and a pulled crossover jumper's first
-    failed transfer, codes and recovery - `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`
-    and `::test_uart_crossover_pull_recovery`;
   - why the hotspot join can still exhaust its five attempts with the re-verify in place -
     `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()`;
   - whether the SCD30's soft reset at every boot restarts its automatic self-calibration's
     first-week search, which no reading of the sensor's interface shows (no ASC progress readout).
+- **Answered on silicon, 2026-11-13** (the dev bench, the final image):
+  - a RUN-pin reset clears the reset record: ResetReason 1 after one with a valid record held -
+    `manual/manual_persistence.py::test_run_pin_reset_keeps_or_clears_the_record`;
+  - a FRAM pull: the first FRAM log entry 36.4 s after it (W26, E102, E100; SGP40's backup in the gap
+    E110), backups written again ~22 s after the replug, no reboot -
+    `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`;
+  - a crossover pull: the first failed transfer 0.8 s after it (E81 initiator; E80, E22 responder),
+    transfers again 0.5 s after the replug, no reboot -
+    `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery`.
 
 ## Sensor, FRAM and supervisor coverage on silicon
 

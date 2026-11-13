@@ -1,7 +1,7 @@
-# The whole-project audit: final report (draft; W3a 2026-11-10 at 51c9c75f; lead update 2026-11-12 at 67e47fa6)
+# The whole-project audit: final report (draft; W3a 2026-11-10 at 51c9c75f; lead update 2026-11-12 at 4c717222)
 
-Pre-audit tree `25caf528` (2026-09-25). Final tree `67e47fa6` unless the bench's last steps change code
-(10g PASS 2026-11-12; `<BENCH: k, wear>`; P01: `<gate66 on 67e47fa6>`, CI run 43167146357 on snapshot 65 `4d4d8a60`),
+Pre-audit tree `25caf528` (2026-09-25). Final tree `4c717222` unless the later window's bench steps change code
+(10g, k and the wear runs PASS 2026-11-12; P01: the gate on `d5e59a1e` plus its one placement fix, CI run 43259129986 on snapshot 68 `fa5cd8ae`),
 merged into `main` as release 2.0 with the owner's agreement (release number: owner, 2026-11-10, "It's 2.0").
 The audit's records (`audit/`, `PROJECT_AUDIT_PLAN.md`) are deleted at D. Every record stays reachable from three
 branches that are never deleted (owner, 2026-11-10 21:55:27): `claude/u35-audit-archive` at `<D: sha>`, the last
@@ -58,8 +58,18 @@ item: done in code (87c14760, SPECIFICATION.md N.2); its two record lines state 
   flash-stall model, `_unix_port.sh check`, two unfilled rows) stay in the archived record: firmware facts only.
 - BENCH, on the final image (11-11, bench notes 14:30-20:35): the serving heap at the ceiling, the lwIP send stall
   (page 0.508-0.63 s) and the two ResetErrors refusals pass in the bench tier; the SGP40 now matches the twin (step
-  d's A). Still owed: the VOC stretch `<BENCH>`, and the owed-hardware rows with the FRAM and crossover pulls (j,
-  a later window).
+  d's A). On the final image (11-13): the VOC step 9.81 ms, the 256-byte CRC 1.75 ms and the worst collection
+  16.2 ms, all under the 21 ms term; the BMP3XX conversion inside the driver's wait at x1 and x32 (80/80). j (11-13,
+  the owner at the bench): M1 PASS on relative values (no reference meter, owner); a real power cut restored the newest
+  backup (the test's own early read red, test-side); a RUN-pin reset clears the reset record; a FRAM pull logged its
+  first entry 36.4 s after it, backups resumed ~22 s after the replug; a crossover pull failed the next transfer 0.8 s
+  after it, transfers resumed 0.5 s after the replug; none rebooted, no task ended. An ISL29125 E13 with a SYSTEM E44
+  logged before j: one failed init at the 08:28:43 cold power-up after the owner's cut (a supply flicker at the
+  plug-in, owner; below its POR level the chip ignores the bus, datasheet), the task restarted by the supervisor as
+  designed; not seen at the later boots. The bridge rebuild left out by the owner (its BACKLOG entry stays open).
+  Channel 13 (row 13): stopped by
+  the owner 11-13 without a verdict (the bench Pi's access point may never have transmitted on 13); the Country help
+  text says channels 12 and 13 are not verified. 16b's power-cycle half dropped: a rerun only re-reads the soft reset.
 - OWNER: `disallow_any_unimported` in the three mypy passes (one site left), a question the audit planned and
   never put.
 
@@ -77,7 +87,11 @@ item: done in code (87c14760, SPECIFICATION.md N.2); its two record lines state 
 - **O5** The release number: the owner, 2026-11-10 16:40:55, "It's 2.0" (5b8c3446).
 - **O6** The clean-chroot legs: option (a), reused chroots with their scratch in RAM, which the owner's 2026-11-07
   words ("better style yes, but no blocker") and the recipe meet; run at the final head in the last round's
-  step k (2026-11-12): `<BENCH: noble and trixie results>`.
+  step k (2026-11-12): noble (bench 9550eaf0, 13:0x): env, lint and typecheck 0, MicroPython tier 5,261 green, `scripts/test.sh` rc 1 from
+  20 arm64-only build-tool reds (no native emitter), fixed with the owner's "B" (33c7d0d9); trixie (bench 98d114ac, 18:27, on
+  1c7b973e, a fresh minbase chroot, scratch in RAM, GCC 14.2.0): env, lint, typecheck and `scripts/test.sh` 0, tests_scripts
+  6,564 passed and 6 skipped, MicroPython tier 5,261 passed, the 20 reds gone. Noble is not re-run on the fixed head: the
+  BACKLOG chroot list carries what changed since its 2026-11-07 pass to the owner's periodic run.
 
 ## 4. The agent decisions for review (W3A/O4.tsv)
 62 credits on 60 lines at eb8a214e (2026-11-06 28, 11-07 9, 11-09 15, 11-10 10), in eleven topics: rules of method
@@ -158,8 +172,8 @@ a reused chroot reinstalls the pinned uv when the pin moves (README, 33c7d0d9).
   after it, MemFree 76,192 B. The BACKLOG question closed (5d7759cb), its fact kept in SPEC B.14.2.
 - **Boot NTP E71** (step d): two pool servers never replied (tcpdump: one request, reply in 46 ms when it came);
   external, not product. **12d** (11-12): 15 `ResetErrors` answered 200 in 0.62-0.91 s, every log 0.
-- **Wear** (11-12, after the owner's clearance, 06:14): 7b counted (three test-side reds recorded: restore order, W22 after a config reset, W81 where the test names NO_AP); 8f PASS; 8b's three CRC-16 link checks passed, its restore reflash then hit the known stale AP station entry (no kick before that reflash) and the board rejoined on its own after its access-point window, test-side; 10b: 21 passed, the wrong-password test failed on its own probe (the board left its access point 35-37 s after the PUT, inside the test's 40 s bound, but the host's network manager reported the link about 15 s late), its later tests cascaded and the board was restored over USB (the owner's choice), test-side; 15 did not reach its check (the tick-offset image hit the same stale AP station entry after its reflash and did not serve within 120 s), test-side, its rollover evidence still missing (the owner chose a rerun in the later window, 14:34, with the reflash now clearing the stale entry) `<BENCH: 15 rerun>`; 7f (the flash tier with the persistence-write gate open, its gated tests run for the first time): 11 of 16 passed; the config-write ring test could never pass with the 512 B responder ring (it read a 4.6 KB stream only afterwards) and was removed, the float probe starved its own watchdog (fixed, rerun owed), config reset met a stray legacy config file on the bench board and the light-sensor scenario saw real light, all test-side or bench environment.
-  Later window: j (M1, the FRAM and RUN-pin manual items), 16b's power-cycle half, 13 (an AP on channel 13).
+- **Wear** (11-12, after the owner's clearance, 06:14): 7b counted (three test-side reds recorded: restore order, W22 after a config reset, W81 where the test names NO_AP); 8f PASS; 8b's three CRC-16 link checks passed, its restore reflash then hit the known stale AP station entry (no kick before that reflash) and the board rejoined on its own after its access-point window, test-side; 10b: 21 passed, the wrong-password test failed on its own probe (the board left its access point 35-37 s after the PUT, inside the test's 40 s bound, but the host's network manager reported the link about 15 s late), its later tests cascaded and the board was restored over USB (the owner's choice), test-side; 15 did not reach its check (the tick-offset image hit the same stale AP station entry after its reflash and did not serve within 120 s), test-side, its rollover evidence still missing (the owner chose a rerun in the later window, 14:34, with the reflash now clearing the stale entry) rerun 11-12 15:06-17:13 UTC on the fixed reflash: PASS (24 polls over 7,247 s of uptime on the tick-offset image: no reboot, NTP kept, every sensor's timestamp advancing; the stale entry did not recur); 7f (the flash tier with the persistence-write gate open, its gated tests run for the first time): 11 of 16 passed; the config-write ring test could never pass with the 512 B responder ring (it read a 4.6 KB stream only afterwards) and was removed, the float probe starved its own watchdog (fixed; rerun PASS 11-12 15:06 on 1c7b973e), config reset met a stray legacy config file on the bench board and the light-sensor scenario saw real light, all test-side or bench environment.
+  Later window (11-13): j done (BENCH above), 16b's power-cycle half dropped, 13 stopped by the owner.
 - **Re-verification (P01)**: gate66 on 67e47fa6 green (unit at both GC stages, twins at both, web tier); CI on
   snapshot 65 26/27, the coverage job's one twin-test timing defect fixed (7c142edd, test only); CI on snapshot 66
   `503c9c83`: green (run 43175368651, 2026-11-12 07:52); snapshot 67 `e55eccf3`: green (run 43214589908, 12:29); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
