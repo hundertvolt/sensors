@@ -44066,3 +44066,16 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - 08:37 item 1: GET /status now: LastTaskEnd None (this boot), ResetReason 1, ConfigFaults []; errcount non-zero:
   SYSTEM 53 (newest E44), ISL29125 1 (E13), SGP40 30, WIFI 23 (+W38, W79, W38 in this boot), CFGMGR_* 6. E44 and E13
   predate this boot; their boot is not in what the board holds. Status before and after each j step from here.
+
+## Bench 2026-11-13 08:50 UTC - j: the RUN-pin run: mem_backup() does not survive a RUN-pin reset (ResetReason 1); PASS
+
+- run_pin_reset_keeps_or_clears_the_record (logs/day8_20261113/runpin2.out). A first start (08:40:43) missed its 60 s
+  window (the owner read the prompt late: facts run_not_pressed 60, the script's own reset, ResetReason 0 after,
+  logs unchanged; runpin.out). The second waited at its Enter prompt for the owner's "ready": window 08:43:04; the
+  owner "touched, held for some secs, released"; kernel USB disconnect 08:43:15, ttyACM0 08:43:19; stations kicked
+  08:43:20; serving by 08:43:39.
+- Figure: ResetReason 1 after the RUN-pin reset with a valid record (code 3) held: "mem_backup() does not survive a
+  RUN-pin reset"; facts {'state': 'valid_record_wait', 'valid_record': [710803457, 3, 363177382]}. Result PASS.
+- /status before (08:40) and after (08:44): LastTaskEnd None both; ConfigFaults []; errcount unchanged except NTP 0 -> 1
+  (E71 NTP_NO_REPLY, the first fetch right after the join; NTPSynced False 30 s into the boot). No new E44 or E13.
+- Next in j: the two pulls (FRAM unplug/replug, UART crossover pull), status before and after each.
