@@ -7012,6 +7012,7 @@ the 1.29 stubs. Backed by the RP2040 watchdog scratch registers: **28 bytes** in
 and by the RUN pin** (RP2040 datasheet §4.7.4: a `rst_n_run` from the RUN pin or a DVDD cycle resets
 the scratch registers, and §2.13.1 lists the watchdog among the blocks it resets; the pinned
 `docs/library/machine.rst` note: kept across a soft reset, lost on power-off and poweron-style resets).
+The RUN-pin case is confirmed on silicon (2026-11-13, tests_hardware/README.md).
 
 **Adopted for the reset reason** (owner, 2026-09-26: 'Use this mechanism, integrate it into the
 system service and its endpoints'), in RAM only, never flash or FRAM (owner, 2026-09-29: 'for sure
