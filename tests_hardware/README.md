@@ -154,7 +154,7 @@ is read.
 | each I2C bus's answering addresses (`i2c0`'s MPRLS among them) | to be read: the `addresses` fact of `bus_topology_autodetect_and_hazard_sweep.py`, which `flash/test_bus_concurrency.py`'s sweep test notes | | |
 | FRAM part | to be read: the `rdid` fact of `fram_raw_dump.py`, saved by every session's start | | |
 | SCD30 NVM state (temperature offset, altitude, ambient pressure, ASC) | to be read: the standard-state fixture's SCD30 snapshot at a session start | | |
-| NeoPixel rig geometry (distance, ambient) | to be read: the manual `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` | | |
+| NeoPixel rig geometry (distance, ambient) | to be read: the manual `isl29125_relative_lux_and_neopixel_rig_geometry` | | |
 | the router's DHCP reservation keyed to the uplink's MAC | to be read: the owner's answer | | |
 | the BME688 on UART0 (GP16/GP17) still attached | to be read: the owner's answer | | |
 | bench host OS and stale packages | to be read: the bench host's `/etc/os-release` and `apt list --upgradable` | | |
@@ -488,7 +488,7 @@ the rig needs:
   at a fixed, recorded distance -
   close enough that full-brightness white crosses the 375 lx range's top into the 10000 lx range.
   Record the geometry through the manual tier's
-  `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`.
+  `isl29125_relative_lux_and_neopixel_rig_geometry`.
 - Ambient excluded (enclosure or darkened room). Ambient above the low range puts the whole run on
   the high range and fails with "only range N was ever used" - a rig fault, not a driver one.
 - Nothing else driving the pixel: these scripts write the pixel directly, past `request_signal()`'s
@@ -504,7 +504,7 @@ The rig as last recorded (the manual step saves `rig-geometry.json` into its run
 
 | distance | ambient | recorded |
 |---|---|---|
-| to be read | to be read | the manual `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` |
+| to be read | to be read | the manual `isl29125_relative_lux_and_neopixel_rig_geometry` |
 
 ## ISL29125 bench-rig facts, before reading any result
 

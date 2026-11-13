@@ -29,10 +29,10 @@ gates, traps).
   CI's watchdog hang backstop run (`ci_suite._run_10_watchdog_hang_backstop`, the file's named
   cover).
 - **M1 + S3b, the ISL29125 light programs** — needs the owner at the bench, ~30 min. M1 first
-  (`scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`,
+  (`scripts/run_manual_hardware_tests.sh --only isl29125_relative_lux_and_neopixel_rig_geometry`,
   interactive: repeatability on an unchanged scene, continuity across the range switch, and writing
-  down the rig geometry S3b depends on; the reference light meter is an optional data point, never
-  pass/fail), then
+  down the rig geometry S3b depends on; relative values only, no reference meter (owner, 2026-11-13)),
+  then
   `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep --allow-persistence-write` (~10 min;
   the envelope test's config pushes need the second flag). The `Overrange` field (SPECIFICATION.md M.1.1,
   item 21) has never run on silicon; S3b runs it. Expected: M1, the operator's verdict
