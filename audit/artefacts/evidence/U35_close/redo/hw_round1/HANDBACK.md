@@ -44172,3 +44172,45 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   watcher stopped; nothing running. The board serves on the 840a2213 image, under the cap, AP on channel 6.
 - Day 8: FC 1 (row 3), config_reset's owned writes, NVM 0. Done: the BMP3XX read, row 3, 4b (one red, rerun PASS), config_reset,
   j (M1, power cycle, RUN pin, both pulls; the bridge left out by the owner), 13 (rests). E13/E44 closed (09:04).
+
+## Bench 2026-11-13 14:10 UTC - relay 41 on the final fix image (3aaf013e, code 79397251): all PASS but one teardown red
+
+- The owner in this session, 13:32 UTC, asked "Go ahead with the flash and the round?": "Yes, flash and run". FC 2 today
+  (ledger), the round's only wear; NVM 0, no owned filesystem write.
+- 1. Pre-flash errcount saved 13:31 (logs/day8_20261113/status_r41_preflash_*.json).
+- 2. `run 3 3` 13:32:53-13:36:44 rc 0: built from 3aaf013e, 1,158,444 B (94.3 %), BuildDate 2026-11-13T13:32:54Z match=1.
+- 3a. First boot (RR 2, uptime 56, LastTaskEnd null): the owners before the new chunk keep their history unchanged
+  (SYSTEM 53, WIFI 23, NTP 3, CFGMGR_NTP/SYSTEM/WIFI 6); every moved owner reads blank (CFGMGR_BMP3XX/ISL29125/NOTIFY/SGP40
+  6->0, ISL29125 1->0, SGP40 30->1, UART_init 12->0, UART_resp 2->0); CFGMGR_SCD30 0. New on that boot: SGP40 W65 (no VOC
+  backup: its chunk moved) and the RAM-only FRAM log 42 entries, E49 "CRC error in _read_chunk" + W63 "Invalid data in
+  block" per moved block: the per-owner seed's blank read logs each block it rejects, so "the logs start empty" holds
+  for the FRAM-backed owners, not for the FRAM module's own RAM log on the first boot.
+- 3b. One REST reboot 13:37:45 (RR 3, uptime 32, LastTaskEnd null): every FRAM-backed log identical to 3a; the FRAM log
+  42 -> 0, so the second boot rejects no block. PASS.
+- 4. Flash tier, the three files (-k, --skip-lower-levels, rc 4 = lower levels skipped): 18 passed, 0 failed, 1 skipped
+  (loop_lag_under_combined_load: silicon runs it on the bench tier), 13:38:36-13:42:33.
+  - test_heap_layout: 0 new blocks above the 32,768 B high band (bound 32); boot starter loop 1,403 ms, build_system
+    1,026 ms, start_timers 518 ms.
+  - test_memory_stress headroom: used 103,648 B; build survivors 36,368 B (max 41,000; 840a2213: 35,936-36,176);
+    largest block after the build 72,128 B (min 32,768; 840a2213: 35,136); control arm 103,488 / 72,128, production
+    threshold 103,472 / 72,128. Map: largest free run 72,128 = free above the top survivor, gaps >= 16 K 1.
+    Boot placement: 2,259 new blocks, highest 61 % (840a2213: 81 %), none in the top 16 K or 32 K.
+  - no-yield stretches gc 16,229 us, VOC 10,308 us, CRC gap 3,359 us (total 1,790, bound 21,000); C stack peak
+    4,796 of 7,936 B.
+  - test_fram_storage: all 13 PASS; FRAM allocated 1,140 of 262,144 B, RAM-only by design: []; FRAM hold write 1,034 us,
+    read 226 us, entry 6,498 us (floor 6,944).
+- 5. Bench tier, test_memory_stress_bench at the default floor (3 selected, the 2 soak tests gated off): hammer PASS
+  (579 reads, MemFree floor 29,216 B over 79 /status), zero-think readers PASS, loop lag on every route PASS in call
+  (max 195,690 us, p99 64,000, bound 925,000) with a teardown ERROR: WEBSERVER W51 HTTP_SOCKET_ERROR not declared by the
+  test (provokes_log). Its one rerun 13:48: the same (call PASS, max 180,926 us; teardown W51). Test-side (this test's
+  W51 is in the teardown codes since day 6 on both images), recorded, not fixed. My first bench invocation (13:42) passed
+  -k through the runner's own L3 step, which then selected nothing (exit 5): a command error, no test ran.
+- In operation (step 5h, 13:51-14:05, no wear): after the one collect after each 120 s idle free 82,016 / 82,000 /
+  81,968 / 81,968 B (840a2213: 82,384 / 81,984 / 82,272 / 82,400), largest block 16,960 / 16,192 / 19,904 / 53,040
+  (840a2213: 23,552 / 20,288 / 24,592 / 57,792). Boot free 73,584 / largest 71,760 (840a2213: 83,248 / 62,944). Under
+  load free min 15,200 / 15,168 / 20,384 (6 readers), 41,248 (2); /status under 6 readers 200 x111 / 111 / 110 with
+  ConnectionResetError x43 / 43 / 47; 2 readers 105 / 0.
+- End (14:06): serving, RR 21 (5h's script exit), LastTaskEnd null; errcount NTP E71 (1), WEBSERVER 379 (W60, W51), the
+  flash tier's scripts having rewritten the rest as tests_hardware/README describes.
+- Evidence: logs/day8_20261113/status_r41_*.json, r41_3b/, r41_flash.out, r41_flash_tier.out, r41_bench_tier.out,
+  r41_bench_rerun.out, r41_5h.out, logs/3.log, 5h.log.
