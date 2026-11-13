@@ -44030,3 +44030,22 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   18}. The test asks the rig to go into tests_hardware/README.md's rig section with today's date: yours to word.
 - Next in j: real_fram_persistence_across_power_cycle (SGP40 BackupTS 1794558329 present), the RUN-pin run, the two
   pulls, then the bridge (asked of the owner first).
+
+## Bench 2026-11-13 08:40 UTC - j: the power-cycle run red on its 120 s serving wait (the stale-station trap); a second power-on reset at 08:34 not settled; SYSTEM E44 and ISL29125 E13 new
+
+- real_fram_persistence_across_power_cycle (logs/day8_20261113/power_cycle.out): BackupTS 1794558329 read; the
+  owner unplugged USB 08:28:12, replugged 08:28:43 (kernel), ~31 s off. FAIL: "timed out after 120.0s waiting for: the
+  DUT serving after the power cut (SGP40 backup)" (No route to host), so its RestoreTS check never ran.
+- Why it did not serve: the AP still held the board's station; it dropped it only at 08:30:08 (wpa_supplicant
+  AP-STA-DISCONNECTED), after the board's first connect had failed (WIFI W38) and it had gone to its hotspot (W79):
+  the stale-station trap of 11-12, here after a power cut. Test-side by that reading.
+- A second power-on reset: kernel USB disconnect 08:34:10.863, back 08:34:11.27; /status at 08:34:21 read ResetReason 1,
+  SysUptime 9. Asked the owner whether the USB or power was touched around 08:34: "Not sure". Not settled.
+- Error logs against 07:55 (newest last, no timestamps): SYSTEM 52 -> 53, a new E44 TASK_RETURNED ("a supervised task
+  returned") after the 4b seeds and the E115; ISL29125 0 -> 1, E13 CHIP_SET; WIFI 14 -> 20 (W37, W79, W38, W79);
+  SGP40 23 -> 30 (W65, W34, W35, W33). All landed after 06:25; when exactly, and whether E44 relates to either reset,
+  these logs do not say. Nothing cleared.
+- The boot of 08:34 restored without a timestamp (RestoreTS 0, W33), consistent with a backup written while NTP was
+  unsynced in hotspot mode (W35) overwriting 08:25's. Since then: BackupTS 1794558919, NTP synced.
+- Next: the power-cycle run once more, the AP's stations kicked right after the replug (BenchBridge().kick_all_stations(),
+  the runner's own post-reflash step), so the board rejoins inside the 120 s.
