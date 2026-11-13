@@ -44165,3 +44165,10 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   ISL 0 / SYSTEM 52, which I had missed); cause the cold power-up after the owner's cut with a supply flicker at the
   plug-in (ISL29125 POR); designed handling; closed. The reruns agree: neither a sweep nor a warm reset reproduces it.
 - Nothing more on the board today; it serves under the cap, AP on 6.
+
+## Bench 2026-11-13 09:20 UTC - day 8 end on the owner's word
+
+- The owner, 2026-11-13 ~09:20 UTC: "There are no more tests to be done, you can stop watching". STOP touched; the relay
+  watcher stopped; nothing running. The board serves on the 840a2213 image, under the cap, AP on channel 6.
+- Day 8: FC 1 (row 3), config_reset's owned writes, NVM 0. Done: the BMP3XX read, row 3, 4b (one red, rerun PASS), config_reset,
+  j (M1, power cycle, RUN pin, both pulls; the bridge left out by the owner), 13 (rests). E13/E44 closed (09:04).
