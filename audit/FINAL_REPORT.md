@@ -2,7 +2,8 @@
 
 Pre-audit tree `25caf528` (2026-09-25). Final tree: integration `c5dedfe5`, published as snapshot 69 `d06bc16c`
 (CI run 43398601541, 27/27 green). The bench's final image was built from `4c717222`'s tree (2026-11-13 05:52); after it `src/` changed
-only in the Country setting's help text (`647c1bc9`); the rest is docs and one manual test.
+only in the Country setting's help text (`647c1bc9`); the rest is docs and one manual test. The release head is
+`590cffcf`: the same tree without `audit/` and `PROJECT_AUDIT_PLAN.md` (CI run 43402218082, 27/27 green).
 Release 2.0 (release number: owner, 2026-11-10, "It's 2.0") is pull request hundertvolt/sensors#107 into `main`, merged
 by the owner; not merged at the time of writing (owner, 2026-11-13: "do not merge anything yet").
 The audit's records (`audit/`, `PROJECT_AUDIT_PLAN.md`) are deleted at D. Every record stays reachable from three
@@ -181,7 +182,8 @@ a reused chroot reinstalls the pinned uv when the pin moves (README, 33c7d0d9).
 - **Re-verification (P01)**: gate66 on 67e47fa6 green (unit at both GC stages, twins at both, web tier); CI on
   snapshot 65 26/27, the coverage job's one twin-test timing defect fixed (7c142edd, test only); CI on snapshot 66
   `503c9c83`: green (run 43175368651, 2026-11-12 07:52); snapshot 67 `e55eccf3`: green (run 43214589908, 12:29);
-  snapshot 68 `fa5cd8ae`: green (run 43259129986, 27/27); snapshot 69 `d06bc16c`: green (run 43398601541, 27/27); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
+  snapshot 68 `fa5cd8ae`: green (run 43259129986, 27/27); snapshot 69 `d06bc16c`: green (run 43398601541, 27/27);
+  the release head `590cffcf`: green (run 43402218082, 27/27; GitHub Actions blocked from then until 2026-12-01); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
   the opt-in gates), no collection error.
 
 ## 9. D

@@ -1795,3 +1795,7 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-13 09:15:34 UTC - bench stops watching (relayed)
 "There are no more tests to be done, you can stop watching"
 (Relayed by the bench at 09:20 bench time: the bench campaign ends; the bench session stopped its watcher, nothing runs; the board keeps serving the 840a2213 image.)
+
+## 2026-11-13 09:38:01 UTC - GitHub Actions blocked; run CI locally
+"Github Actions has exceeded monthly limits and remains blocked until December 1st. So we'll have to live with this until then. Let's run CI locally."
+(GitHub CI cannot run until 2026-12-01; the delete commit and anything after it are verified by running the CI suite locally instead.)
