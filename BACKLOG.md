@@ -10,10 +10,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 ## Refactor targets not yet done
 
-- **`I2C.writeto_then_readfrom()` passes through the class's own `writeto()` and
-  `readfrom_into()`** (`src/asy_i2c_driver.py:352-353`): one extra C-stack frame per I2C read of
-  that form, where the FRAM chain carries no pass-through helper (SPECIFICATION.md F.1); within the
-  C-stack bound. Recorded only, no code change.
+None open.
 
 ## Real-hardware work still owed
 
@@ -259,7 +256,7 @@ gates, traps).
   scripts under `--twin`).
 - **The bench `ResetErrors` budget** — on `dev`, after the round's FRAM evidence is saved: the
   `ResetErrors` sweep timed three times each against 0, 1, 2, 3 and 4 concurrent `GET /status`
-  readers, on the reset one source after another (owner, 2026-11-07). Then the bench analogue of
+  readers, on the reset one source after another (agent, 2026-11-07). Then the bench analogue of
   the twin's per-sweep budget check goes into `tests_hardware/error_log_helpers.py`, beside its 30 s
   timeout, which alone asserts nothing about elapsed time. Expected: a curve that leaves room for a
   budget below the server's 15 s `outer_cap_s` that "reliably won't fail the pipeline accidentally
@@ -328,38 +325,28 @@ gates, traps).
   `test_a_boot_drain_that_hits_its_bound_persists_nothing`).
 - **Build-environment changes since the clean-chroot legs were last satisfied** (noble 2026-11-07 on
   the bench Pi4 in the `--arch=arm64` ports-mirror form: `env --tier generic`, lint and typecheck
-  clean, `scripts/test.sh` green at 4 and at 16 test jobs with its scratch in RAM; trixie 2026-09-12
-  on the bench Pi4, GCC 14.2.0, lint and typecheck clean, then `env --tier generic` end to end). The
+  clean, `scripts/test.sh` green at 4 and at 16 test jobs with its scratch in RAM; trixie 2026-11-12
+  on the bench Pi4 in a fresh chroot with its scratch in RAM, GCC 14.2.0: `env --tier generic`, lint,
+  typecheck and `scripts/test.sh` clean). The
   owner's next run follows README.md "Build-environment verification" at the current head (the
   periodic-check rule: CLAUDE.md), which covers every later change; this entry holds only what changes
   how a run goes. A change that needs nothing new installed, no new host requirement and no recipe
   step gets no line here.
-  - **Trixie on 2026-11-07, not satisfied** (a fresh chroot, GCC 14.2.0, `scripts/test.sh`'s scratch
-    still on the microSD): `env --tier generic`, lint and typecheck clean; at 4 test jobs the pytest
-    tier passed (6,966) and the MicroPython tier 5,838 tests, with 8 twin scenario-harness failures
-    read as the card's write stalls, which the noble leg's scratch in RAM removed (inferred for
-    trixie, not re-run there: a fresh chroot is the heaviest card write; owner, 2026-11-07: "too
-    heavy write cycles should not be conducted allover again...").
-  - **Installed now that 2026-09-12 did not**: the `.nvmrc` Node (then 22) and the refreshed npm tree;
-    uv exactly as `pyproject.toml`'s `[tool.uv] required-version` names it (pinned in the recipe); the
-    refreshed dev-group pins, `coverage` among them; the stub post-releases `toolchain/versions.toml`'s
-    `[stubs]` names; a third Unix-port binary, `build-lwip`, so a from-scratch run builds the Unix port
-    three times.
-  - **Moved after both legs (2026-11-10), Python tools**: uv 0.8.17 → 0.13.7 (the recipe's `pip install`,
+  - **Moved after the noble leg (2026-11-10), Python tools**: uv 0.8.17 → 0.13.7 (the recipe's `pip install`,
     `uv.lock` rewritten at lock revision 5) and the dev group's mypy 2.4.1, ruff 0.17.4, pytest 9.2.0,
     coverage 7.17.2, zizmor 1.32.0 and types-pyserial 3.5.0.20261104.
-  - **Moved after both legs (2026-11-10), Node**: Node 24 → 26 (`.nvmrc`; `env` fetches `latest-v26.x`)
+  - **Moved after the noble leg (2026-11-10), Node**: Node 24 → 26 (`.nvmrc`; `env` fetches `latest-v26.x`)
     and the regenerated npm tree, Stylelint 18 and Playwright 1.65 among it, whose Chromium 158 `env`
     downloads.
   - **Host requirements, present on both targets**: `flock` (util-linux), coreutils' `timeout`, a
     writable `${XDG_RUNTIME_DIR:-/tmp}` for the port locks, and a copied tree that is a git checkout
     with its own `.git`.
-  - **The installer, much changed since the legs** (the recipe's `env --tier generic` step runs it):
+  - **The installer, much changed since the noble leg** (the recipe's `env --tier generic` step runs it):
     the `[lwip]` table and its readback through the C compiler CMake recorded, the patched `modlwip.c`
     copy in every rp2 image and in `build-lwip` (SPECIFICATION.md B.14.4), the Unix variant header's
     GC mark stack (B.14.6) and two-byte qstr lengths (F.7 row 32, read back by each Unix build's version
     probe), bounded and retried network steps, apt as one non-fatal update and one install with no
-    wall-clock limit (apt's own retries and stall timeout, `apt_options()`; newer than both legs),
+    wall-clock limit (apt's own retries and stall timeout, `apt_options()`; newer than the noble leg),
     `sudo --preserve-env`, the tier command table, Node's checksum-verified install. The host lwIP
     build has met GCC 13 on x86-64 and arm64 and GCC 14.2 on arm64 (both 2026-11-07 legs), and only
     the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. One reading is owed too:
@@ -370,9 +357,12 @@ gates, traps).
   - **Fewer jobs, nothing installed** (2026-11-09): `scripts/test.sh` and the twin legs take one device
     per `hardware_family` (`scripts/_devices.sh`'s `distinct_devices`: bash and `sed`), and
     `GC_THRESHOLD=32768 scripts/test.sh` runs no pytest tier, its summary listing it as skipped.
-  - **An arm64 leg runs two functions as plain twins** (2026-11-11): the Unix port compiles no native code
-    on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/` copies there
-    (SPECIFICATION.md F.1); nothing installed. Before this, every arm64 Unix-port run failed at import.
+  - **An arm64 leg runs two functions as plain twins** (2026-11-11, 2026-11-12): the Unix port compiles no
+    native code on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/`
+    copies there, regenerated with the generated tree whenever its stamp no longer holds (SPECIFICATION.md
+    F.1, E.3); every launcher's path carries them; nothing installed. Before this, every arm64 Unix-port
+    run failed at import. The trixie leg ran it green; the noble leg's 2026-11-12 run predates it
+    (20 arm64-only build-tool reds).
   - **`[lwip]` `TCP_SND_BUF` 6,400 → 1,600 B** (2026-11-11): nothing installed; a reused chroot's changed
     `toolchain/versions.toml` runs setup once, as above, and `build-lwip` takes the new value.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
