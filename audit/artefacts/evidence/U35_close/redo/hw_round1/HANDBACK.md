@@ -43990,3 +43990,18 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   The board rejoined by itself at 07:55:54 after the 8 min hotspot window: STA, ResetReason 21, ConfigFaults [],
   no task ended, MemFree 77040. Logs since 07:00: WIFI 7 -> 14 (W37, W79 again), SGP40 15 -> 23 (W65, W34, W35).
 - The Pi keeps global DE (it already had it). Wear: none.
+
+## Bench 2026-11-13 08:10 UTC - 07:58: the Pi's own log over both channel-13 windows; 13 rests
+
+- Read-only: `journalctl -k`, `-u NetworkManager`, `-u wpa_supplicant` over 06:44-06:50:30 and 07:45-07:53:30,
+  filtered to brcmf/channel/AP lines (logs/day8_20261113/journal_ap13_windows.txt, the AP's name redacted).
+- Kernel: no "Set Channel failed" and no -20 in either window. Each AP restart, the two to 13 (06:45:17, 07:46:37) and
+  the two back to 6 (06:49:28, 07:52:23) alike, logs three `ieee80211 phy0: brcmf_vif_set_mgmt_ie: vndr ie set
+  error : -52`, then wlan0 enters allmulticast/promiscuous about 3 s later. Nothing distinguishes 13 from 6.
+- NetworkManager: the same sequence on each move: connection-update (802-11-wireless.channel), deactivating, need-auth
+  -> config, "Stage 2 of 5 (Device Configure) successful. Started Wi-Fi Hotspot", "Activation: successful".
+- wpa_supplicant, at each move to 13: `CTRL-EVENT-REGDOM-CHANGE init=CORE type=WORLD`, then `init=USER type=COUNTRY
+  alpha2=DE`, then `interface state UNINITIALIZED->ENABLED`, `AP-ENABLED` (06:45:20.218, 07:46:40.768). Before each
+  move the board's station left (`AP-STA-DISCONNECTED`); no `AP-STA-CONNECTED` followed while the AP stood on 13.
+- So the host side reports a started AP on 13 under DE with no firmware refusal logged; whether brcmfmac's firmware
+  actually beaconed on 13 is not in these logs. 13 rests; nothing more on it today. Wear: none.
