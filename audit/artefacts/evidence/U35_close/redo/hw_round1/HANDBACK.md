@@ -44147,3 +44147,21 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   power-up of board and sensor after the 31 s cut, the plug-in a candidate for the owner's flicker). The logs cannot
   pick between them.
 - Open: why the first configure() failed at that boot. Not judged here; the handling is the designed one.
+
+## Bench 2026-11-13 09:15 UTC - the owner's reruns of the no-touch candidates: no E13/E44 from the sweeps or 5 warm reboots; 09:04 read
+
+- The owner, 2026-11-13: "repeat the tests which require no interaction of mine and which could be the reason"; also
+  "it might also be possible that i touched the i2c lines to the sensor" and "now the board is under the dark hat
+  again and nobody touches it". Run on the owner's word, before 09:04 (relay 40, withdrawing 39) had arrived here.
+- Sweeps as at 08:21, REST only, nobody at the bench, console tailed passively (logs/day8_20261113/
+  m1_sweeps_rerun.txt, console_sweeps2.txt, 2319 lines, no error): R=G=B=255 T=60 (overrange 09:03:41-09:03:44),
+  R=G=B=15 T=60 (one switch down 90.5 -> 87.9 lx; the switch back up came after the sweep, the WiFi overlay at ~2200 lx
+  on the 375 range). /status 09:03:06, 09:05:20, 09:05:52: ISL29125 1 (E13), SYSTEM 53 (E44), LastTaskEnd None,
+  uptime 1186 -> 1352. Unchanged.
+- Warm reboots (the 07:46:54 kind), `PUT /system {"SystemCmd": "reboot"}` x5, stations kicked after each, /status at
+  >= 30 s uptime (scratch_scripts/warm_reboots.sh, warm_reboots.out): every one ResetReason 3, LastTaskEnd null,
+  ISL29125 1, SYSTEM 53; serving ~33 s after each command. Zero wear (nothing pending to flush).
+- 09:04 read: the boot is 08:28:43 (my 07:55:54 read already lay inside the 07:46:54 boot after its task start, with
+  ISL 0 / SYSTEM 52, which I had missed); cause the cold power-up after the owner's cut with a supply flicker at the
+  plug-in (ISL29125 POR); designed handling; closed. The reruns agree: neither a sweep nor a warm reset reproduces it.
+- Nothing more on the board today; it serves under the cap, AP on 6.
