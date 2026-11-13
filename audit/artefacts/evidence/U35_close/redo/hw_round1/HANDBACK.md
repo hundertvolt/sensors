@@ -43934,3 +43934,36 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - Wear today: FC 1 (row 3), config_reset's owned scratch writes (this one test), NVM 0.
 - 05:39's items 1-3 done. Item 4 (j: M1 first, the power-cycle run, the pin-reset run, the two pulls, the bridge
   under its timers; `CH13=1 run 13`) waits for the owner's word. M1 runs with reference_lux "none" (05:50 note).
+
+## Bench 2026-11-13 07:00 UTC - 06:43: 13 red, the DE pass did not hear the bench AP on channel 13; the AP back on 6; the board rejoined
+
+- nmcli by hand is outside the owner's standing rule, so asked in session; the owner (~06:50 UTC), on exactly: read the
+  AP's channel/band, modify br0-wifi-ap to channel 13 and up, run 13, then back to 6, B.13 recovery timer armed:
+  "Yes, those commands". br0 and eth0 untouched. (Disclosed to the owner: one read-only `nmcli con show --active` at
+  05:34 while the board was unreachable after the host reboot.)
+- Noted before: AP channel 6, band bg. Each change ran under setup_toolchain's own B.13 timer (its _recovery_script,
+  300 s), armed and verified active before, disarmed after br0 held its address and default route, as
+  setup_toolchain's channel repair does (logs/day8_20261113/scratch_scripts/ap_channel.py). To 13: 06:45:16-06:45:20,
+  "Connection successfully activated", br0 kept 192.168.85.75 and the route; read back channel=13 band=bg.
+  (My helper's disarm treated systemctl's exit 5 for the never-loaded .service as a failure; the timer was verified
+  inactive at 06:45:25 and the helper fixed to check the timer state, as setup_toolchain does.)
+- `CH13=1 run 13` 06:45:37-06:45:47, rc=1:
+  - `SUM country code=DE read_back=DE channels=[(1, 11), (3, 4)] ch13=0`. Fail: channel 13 not heard. Only the
+    neighbours' channels 1 and 3 were heard; the bench AP (RSSI -25 on 6) was heard on no channel at all.
+  - No XX line: the board left USB at 06:45:46 (kernel: USB disconnect, re-enumerated the same second), about 8 s
+    into the script, inside the XX pass before its SUM line; mpremote then failed with the host-side Errno 5.
+    ResetReason after: 21. country_scan.py arms an 8 s WDT and feeds only around each scan, so its own watchdog
+    expiring in the XX pass (deinit, country XX, active, 500 ms, a first scan with 12-13 passive) is my reading;
+    the product took no part. Not settled.
+- Back to 6: 06:49:27-06:49:32, same timer pattern, disarmed (inactive; no sensors-bench timer listed), channel=6 band=bg,
+  AP activated.
+- The board booted at 06:45:46 with the AP on 13, found no AP (WIFI W37), fell back to its hotspot (W79) for
+  hotspot_time_min 8, and rejoined STA by itself: /status 200 at 06:55:41, STA connected, RSSI -25, ResetReason 21,
+  ConfigFaults [], no task ended, MemFree 63424. Console tails while it was off the network: logs/day8_20261113/
+  console_after_13*.txt (all tasks running, "Network not available").
+- Error logs against 06:30: WIFI 0 -> 7 (W37, W79: the AP on 13); SGP40 7 -> 15 (W65 no backup after 4b's FRAM
+  erase, W34, W35 boot-time). Nothing else moved.
+- Read: whether the Pi beaconed on 13 at all is open. NetworkManager accepted the channel, but the board heard the
+  bench AP on no channel, which is what an AP the Pi's regulatory domain keeps off 12-13 would look like. Reading the
+  Pi's regdom or the radio's channel takes `iw`, outside the owner's rule, so not read; no regulatory setting changed.
+  Stopped here as 06:43 asks. Wear: none.
