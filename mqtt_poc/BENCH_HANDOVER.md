@@ -84,7 +84,7 @@ And on 2026-10-08:
   - the twin suites at both stages: `dev`, Run 14 included (the client against a real mosquitto: the exerciser's
     echo, kill, stall, takeover, flood, the will, a persistent session across a restart, the keep-alive the
     ping interval sets, pings off, the retire, and the client idle in the boot hotspot), 736 of 736 checks plus
-    26 of 26 in its CRC16 variant; `arzi`, `wozi` and `grkizi`, running as this was written;
+    26 of 26 in its CRC16 variant; `arzi` 570, `wozi` 608 and `grkizi` 570 checks, 2 skipped each;
   - the web tier under the `.nvmrc` Node 26: 1,282 unit tests with coverage, the HTML and CSS lints, the PUT matrix
     (412 passed, 9 skipped), the cross-browser smoke (32 of 32, no engine skipped);
   - the four devices' firmware builds and UF2 checks; `dev`'s image 1,177,644 B of the 1,228,800 B before the
