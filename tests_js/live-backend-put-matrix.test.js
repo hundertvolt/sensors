@@ -39,6 +39,10 @@ const EXPECTED_SKIPS = new Map([
     // an SSID boots the twin in STA, and every case here runs in AP (agent, 2026-10-22).
     ["networking/identity/SSID resubmit", "no current value to resubmit"],
     ["networking/dns/DNSFallback resubmit", "no current value to resubmit"],
+    // The MQTT client's three empty-string source defaults (src/asy_mqtt_client.py), none of them seeded here.
+    ["networking/mqtt/MQTTUser resubmit", "no current value to resubmit"],
+    ["networking/mqtt/MQTTHost resubmit", "no current value to resubmit"],
+    ["networking/mqtt/MQTTWillTopic resubmit", "no current value to resubmit"],
     // Each enum field's boot option: selecting it is the resubmit case.
     ["sensors/BMP3XX/PresOvers option 1", "the current option: the resubmit probe covers it"],
     ["sensors/BMP3XX/TempOvers option 1", "the current option: the resubmit probe covers it"],

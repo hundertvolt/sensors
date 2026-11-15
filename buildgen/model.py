@@ -25,7 +25,10 @@ TomlDoc: TypeAlias = dict[str, TomlValue]
 
 # The /status maintenance block's key for a driver publishing one per device (an SGP40 publishes one per
 # instance, under its resolved_name), read by the definitions generator and codegen alike so they cannot drift.
-MAINTENANCE_NAMES = {"uart_link": "UARTLINK"}
+MAINTENANCE_NAMES = {"uart_link": "UARTLINK", "mqtt_link": "MQTTLINK"}
+# Drivers logging through the instance they are wired to, with no _NAME, logger or errcount row of their own (the MQTT
+# exerciser, SPECIFICATION.md A.12): each is named by its maintenance key, its one REST key.
+PARTNER_LOGGED_DRIVERS = frozenset({"mqtt_link"})
 
 
 def instance_label(key: tuple[str, str]) -> str:

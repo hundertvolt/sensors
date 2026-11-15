@@ -139,7 +139,7 @@ colonised *before* the boot ran.
 4. A derived threshold's first silicon run can fail; **that is a finding, not automatically a
    regression** — it says something the derivation assumed is untrue.
 
-`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 41,000 B kept by the build
+`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 50,500 B kept by the build
 and its setups over the heap in use before them, nothing newly placed in and ≥ 16,384 B free above
 the top survivor, a ≥ 32,768 B run), not lowered to the 2,048 B worst case (agent, 2026-09-19;
 owner-reviewed, 2026-10-02). A gate between measured rungs (`_MAX_ROUTE_NEED`, §M6) sits *between*

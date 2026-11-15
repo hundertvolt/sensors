@@ -885,6 +885,9 @@ never run here. Environment: `MPREMOTE_DEVICE` (default: the one MicroPython boa
 `scripts/run_bench_hardware_suite.sh [options] [pytest args]`: L0-L2, then the flash tier (L3) as its
 own step, which must pass before the bench tier (L4) runs.
 - `--skip-lower-levels`: skip L0-L2; for debugging, never reported clean (exit 4)
+- `--scope NAME`: run only the flash and bench tests `tests_hardware/run_scopes.py` lists for NAME, the
+  ones one change reaches; never reported clean (exit 4), never with test paths, and never with the
+  global `--allow-persistence-write` (name the groups instead: `--allow-persistence-write-to=GROUP`)
 - `-h`, `--help`: print the help
 
 Other arguments go to pytest; a `-m` you pass narrows the selection, and soak and rollover tests
@@ -1279,6 +1282,14 @@ submodule update --init datasheets`; SPECIFICATION.md Part A.6).
   peer's C implementation must mirror, and the Python-internal ones recorded as having no C impact;
   kept until the post-audit C reconciliation deletes it (owner, 2026-09-25). The protocol itself is
   SPECIFICATION.md Part J, permanent.
+- **[`mqtt_poc/`](mqtt_poc/)** — the MQTT client proof of concept's records: `mqtt_poc/RESEARCH.md`
+  (the research round, 2026-10-07: the client landscape, Peter Hinch's `mqtt_as`, the rp2 platform facts,
+  what the framework requires of the service and the owner's answers), built from the six raw, unverified
+  reports under `research/`; `prototype/`, a first client prototype with its dev twin torture harness and
+  `prototype/RESULTS.md`; `mqtt_poc/DESIGN.md` (2026-10-08), the design of the `src/` client, its `dev`
+  wiring, its tests per tier and the bench runbook; and `mqtt_poc/BENCH_HANDOVER.md`, the bench session's
+  run sheet and where its results go. Outside the doc gates' scan; deleted once the PoC's outcomes are
+  migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated; for anything bench-related, BACKLOG.md's

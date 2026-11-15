@@ -265,14 +265,20 @@ reference for how any of it runs (flags, wear gates, traps).
     (20 arm64-only build-tool reds).
   - **`[lwip]` `TCP_SND_BUF` 6,400 → 1,600 B** (2026-11-11): nothing installed; a reused chroot's changed
     `toolchain/versions.toml` runs setup once, as above, and `build-lwip` takes the new value.
+  - **`mosquitto`, a new apt package (MQTT PoC branch, 2026-10-08)**: `toolchain/versions.toml`'s
+    `apt_packages` gains the broker the MQTT client's twin and bench tests start themselves (owner,
+    2026-10-07: 'apt package (Recommended)'). Its Debian/Ubuntu package also enables a system broker on
+    `localhost:1883`, which no test uses; a chroot without systemd only installs it. The twin suite's
+    Run 14 needs it on `PATH` or in `/usr/sbin`, so a chroot's `scripts/run_digital_twin_ci.sh dev` also
+    proves the package landed.
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
   one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
   permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by
   the hardware watchdog after the recovery ladder (SPECIFICATION.md F.2): a `machine.I2C` transfer
   on a wedged bus; a single `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`,
   v1.29.0; the FRAM's waits around it wait only on other coroutines, SPECIFICATION.md F.2).
-  `socket.getaddrinfo()` is not called from `src/`; its one call is `asyncio.start_server()`'s, on the
-  numeric bind host (SPECIFICATION.md F.2). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
+  `socket.getaddrinfo()` is called from `src/` on numeric hosts only: `asyncio.start_server()`'s bind
+  host and the MQTT client's broker address, the IPv4 literal its resolver returned (SPECIFICATION.md F.2). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
   target').
 - **Resize the rp2 littlefs reservation** — only once flash space is actually short (owner,
   2026-09-26); trigger: the firmware image-size report; mechanism SPECIFICATION.md B.14.3.

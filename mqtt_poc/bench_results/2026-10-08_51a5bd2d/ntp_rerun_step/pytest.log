@@ -1,0 +1,40 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 9 items
+
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry PASSED [ 11%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot PASSED [ 22%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response PASSED [ 33%]
+tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response PASSED [ 44%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source FAILED [ 55%]
+tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly PASSED [ 66%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp PASSED [ 77%]
+tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp PASSED [ 88%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing PASSED [100%]
+
+=================================== FAILURES ===================================
+_____ test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source ______
+
+board = <harness.Board object at 0x7f8a44fcb0>
+bench = <bench_control.BenchBridge object at 0x7f8a44f620>
+dut_ip = '192.168.85.57'
+
+    def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+        # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
+        # a reply from anywhere else - checkable via GET /status's UTCTime, since an accepted reply's
+        # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
+        get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
+        assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
+        utc_before = get_before.json()["system"]["UTCTime"]
+>       assert utc_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
+E       AssertionError: GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test
+E       assert None is not None
+
+tests_hardware/bench/test_network_resilience.py:471: AssertionError
+=========================== short test summary info ============================
+FAILED tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source
+=================== 1 failed, 8 passed in 564.07s (0:09:24) ====================

@@ -313,7 +313,7 @@ describe("field markup, through a one-field buildFieldGroupCard()", () => {
     });
 
     it("names the form a host name or an IPv4 list takes, from the server's own shape rules", () => {
-        // The server's _ntp_host_ok() and _dns_fallback_ok() (src/asy_ntp_client.py); the list's bound is read from there.
+        // The server's host_name_ok() (src/asy_dns_client.py) and _dns_fallback_ok() (src/asy_ntp_client.py); the list's bound is read from there.
         const listMax = /^_DNS_FALLBACK_MAX = const\((?<max>\d+)\)/mu.exec(NTP_CLIENT_SOURCE)?.groups?.max;
         expect(listMax).toBeDefined();
         /** @type {FieldDef} */

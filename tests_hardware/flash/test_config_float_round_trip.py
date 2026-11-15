@@ -15,7 +15,7 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_2_reboot_settings_persi
 _SCRIPT_TIMEOUT_S = 60.0
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_config_floats_round_trip_unchanged(board: "Board") -> None:
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_float_round_trip.py", timeout_s=_SCRIPT_TIMEOUT_S))
     fields = facts.get("fields")

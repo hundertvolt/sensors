@@ -18,6 +18,8 @@ REQUIRED_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "neopixel": ("pin",),
     "notification": (),
     "uart_link": ("bus", "role"),
+    "mqtt": (),
+    "mqtt_link": (),
 }
 
 # TOML fields a driver's instances *may* declare, beyond the required ones above - present because
@@ -34,6 +36,8 @@ OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "neopixel": (),
     "notification": (),
     "uart_link": ("crc", "max_transfer_bytes"),
+    "mqtt": (),
+    "mqtt_link": (),
 }
 
 # Every field an instance of this driver may legitimately declare (beyond "driver"/"name_ext") -
@@ -44,7 +48,7 @@ ALLOWED_INSTANCE_FIELDS: dict[str, frozenset[str]] = {
 }
 
 # Drivers whose instances sit on a declared [bus.*] - i.e. carry a "bus" TOML field at all.
-BUS_ATTACHED_DRIVERS = frozenset(REQUIRED_TOML_FIELDS) - {"neopixel", "notification"}
+BUS_ATTACHED_DRIVERS = frozenset(REQUIRED_TOML_FIELDS) - {"neopixel", "notification", "mqtt", "mqtt_link"}
 
 # Which bus kind each bus-attached driver's "bus" field must resolve to. Without it a TOML typo
 # pairing a uart_link with an i2c bus built cleanly - the bus only had to exist - and failed at

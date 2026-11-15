@@ -19,7 +19,7 @@ from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickGrid, TickSeconds, set_utc_valid, utc_now
 from asy_config_manager import INVALID, make_dict
-from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, resolve_ipv4
+from asy_dns_client import host_name_ok, ipv4_to_int, resolve_ipv4
 from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_udp_socket import UDPSocket
 
@@ -136,13 +136,6 @@ def _dns_fallback_ok(value: object) -> bool:
     return len(items) <= _DNS_FALLBACK_MAX and all(ipv4_to_int(item) is not None for item in items)
 
 
-def _ntp_host_ok(value: object) -> bool:
-    # hostName shape: an IPv4 literal, or dot-separated RFC 1123 labels of at most 63 characters.
-    if type(value) is not str:
-        return False
-    return ipv4_to_int(value) is not None or all(len(label) <= DNS_LABEL_MAX and host_label_ok(label) for label in value.split("."))
-
-
 class NTPClient(SensorReaderConfig):
     def __init__(
         self,
@@ -189,7 +182,7 @@ class NTPClient(SensorReaderConfig):
         # NTPHost and DNSFallback are shape-checked before they are stored; the rest of the request goes through
         # ConfigManager as usual (SPECIFICATION.md C.7.2).
         refused = {}
-        if "NTPHost" in data and not _ntp_host_ok(data["NTPHost"]):
+        if "NTPHost" in data and not host_name_ok(data["NTPHost"]):
             refused["NTPHost"] = "- not a host name or IPv4 address"
         if "DNSFallback" in data and not _dns_fallback_ok(data["DNSFallback"]):
             refused["DNSFallback"] = "- not a list of up to three IPv4 addresses"

@@ -28,6 +28,7 @@ _REBOOT_LOSS_MARGIN_S = 1.5
 _POLL_S = 1.0
 _PROBE_TIMEOUT_S = 10.0
 _JOIN_TIMEOUT_S = 15.0
+_SLOT_RELEASE_WAIT_S = 1.0  # test_network_resilience.py's: a served connection's slot frees after its close
 _RECOVERY_SANITY_TIMEOUT_S = 120.0
 _RESET_SPACING_S = 25.0
 _RESET_CYCLES = 3
@@ -98,7 +99,9 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
 
     successes = [r for r in results if r == 200]
     assert len(successes) >= _max_connections, f"only {len(successes)}/{n_clients} concurrent requests succeeded (expected at least the {_max_connections}-connection admission ceiling to be served): {results}"
-    # A crash surfacing after the burst rather than during it slips through the per-request results above.
+    # A crash surfacing after the burst rather than during it slips through the per-request results above. The last
+    # clients' slots free only after _serve()'s close (Part I.6), so a probe the instant they finish can meet a full ceiling.
+    time.sleep(_SLOT_RELEASE_WAIT_S)
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after the concurrent burst"
 
 
@@ -124,7 +127,7 @@ def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: "
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SGP40")
 @pytest.mark.provokes_log(
     "the resets tear some SPI writes: the status byte and block-invalid entries this test's own allow-list names",
     ("FRAM", "W", "FRAM_BLOCK_INVALID"),

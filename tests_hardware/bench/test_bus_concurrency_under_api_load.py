@@ -235,7 +235,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
 _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/ISL29125")
 @pytest.mark.provokes_log(
     "the readers and the writer meet the stack's reject-when-full, which this module's fetch retries",
     ("WEBSERVER", "W", "HTTP_REFUSED"),
@@ -287,7 +287,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/BMP3XX")
 @pytest.mark.provokes_log(
     "the readers and the writer meet the stack's reject-when-full, which this module's fetch retries",
     ("WEBSERVER", "W", "HTTP_REFUSED"),
@@ -339,7 +339,7 @@ _SCD30_WRITE_CYCLES = 2
 _SCD30_OFFSET_STEP_K = 0.5
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 @pytest.mark.scd30_extra_write
 @pytest.mark.provokes_log(
     "the readers and the writer meet the stack's reject-when-full, which this module's fetch retries",
