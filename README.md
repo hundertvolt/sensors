@@ -1279,6 +1279,10 @@ submodule update --init datasheets`; SPECIFICATION.md Part A.6).
   peer's C implementation must mirror, and the Python-internal ones recorded as having no C impact;
   kept until the post-audit C reconciliation deletes it (owner, 2026-09-25). The protocol itself is
   SPECIFICATION.md Part J, permanent.
+- **[`https_poc/`](https_poc/)** — the HTTPS research round's records: `https_poc/RESEARCH.md` (2026-11-15: what
+  MicroPython v1.29.0, its mbedTLS and Microdot offer a TLS server, the heap, CPU and event-loop cost, the
+  certificate options and the questions for the owner), built from the two raw reports under `research/`. Outside
+  the doc gates' scan; deleted once its outcomes are migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated; for anything bench-related, BACKLOG.md's
