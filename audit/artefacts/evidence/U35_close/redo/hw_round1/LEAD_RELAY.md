@@ -1,5 +1,41 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-15 09:56 UTC - relay 43: the mixed-body red's root cause on the wire; the AP outage's recovery (no flash, no write)
+
+Your relay-42 hand-back is taken. The owner, asked in the code session about the mixed-body red: "Try to root cauee".
+The candidate, from the pinned source and reproduced on `build-lwip` (the firmware's patched `modlwip.c`): a connection
+that completes its handshake while modlwip's accept queue is full (the listen backlog, `max_connections + 1` = 6 on
+`dev`) gets `ERR_BUF` from `_lwip_tcp_accept()`, and lwIP aborts it with an RST (`tcp_in.c` after
+`tcp_backlog_accepted()`). The server never sees it, so `HTTPDropped` cannot count it. This relay checks it on the
+board. Same image, no flash, no owned write, no wear-gated flag. If the capture or this rerun falls outside the
+go-ahead you hold, ask the owner first.
+
+1. Fetch and merge. No board contact: from relay 42's archive
+   (`build/archive/run_bench_hardware_suite_scope_mqtt/20261115T083024Z/run_record.json`), hand back verbatim every
+   note and recovery field of `test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link`. Its 256.7 s is 240 s
+   (its passive wait) plus about 17 s, which reads as one recovery reset; say whether the record shows one.
+2. Save `/status` (errcount in full). Start the capture, then the test alone while it runs:
+   ```
+   sudo -n timeout 300 tcpdump -i br0 -nn -s 512 -U -w logs/<UTC>_r43_mixed.pcap host <DUT_IP> and tcp port 80 &
+   # wait for tcpdump's "listening on br0" line, then:
+   scripts/_require_clean_hardware_run.sh --runner r43_mixed_body --levels "L4, one test" \
+       --marker-floor "not soak_duration and not multi_day_rollover" \
+       --not-clean-reason "relay 43: one test under a capture" \
+       tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status
+   wait   # the capture ends at its 300 s timeout
+   ```
+3. Classify, with this relay's script beside it:
+   ```
+   tcpdump -nn -tt -S -A -r logs/<UTC>_r43_mixed.pcap 'host <DUT_IP> and tcp port 80' \
+       | python3 audit/artefacts/evidence/U35_close/redo/hw_round1/r43_classify_resets.py <DUT_IP> 2048
+   ```
+   (If the pcap is not readable as you, read it with `sudo -n timeout 60 tcpdump ...`.) Hand back its output
+   verbatim, with the test's verdict line (pass, or its HTTPDropped and refusal counts).
+4. What would confirm it: the within-cap PUTs the clients filed as refused split into "reset after queueing" (the
+   server's own refusals, about HTTPDropped) and "reset at the handshake" (the uncounted rest), the latter within a few
+   ms of the handshake ACK. Anything else is a finding: hand it back as it is, nothing fixed.
+5. Leave the board serving. Nothing pushed to the PR branch.
+
 ## Lead 2026-11-15 08:13 UTC - relay 42: the MQTT image and the MQTT scope, the two login tests the only owned writes (owner, 2026-11-15, in the code session: "As the main session is considered to be done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related tests, while flashing a new image containing the MQTT code of course is allowed.")
 
 The lead is now the MQTT PoC's code session (PR #110, `claude/whole-project-audit-plan-followup`). Start only on the
