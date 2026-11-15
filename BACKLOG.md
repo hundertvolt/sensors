@@ -231,8 +231,9 @@ reference for how any of it runs (flags, wear gates, traps).
   `dev` with the client should meet the bound, the owner (2026-11-15): "Try a balanced approach, find a sweet spot, far
   away from critical values, then re derive". The payload slots went from 384 to 256 B and the transmit buffer from 640
   to 512 B (agent, 2026-11-15; Part N's `mqtt.out_payload_max` and `mqtt.tx_buf_bytes` rows), about 1.15 KB; the
-  receive buffer, the slot count and the ack queue stay, each near its need. Owed: the next flash step's reading on
-  that image, then the bound re-derived from it.
+  receive buffer, the slot count and the ack queue stay, each near its need. The trimmed image read 44,320 B
+  (2026-11-15, `3e281e10`), and the bound is now that plus the same ~14 %, 50,500 B (agent, 2026-11-15). Owed: the
+  flash step's headroom test passing on the bench under it, with its map and placement read.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the

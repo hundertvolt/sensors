@@ -533,7 +533,8 @@ more conservative, more easily reversible choice:
   read 45,488 B against 41,000 B: 'Try a balanced approach, find a sweet spot, far away from critical values, then
   re derive'. The slots' payload went 384 → 256 B, four times the 64-B status messages, and the transmit buffer
   640 → 512 B, 121 B over the largest PUBLISH (agent, 2026-11-15); the receive buffer, the eight slots (twice the
-  worst case) and the ack queue stay. The bound is re-derived from the next flash step's reading.
+  worst case) and the ack queue stay. The trimmed image read 44,320 B, and the bound is that plus the same ~14 %,
+  50,500 B (agent, 2026-11-15; Part N's `l3.heap_headroom_after_full_system_build_max_added`).
 - The bench run goes through the audit's bench session (owner, 2026-11-15): 'As the main session is considered to be
   done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related
   tests, while flashing a new image containing the MQTT code of course is allowed.' The requirement: 'For. The MQTT

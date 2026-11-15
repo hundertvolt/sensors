@@ -7347,8 +7347,8 @@ FRAM entry has the full account.
   into SRAM shows up as a test failure rather than as slow attrition. **That test's thresholds
   changed on 2026-09-19**: the owner retired its 100,000 B free / 80,000 B contiguous floors as not
   reflecting any real requirement (owner, 2026-09-19, `3fe0fb2`), and it now asserts survivor volume
-  (at most 41,000 B added by the build and its setups, `l3.heap_headroom_after_full_system_build_max_added`;
-  owner, 2026-11-11), survivor *placement* and contiguity (>= 32,768 B, twice that worst case)
+  (at most 50,500 B added by the build and its setups, `l3.heap_headroom_after_full_system_build_max_added`;
+  owner, 2026-11-11, re-derived with the MQTT client, 2026-11-15), survivor *placement* and contiguity (>= 32,768 B, twice that worst case)
   (these replacements: agent, 2026-09-19). Placement is asserted
   twice off `micropython.mem_info(1)`'s block map: the boot must **place** nothing in the top
   16,384 B (a delta against a map taken before `build_system()`, so it is independent of what the
@@ -8832,12 +8832,13 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
 
   `dev`'s other routes: `/measurements` 470 B in 2 pieces, `/sensors` 622 B in 3, `/networking`
   214 B, `/system` 151 B and `/notification` 147 B in one each. `dev` stays about 4 KB inside the
-  budget, which rests on I.6's estimate of the heap free after boot. Measured on the `dev` image
-  (2026-11-11): the build and its setups keep 35,936-36,176 B over the heap in use before them,
-  against the flash tier's bound of at most 41,000 B (Part N
-  `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), and leave a largest
-  free block of 35,136 B against its floor of 32,768 B (F.5.3); in operation one collect leaves
-  81,984-82,400 B free, against `dev`'s serving demand of 68,790 B at the connection ceiling.
+  budget, which rests on I.6's estimate of the heap free after boot. Measured on the `dev` image with
+  the MQTT client and its exerciser (2026-11-15): the build and its setups keep 44,320 B over the heap in use before
+  them, against the flash tier's bound of at most 50,500 B (Part N
+  `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11, re-derived 2026-11-15), and leave a
+  largest free block of 59,216 B against its floor of 32,768 B (F.5.3); in operation one collect left
+  81,984-82,400 B free without the client (2026-11-11), against `dev`'s serving demand of 68,790 B at the connection
+  ceiling.
 - **lwIP is never the constraint on admission.** An image provisioned for 16 admitted 16 on every
   probe, no pool surfaced, and the GC heap bound first — while a raised ceiling turns a clean
   refusal into an admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST
@@ -12589,7 +12590,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.memory_stress_bench_hammer_duration_s` | 120.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `120.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.soak_request_failure_rate` | 0.001 | `tests_hardware/bench/test_memory_stress_bench.py` — `0.001` | failed soak requests as a share of those sent, so the bound scales with the chosen `--soak-duration` | estimated (agent, 2026-10-14) — measurement owed: the failed share across the 6 h soak on the dev bench, L4 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l4.uart_link_under_api_load_request_budget_s` | 15.0 s | `tests_hardware/bench/test_uart_link_under_api_load.py` — `15.0` | — | estimated (agent, `a195c4c`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
-| `l3.heap_headroom_after_full_system_build_max_added` | 41000 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `41_000` | — | owner decision (owner, 2026-11-11: "A", asked which bound the full-build heap check holds; option A: the bound covers what `build_system()` and the setups keep over the heap in use before them, 35,984 B on dev, 2026-11-11, plus the ~14 % the retired 100,000 B total had over its own reading); it changes only through a new derivation of the need, never to fit a reading (owner, 2026-10-02); "anyhow make sure the heap bound does not get close to critical values" (owner, 2026-11-11): the after-build largest free block's 32,768 B floor (F.5.3) is that absolute check | none: the bound is the requirement | the build's survivors or the heap budget change |
+| `l3.heap_headroom_after_full_system_build_max_added` | 50500 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `50_500` | — | owner decision (owner, 2026-11-11: "A", asked which bound the full-build heap check holds; option A: the bound covers what `build_system()` and the setups keep over the heap in use before them, then 35,984 B on dev, plus the ~14 % the retired 100,000 B total had over its own reading); re-derived for `dev` with the MQTT client and its exerciser (owner, 2026-11-15, asked how `dev` with the client should meet the bound: "Try a balanced approach, find a sweet spot, far away from critical values, then re derive"): 44,320 B on the bench (2026-11-15, image `3e281e10`, after the client's payload slots and transmit buffer were trimmed) plus the same ~14 % (agent, 2026-11-15); it changes only through a new derivation of the need, never to fit a reading (owner, 2026-10-02); "anyhow make sure the heap bound does not get close to critical values" (owner, 2026-11-11): the after-build largest free block's 32,768 B floor (F.5.3) is that absolute check | none: the bound is the requirement | the build's survivors or the heap budget change |
 | `l3.heap_headroom_after_full_system_build_worst_case_factor` | 2 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `2` | × the script's worst-case allocation (16,384 B) = the largest free block it requires (32,768 B) | the requirement the script states with the check (`3fe0fb2`, 2026-09-19): room for the worst-case allocation twice over; nothing here may be raised to fit a reading | none: the factor is the requirement | the worst-case allocation or the heap budget changes |
 | `l3.settle_budget_ms` | 2000 ms | `tests_hardware/device_scripts/_shared/settle.py` — `2000` | `_shared/settle.py`: the join's budget | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l3.c_stack_budget_window_ms` | 10000 ms | `tests_hardware/device_scripts/c_stack_budget.py` — `10000` | about ten read cycles of every reader the build starts; the flash tier's 60 s script timeout covers it | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
