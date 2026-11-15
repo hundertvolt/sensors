@@ -414,7 +414,9 @@ tests' (`--allow-persistence-write-to=networking/mqtt`, the group's six other te
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
-chunk layout and the `env --tier flash` rerun; every SCD30 write waits for the full bench run.
+chunk layout, the boot's heap layout and the `env --tier flash` rerun; every SCD30 write waits for the full bench
+run. Run on 2026-11-15 on `9fd691ef` (`mqtt_poc/bench_results/2026-11-15_9fd691ef/`): the MQTT module 22 of 22, the
+heap bound red as expected, the mixed-body refusal count the base's (BENCH_HANDOVER.md section 1.7, item 3).
 
 ## 12. Where the rules land when the PoC merges
 
@@ -619,7 +621,7 @@ What that became (SPECIFICATION.md A.12 is the permanent form):
 Decided on the owner's behalf (agent, 2026-11-12), each adding no flash write site and no REST surface, each
 reversible:
 - The exerciser has a fixed period (`mqtt_link.exercise_period_ms`, 10 s) and no setting or route.
-- It logs through the client's logger, so it has no log, errcount row or FRAM chunk of its own.
+- It logs through the client's logger, so it has no log, errcount row or FRAM chunk of its own; adopted (owner, 2026-11-15, told it has no logger or FRAM chunk of its own unlike the UART exerciser: "Yes, the exerciser is test code, all correct").
 - A busy `wifi_mode_lock` postpones the client's link check by one tick, not one poll.
 - Consumer callbacks get the PUBLISH flag bits as an int (ruff's FBT001 refuses a positional bool in `src/`).
 - The bench module's traffic is the exerciser's: its probes, its `MQTTLINK` counters and a `cmd/#` publish

@@ -211,7 +211,9 @@ reference for how any of it runs (flags, wear gates, traps).
   use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related tests, while
   flashing a new image containing the MQTT code of course is allowed."); its section 7 says where the results
   go. Wear: one flash cycle and the two login tests' 5 writes of `config_MQTT.cfg` (owner, 2026-11-15, asked
-  "How should login be covered on the bench?": "Both login tests (Recommended)"), no SCD30 write. Twin row: `ci_suite._run_14_mqtt_broker_faults`, the
+  "How should login be covered on the bench?": "Both login tests (Recommended)"), no SCD30 write. Run on
+  2026-11-15 on `9fd691ef` (`mqtt_poc/bench_results/2026-11-15_9fd691ef/`): the MQTT module 22 of 22; owed the same
+  scope on the trimmed image (the heap entry below), with the boot's heap layout now in its flash step. Twin row: `ci_suite._run_14_mqtt_broker_faults`, the
   MQTT module's named cover.
 - **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and

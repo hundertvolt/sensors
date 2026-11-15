@@ -1565,7 +1565,8 @@ device carries it."). `asy_mqtt_link_driver.py`, driver `mqtt_link`, class `MQTT
   maintenance sensor `MQTTLINK` in `/status`'s `sensors`, UARTLINK's keys plus `Commands` (A.8);
 - it logs through the client's logger (`self.pr = client.pr`), so it has no log, no errcount row and no FRAM chunk
   of its own, and it writes no entry; it owns no setting, no config file and no route, so it adds no flash write
-  site (agent, 2026-11-12, decided on the owner's behalf: a fixed period and the shared logger, each reversible);
+  site (agent, 2026-11-12, decided on the owner's behalf: a fixed period and the shared logger, each reversible; the
+  shared logger adopted, owner, 2026-11-15, told it has no logger or FRAM chunk of its own unlike the UART exerciser: "Yes, the exerciser is test code, all correct");
 - it never raises, never blocks, and allocates nothing per round beyond the client's publish path and nothing per
   echo (an in-place compare). Each probe draws the ping that confirms a publish, so a connected `dev` pings once
   per period: the twin's and the bench's fault tests time their detections from that traffic.
