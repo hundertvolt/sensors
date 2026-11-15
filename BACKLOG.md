@@ -221,15 +221,16 @@ reference for how any of it runs (flags, wear gates, traps).
 
 - **The MQTT client against the full-system heap bound** (branch `claude/whole-project-audit-plan-followup`
   only, until it merges; owner, 2026-10-08: "The heap limit should definitely be obeyed in the final version, but
-  that's a topic becoming relevant when the audit is done."; the audit closed on 2026-11-13). The client cost
-  11,360 B in all, its imports included (`mqtt_poc/DESIGN.md` §5), on the 2026-10-08 image, before
-  the restructure folded its codec in, took its publisher out and added `dev`'s exerciser (`mqtt_poc/DESIGN.md` §17), so the
-  figure is owed again by the next flash step; the `dev` image's flash
-  step read 114,768 B against the 100,000 B total `test_real_gc_heap_headroom_survives_a_full_system_build`
-  then bounded. Its bound is now at most 41,000 B added by the build and its setups (SPECIFICATION.md Part
-  N's `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev`'s
-  35,984 B without the client (the final base's image read 36,368 B on the bench, 2026-11-13), so `dev`
-  with it is expected over the bound; the bound stays where it is.
+  that's a topic becoming relevant when the audit is done."; the audit closed on 2026-11-13). The bound is at most
+  41,000 B added by the build and its setups (SPECIFICATION.md Part N's
+  `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev`'s 35,984 B without the
+  client. On the bench (2026-11-15, image `9fd691ef`) `dev` with the client and its exerciser kept 45,488 B, 9,120 B
+  over the final base's 36,368 B, its largest free block after the build 58,048 B against the 32,768 B minimum. Asked how
+  `dev` with the client should meet the bound, the owner (2026-11-15): "Try a balanced approach, find a sweet spot, far
+  away from critical values, then re derive". The payload slots went from 384 to 256 B and the transmit buffer from 640
+  to 512 B (agent, 2026-11-15; Part N's `mqtt.out_payload_max` and `mqtt.tx_buf_bytes` rows), about 1.15 KB; the
+  receive buffer, the slot count and the ack queue stay, each near its need. Owed: the next flash step's reading on
+  that image, then the bound re-derived from it.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the

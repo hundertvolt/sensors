@@ -204,16 +204,18 @@ permanently disabled (status `State: "no memory"`), never a crash.
 | Buffer | Bytes | Tunable |
 |---|---|---|
 | receive | 1,024 | `mqtt.rx_buf_bytes` |
-| transmit | 640 | `mqtt.tx_buf_bytes` |
-| outbound slots | 8 × 384, one stream each | `mqtt.out_slots`, `mqtt.out_payload_max` |
+| transmit | 512 | `mqtt.tx_buf_bytes` |
+| outbound slots | 8 × 256, one stream each | `mqtt.out_slots`, `mqtt.out_payload_max` |
 | last inbound topic | 64 | `mqtt.last_topic_bytes` |
 
-The buffers are about 5 KB, against the ~7.5–8 KB one HTTP connection holds at peak, which the
+The buffers are about 3.7 KB, against the ~7.5–8 KB one HTTP connection holds at peak, which the
 `max_connections` 6 → 5 step frees (owner, 8.4). Measured on the bench board (2026-10-08,
 `mqtt_poc/bench_results/2026-10-08_51a5bd2d/`): one construction holds 8,432 B, the buffers plus what
 every `SensorReaderConfig` module holds (its config manager, log, locks and instance dict); the two
-imports add 2,928 B, so the client costs 11,360 B in all. Allocating the buffers only at the first enable
-would spare a board that never enables the client about 5 KB, but it would place long-lived buffers late
+imports add 2,928 B, so the client costs 11,360 B in all. On 2026-11-15 the build on the `9fd691ef` image kept
+9,120 B more than the final base's (the client and `dev`'s exerciser); the payload slots and the transmit buffer
+were then trimmed to the needs §14 records (owner, 2026-11-15). Allocating the buffers only at the first enable
+would spare a board that never enables the client about 3.7 KB, but it would place long-lived buffers late
 into a fragmented heap, which HEAP_FRAGMENTATION_MEASUREMENTS.md's placement law shows splitting the large
 free run; they stay allocated at boot (agent, 2026-10-08).
 
@@ -525,6 +527,11 @@ more conservative, more easily reversible choice:
   so scope it correctly'. Then: 'include the ntp tests too, allow networking/ntp', and 'include the hotspot
   role reversal too', whose own writes add `networking/identity` and `notification/autoConfig`. §11.1 has
   the command.
+- The heap bound with the client (owner, 2026-11-15), asked how `dev` with the client should meet it after the bench
+  read 45,488 B against 41,000 B: 'Try a balanced approach, find a sweet spot, far away from critical values, then
+  re derive'. The slots' payload went 384 → 256 B, four times the 64-B status messages, and the transmit buffer
+  640 → 512 B, 121 B over the largest PUBLISH (agent, 2026-11-15); the receive buffer, the eight slots (twice the
+  worst case) and the ack queue stay. The bound is re-derived from the next flash step's reading.
 - The bench run goes through the audit's bench session (owner, 2026-11-15): 'As the main session is considered to be
   done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related
   tests, while flashing a new image containing the MQTT code of course is allowed.' The requirement: 'For. The MQTT

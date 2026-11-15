@@ -131,12 +131,12 @@ _WRN_MQTT_RETIRE_FAILED = const(83)
 # Buffers, allocated once at construction (Part A.12's memory budget).
 # @tunable mqtt.rx_buf_bytes = 1024
 _RX_BYTES = const(1024)  # the largest inbound packet parsed; a larger one is read and discarded
-# @tunable mqtt.tx_buf_bytes = 640
-_TX_BYTES = const(640)  # one outbound packet: the largest CONNECT, or a PUBLISH of a full slot
+# @tunable mqtt.tx_buf_bytes = 512
+_TX_BYTES = const(512)  # one outbound packet: the largest CONNECT, or a PUBLISH of a full slot
 # @tunable mqtt.out_slots = 8
 _OUT_SLOTS = const(8)
-# @tunable mqtt.out_payload_max = 384
-_OUT_PAYLOAD = const(384)
+# @tunable mqtt.out_payload_max = 256
+_OUT_PAYLOAD = const(256)
 # @tunable mqtt.ack_slots = 32
 _ACK_SLOTS = const(32)  # inbound QoS 1 ids awaiting their PUBACK; above the broker's in-flight window (20)
 # @tunable mqtt.last_topic_bytes = 64
