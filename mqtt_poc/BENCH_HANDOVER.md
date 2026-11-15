@@ -67,10 +67,10 @@ And on 2026-10-08:
 ### 1.3 Where it stands
 
 - **Branch** `claude/whole-project-audit-plan-followup`, draft PR hundertvolt/sensors#110. It is stacked on the
-  whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its head
-  `1989c83` (U35, merged in `a8d075cc`). It merges only
-  after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
-  `main`. Never merge it, rebase it, force-push it or push to another branch.
+  whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its final head
+  `a6f28126`, merged in `df3916bd`: the audit closed on 2026-11-13. It merges only after the audit closes (owner,
+  2026-10-07: "After audit closes"); the owner retargets it to `main` and merges it. Never merge it, rebase it,
+  force-push it or push to another branch.
 - **Verified on the host** (`827c5f0b` to `b1586d5b`, the 2026-11-12 restructure; the later two commits change
   only test files, each rerun), each tier run on its own (the runner's lower levels run every
   host tier on the head first):
@@ -89,13 +89,15 @@ And on 2026-10-08:
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
-  100,000 B tripwire. That bound holds for the final version and is a topic for after the audit (owner,
-  2026-10-08, DESIGN.md §14). Changed after both runs, so the next run is the first to see them on the board:
-  the `online` timing (`43b5373`), the memory layout (DESIGN.md §5: one stream per outbound slot, the
-  settings and topics born at boot), and the audit's U20 to U22 (merged in `1efe566`): a controlled shutdown
-  for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
-  override (SPECIFICATION.md B.14.4), and U23 to U35 (merged in `f26f227f` and `a8d075cc`). The client is now
-  built before the UART links. Since 2026-10-13 the will
+  100,000 B tripwire. The owner wants that bound obeyed in the final version, a topic once the audit is done
+  (owner, 2026-10-08, DESIGN.md §14); the audit is done, the bound is now at most 41,000 B added by the build and
+  its setups, and this run's flash-step reading is the figure BACKLOG.md's deferred entry waits on (section 1.7).
+  Changed after both runs, so the next run is the first to see them on the board: the `online` timing
+  (`43b5373`), the memory layout (DESIGN.md §5: one stream per outbound slot, the settings and topics born at
+  boot), and the audit's later rounds to its close (merged in `1efe566`, `f26f227f`, `a8d075cc` and `df3916bd`),
+  among them a controlled shutdown for every system command, the generated boot entries, the Wi-Fi silent mode,
+  the `modlwip_eagain` override (SPECIFICATION.md B.14.4), the boot placement reset (I.4(f.1)) and
+  `CFGMGR_SCD30` back on FRAM. The client is now built before the UART links. Since 2026-10-13 the will
   and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
   three bench tests of their own (section 5); so is the ping interval (180 s, or off), and every message now gets
   a ping of its own (DESIGN.md §16). Since 2026-11-12 (DESIGN.md §17) the client is one self-contained file with
@@ -118,8 +120,8 @@ And on 2026-10-08:
   - a name goes through the project's bounded, cooperative resolver, asking the DHCP-provided DNS server
     only (`DNSFallback` is NTP's own list);
   - the client never has more than 2,000 B written that no PINGRESP confirmed, its share of lwIP's TCP
-    memory; a write that still meets a full arena answers `EAGAIN` under the audit's U21 override instead
-    of lwIP's 10 s retry (SPECIFICATION.md B.14.4).
+    memory; a write that still meets a full arena answers `EAGAIN` under the firmware's `modlwip_eagain`
+    override instead of lwIP's 10 s retry (SPECIFICATION.md B.14.4).
 - **Hotspot mode**: the client is off there (owner, 2026-10-08: 'Generally, when the device is in hotspot
   mode, the MQTT client is off.'): no socket, no DNS query, no log.
 - **Recovery**: a dead transport is found by the 10 s PINGRESP deadline of the ping that follows every
@@ -162,7 +164,7 @@ What that became on this branch:
   run, and the runner refuses it alongside a scope.
 - **A run scope.** `scripts/run_bench_hardware_suite.sh --scope mqtt` runs the lower levels, then only what
   `tests_hardware/run_scopes.py` lists, each entry with the reason the branch reaches it. That is 3 flash
-  tests and 78 bench tests (section 5). Its owned writes are `networking/identity`, `networking/mqtt`,
+  tests and 79 bench tests (section 5). Its owned writes are `networking/identity`, `networking/mqtt`,
   `networking/ntp` and `notification/autoConfig`; nothing in it writes the SCD30.
 - **Not in this run**, left for the full bench later: the bus-hazard and sensor push tests, every SCD30
   write, every soak.
@@ -178,47 +180,44 @@ What that became on this branch:
   for a full L3/L4 pass.
 - The broker name is asked of the DHCP-provided DNS server only, never NTP's `DNSFallback` list.
 
-### 1.7 Known failures that are not this branch's
+### 1.7 Known failures
 
-**In the lower levels and CI.** All three are in code this branch does not touch (the UART protocol and
-the CI toolchain step, from the audit's U17 and U16), and each is commented on PR hundertvolt/sensors#110:
+**In the lower levels, not this branch's (item 1).**
+`tests/test_asy_uart_driver.py::test_two_concurrent_cancellers_both_return` failed once at `gc.threshold(32768)` on
+a loaded machine: the second canceller returned `False`, a race in the test, in code this branch does not touch.
+The Pi4 is slower than the machines it ran on, so it may fail in the lower levels here; section 6 says what to do.
 
-1. `tests/test_uart_comm_hazard.py::test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16`
-   failed once in CI's coverage job ("no recovery within two transactions after step 2"). The audit's U18
-   fix (`cfd92e4`, merged here) root-caused it (the sweep's CRC16 pair ran on a 30 ms budget instead of
-   SPECIFICATION.md J.7's 240 ms) and moved the sweeps to `tests/test_uart_comm_cancel_sweep.py`.
-2. `tests/test_asy_uart_driver.py::test_two_concurrent_cancellers_both_return` failed once locally at
-   `gc.threshold(32768)` on a loaded machine: the second canceller returned `False`. It is a race in the
-   test.
-3. CI's `firmware-build-verify (wozi)` hit its job limit while `apt-get install` hung.
+**The bench log check.** Every bench test fails on an E or W entry its `@pytest.mark.provokes_log` marker does not
+name (`tests_hardware/bench/conftest.py`). The connection-ceiling and malformed-head tests name the W60
+`HTTP_REFUSED` and W61 `HTTP_BAD_HEAD` entries they provoke, and the MQTT module's fault tests the MQTT codes theirs
+do. A code outside a test's marker is a real failure (section 6).
 
-The Pi4 is slower than the machines these ran on, so 1 or 2 may fail in the lower levels here. Section 6
-says what to do.
+**This branch's own, expected: the full-build heap bound (item 2).**
+`tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build` bounds what
+`build_system()` and the setups keep at 41,000 B (SPECIFICATION.md Part N
+`l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev` without the client
+(35,984 B), 5,016 B under the bound. The client's construction comes on top: one held 8,432 B on the 2026-10-08
+image, its buffers about 5 KB of it (DESIGN.md §5; its imports sit before the test's baseline). So the test is
+expected to fail (agent estimate, 2026-11-15) with "the build and its setups keep <N> B, over 41000 B".
+BACKLOG.md's deferred entry waits on that reading. If it fails that way and on nothing else:
+- record its result note (the kept bytes, the largest block and the heap figures, written before its assertions)
+  and the whole failure text in the results;
+- the flash step has failed, so the runner stops before the bench step (`set -e`). Ask the owner whether to run the
+  bench step on its own; if yes, run the runner's own bench-step call with the scope's tests:
 
-**On the bench, from the audit's U19 (`f5c8255`, merged here).** U19's web server writes two new warnings
-to the persisted WEBSERVER log: W60 `HTTP_REFUSED` for a connection refused at the ceiling, and W61
-`HTTP_BAD_HEAD` for a refused request head. Each also counts in `/status`'s `HTTPDropped`. Four scoped
-bench tests were written before that, and each still ends by asserting an empty WEBSERVER log:
+  ```bash
+  scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt \
+      --levels "L4, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
+      --not-clean-reason "scope mqtt: the bench step alone, its flash step failed on the known heap bound" \
+      $(python3 tests_hardware/run_scopes.py mqtt bench) \
+      --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig \
+      2>&1 | tee -a "$HOME/mqtt_bench_console.log"; echo "bench step exit ${PIPESTATUS[0]}"
+  ```
 
-4. `test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`: it
-   opens one connection past the ceiling on purpose (W60).
-5. `test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures`:
-   `discover_max_connections()` holds connections until one is refused (W60).
-6. `test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status`:
-   its storm is meant to go past the ceiling (W60).
-7. `test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly`: "NOT A REAL
-   HTTP REQUEST" is now refused (W61). This
-   one is the audit's open finding OF-101, which its U26 fixes before any L4 run; the audit's scan does not
-   name 4 to 6.
+- report the run NOT CLEAN naming the bound. Never edit the bound or the test: it changes only through a new
+  derivation of the need (owner, 2026-10-02), the owner's to make.
 
-These tests are the audit's, so this branch leaves them as they are. A failure is one of these known items
-only if all of the following hold:
-- it fails at that WEBSERVER-log check;
-- every earlier assertion in the test passed;
-- the log holds only W60 (4 to 6) or W61 (7) entries, and `HTTPDropped` is at least 1.
-
-Record such a failure as known, quoting the log. Edit nothing in those tests, and report the run NOT CLEAN
-naming them. Any other WEBSERVER code, or an earlier assertion failing, is a real failure (section 6).
+Any other assertion of that test failing (the largest free block, the placement) is a real failure (section 6).
 
 ---
 
@@ -260,8 +259,8 @@ CLAUDE.md is the authority; these are the rules this run meets.
   - the MQTT module enables the client once and switches it off at the end;
   - the hotspot module clears the board's SSID to force hotspot mode and restores it when it ends;
   - if the board cannot rejoin the bench AP, `dut_ip` pushes the bench SSID and password to it.
-- **The hotspot module's stage 6 takes the board through a failed credential.** Since the audit's U22 a
-  credentials change lands in the fresh-boot state: a failed one reopens the board's hotspot once more, and a
+- **The hotspot module's stage 6 takes the board through a failed credential.** A credentials change lands
+  in the fresh-boot state (SPECIFICATION.md A.4): a failed one reopens the board's hotspot once more, and a
   second failed streak turns the Wi-Fi silent, one connect attempt per `hotspot_time_min`; nothing is
   terminal. The module's fixture recovers with a hard reset; `tests_hardware/README.md` ("What a failed
   stage-6 credential does") has the account. Do not interrupt the run inside that module. If it was
@@ -276,14 +275,14 @@ CLAUDE.md is the authority; these are the rules this run meets.
    and check it out. Create the results directory, named by today's date and the commit
    (`git rev-parse --short HEAD`): `mqtt_poc/bench_results/<YYYY-MM-DD>_<commit>/` (section 7).
 2. **Provision the host**: `uv run toolchain/setup_toolchain.py env --tier bench`. It installs `mosquitto`
-   and `avahi-daemon` when missing, and since the audit's U21 it checks passwordless sudo for the commands the
+   and `avahi-daemon` when missing, and it checks passwordless sudo for the commands the
    bench runs unattended (`tests_hardware/README.md`, Prerequisites). Check `systemctl is-active avahi-daemon`: the `.local` test needs the
    Pi4 to answer for its own host name. The Debian package also starts a system mosquitto on port 1883,
    which no test uses (they start their own on 18883).
 3. **Save the FRAM-backed logs from the image running now, before the flash.**
-   - Why before: the new image builds the client before the UART links, so its `MQTT` and `CFGMGR_MQTT`
-     chunks come ahead of `UART_init`'s, `UART_resp`'s and `WEBSERVER`'s, whose old chunks are no longer found
-     after the flash.
+   - Why before: the new image's chunk layout differs from the old one's. Its `MQTT` and `CFGMGR_MQTT` chunks
+     come ahead of `UART_init`'s, `UART_resp`'s and `WEBSERVER`'s, and since the audit's close `CFGMGR_SCD30` has
+     a chunk of its own after `SCD30`'s, so the old chunks after it are no longer found after the flash.
    - Find the board's address with `ip neigh show dev br0`, or the router's lease for `SensorStationDev`.
    - Save `GET /status` and `GET /system` (its `build` group names the running image) as
      `fram_before_flash.json` and `system_before_flash.json` in the results directory.
@@ -309,10 +308,11 @@ before the board (section 6).
 
 **The flash step: 3 tests.**
 - The FRAM chunk layout after a full system build, which now holds the two MQTT chunks.
-- The full-build heap headroom, with the client's buffers resident.
+- The full-build heap headroom, with the client's buffers resident: expected to fail its 41,000 B bound
+  (section 1.7, item 2).
 - The `env --tier flash` rerun, about 8 minutes, since `mosquitto` joined the apt packages.
 
-**The bench step: 78 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
+**The bench step: 79 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
 estimates.
 
 - **The client** (`tests_hardware/bench/test_mqtt_broker_faults.py`, roughly 20 to 30 minutes). It starts
@@ -375,8 +375,7 @@ that ran passed, but the rest of both tiers did not run. Exit 1 is a failure. On
   code this branch does not touch, ask the owner whether to go on with `--skip-lower-levels`. That run is
   reported NOT CLEAN with both reasons named. Never go on without asking.
 - **A hardware test fails.**
-  0. If it is one of section 1.7's bench items (4 to 7), check that item's signature. If it matches, save
-     the FRAM logs (step 2) and record it as known. Otherwise go on with step 1.
+  0. If it is section 1.7's item 2, follow that item. Otherwise go on with step 1.
   1. Keep the evidence: the run's archive under `build/archive/` and the console log.
   2. Read the FRAM logs (`GET /status` `errcount`) before anything resets them; the next test's setup
      usually does. Save them into the results as `fram_after_failure_<test>.json`.
@@ -461,8 +460,7 @@ may still run long by one loop stall.
   the committed results.
 - **Statuses**: DESIGN.md §11.1 and BACKLOG.md's "Real-hardware work still owed" entry state the run's
   outcome.
-- **This file and `mqtt_poc/`** are deleted once their outcomes have migrated, when the PoC merges after the
-  audit.
+- **This file and `mqtt_poc/`** are deleted once their outcomes have migrated, when the PoC merges.
 
 ## 10. File map
 

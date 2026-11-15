@@ -218,10 +218,10 @@ reference for how any of it runs (flags, wear gates, traps).
 
 ## Deferred / explicitly out-of-scope work
 
-- **The MQTT client against the full-system heap bound, after the audit** (branch
-  `claude/whole-project-audit-plan-followup` only, until it merges; owner, 2026-10-08: "The heap limit should
-  definitely be obeyed in the final version, but that's a topic becoming relevant when the audit is done.").
-  The client cost 11,360 B in all, its imports included (`mqtt_poc/DESIGN.md` §5), on the 2026-10-08 image, before
+- **The MQTT client against the full-system heap bound** (branch `claude/whole-project-audit-plan-followup`
+  only, until it merges; owner, 2026-10-08: "The heap limit should definitely be obeyed in the final version, but
+  that's a topic becoming relevant when the audit is done."; the audit closed on 2026-11-13). The client cost
+  11,360 B in all, its imports included (`mqtt_poc/DESIGN.md` §5), on the 2026-10-08 image, before
   the restructure folded its codec in, took its publisher out and added `dev`'s exerciser (`mqtt_poc/DESIGN.md` §17), so the
   figure is owed again by the next flash step; the `dev` image's flash
   step read 114,768 B against the 100,000 B total `test_real_gc_heap_headroom_survives_a_full_system_build`

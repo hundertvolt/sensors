@@ -127,13 +127,13 @@ run) and closing every finding in `RESULTS.md`.
   `mqtt.qos1_max_tries` (counted, never a teardown — the `mqtt_as` A9 self-inflicted reconnect).
 - **Stalled broker**: the stream's pending output past `mqtt.max_out_backlog` bytes, or a drain not done
   within `mqtt.drain_timeout_ms` → teardown (E `MQTT_STALLED`). Small packets keep each `tcp_write()`
-  small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed by the audit's U21 `modlwip_eagain`
+  small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed by the firmware's `modlwip_eagain`
   override (SPECIFICATION.md B.14.4): the send answers `EAGAIN` and its rest waits in the stream's buffer.
 - **Unconfirmed bytes** (§14 item 2): at most `mqtt.unconfirmed_max_bytes` written that no PINGRESP has
   confirmed, the connection's 2,000 B share of lwIP's `MEM_SIZE`. A PINGRESP confirms everything up to
   its PINGREQ (TCP is in order). A PUBLISH that would pass the cap waits in the ring and the next tick
   pings early; PUBACKs and PINGREQs are never held. MQTT then cannot be what exhausts `MEM_SIZE`, which
-  since U21 costs the other connections an `EAGAIN` rather than a 10 s `ERR_MEM` loop.
+  with that override costs the other connections an `EAGAIN` rather than a 10 s `ERR_MEM` loop.
 - **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and discarded
   in buffer-sized chunks (counted `RxDropped`, never allocated). A remaining length past four bytes, an
   unexpected packet type, a QoS 2 PUBLISH or a PUBLISH whose topic overruns it → teardown
@@ -408,7 +408,7 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
 `mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
 before the flash, the one flash, the scoped run
 (`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`),
-what each of its 3 flash and 78 bench tests covers, where the results go and which Part N rows they settle,
+what each of its 3 flash and 79 bench tests covers, where the results go and which Part N rows they settle,
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
@@ -506,7 +506,8 @@ more conservative, more easily reversible choice:
   should definitely be obeyed in the final version, but that's a topic becoming relevant when the audit is
   done. Anyway, as in other places in this project: Contiguous chunk splitting, long term allocation
   survivor placement and conservative memory management are techniques to be applied in any case here."
-  §5 has how; BACKLOG.md's deferred list holds the bound for after the audit.
+  §5 has how; BACKLOG.md's deferred list holds the bound, due with the next flash step now that the audit
+  closed (2026-11-13).
 
 - No TLS: 'TLS is not needed as it all runs in a local network.' A plain IP address is always accepted
   and nothing may block: 'It should accept plain IP addresses anyway. But it must not block, ever.'
