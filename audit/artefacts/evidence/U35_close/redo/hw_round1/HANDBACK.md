@@ -44327,3 +44327,61 @@ handshake ACK -> board RST, reset at the handshake (no request byte acknowledged
   request byte is acknowledged. Handed back as it is; nothing fixed. Board serving, MQTT disabled.
 - Evidence: logs/day9_20261115/20261115T095818Z_r43_mixed.pcap, r43_tcpdump.err, r43_test.out, r43_classify.out,
   status_r43_{pre,end}.json.
+
+## Bench 2026-11-15 10:15 UTC - relay 44: the relay-43 capture reclassified: 10 resets after the request = the 10 W60; 15 before any request byte
+
+- Relay 44's r43_classify_resets.py (the first board RST's own ack field) on the same pcap, `--rows`, no board contact.
+  Output verbatim:
+```
+connections: 65
+   5  (also counted above) SYN retransmitted | (no request seen) | ?
+   1  (also counted above) SYN retransmitted | GET /status | ?
+   8  (also counted above) SYN retransmitted | PUT /sensors | over cap
+   9  (also counted above) SYN retransmitted | PUT /sensors | within cap
+   2  answered 200 | GET /sensors | ?
+  13  answered 200 | GET /status | ?
+   4  answered 200 | GET /system | ?
+   9  answered 200 | PUT /sensors | within cap
+   1  answered 200 | PUT /status | within cap
+   6  answered 413 | PUT /sensors | over cap
+   5  no SYN-ACK | (no request seen) | ?
+   6  reset after receiving request bytes (RST acks them) | PUT /sensors | over cap
+   4  reset after receiving request bytes (RST acks them) | PUT /sensors | within cap
+   4  reset before any request byte (RST acks the SYN only) | (no request seen) | ?
+   6  reset before any request byte (RST acks the SYN only) | PUT /sensors | over cap
+   5  reset before any request byte (RST acks the SYN only) | PUT /sensors | within cap
+handshake ACK -> board RST, reset after receiving request bytes (RST acks them): n=10 min 30.9 ms, median 106.3 ms, max 175.0 ms
+handshake ACK -> board RST, reset before any request byte (RST acks the SYN only): n=15 min 1.4 ms, median 1.8 ms, max 5.6 ms
+reset connections:
+  port 33784: PUT /sensors over cap; RST 119.0 ms after the handshake ACK, acks 181 request byte(s); client data -116.7 ms after the RST
+  port 33796: PUT /sensors within cap; RST 128.1 ms after the handshake ACK, acks 180 request byte(s); client data -126.0 ms after the RST
+  port 33802: PUT /sensors over cap; RST 5.6 ms after the handshake ACK, acks 0 request byte(s); client data -4.2 ms after the RST
+  port 33818: PUT /sensors within cap; RST 4.4 ms after the handshake ACK, acks 0 request byte(s); client data -4.3 ms after the RST
+  port 33836: PUT /sensors within cap; RST 4.4 ms after the handshake ACK, acks 0 request byte(s); client data -1.6 ms after the RST
+  port 33838: PUT /sensors over cap; RST 4.4 ms after the handshake ACK, acks 0 request byte(s); client data -0.6 ms after the RST
+  port 33852: PUT /sensors over cap; RST 175.0 ms after the handshake ACK, acks 181 request byte(s); client data -174.8 ms after the RST
+  port 33868: PUT /sensors over cap; RST 1.7 ms after the handshake ACK, acks 0 request byte(s); client data -0.1 ms after the RST
+  port 33890: PUT /sensors within cap; RST 2.2 ms after the handshake ACK, acks 0 request byte(s); client data -1.1 ms after the RST
+  port 33900: PUT /sensors over cap; RST 2.3 ms after the handshake ACK, acks 0 request byte(s); client data -1.9 ms after the RST
+  port 33920: PUT /sensors within cap; RST 4.4 ms after the handshake ACK, acks 0 request byte(s); client data -2.7 ms after the RST
+  port 33926: PUT /sensors over cap; RST 118.4 ms after the handshake ACK, acks 181 request byte(s); client data -118.2 ms after the RST
+  port 33936: - ?; RST 1.7 ms after the handshake ACK, acks 0 request byte(s); client data None ms after the RST
+  port 33950: PUT /sensors within cap; RST 93.7 ms after the handshake ACK, acks 180 request byte(s); client data -93.6 ms after the RST
+  port 33960: - ?; RST 1.8 ms after the handshake ACK, acks 0 request byte(s); client data None ms after the RST
+  port 33974: PUT /sensors within cap; RST 106.3 ms after the handshake ACK, acks 179 request byte(s); client data -106.1 ms after the RST
+  port 33976: PUT /sensors over cap; RST 70.4 ms after the handshake ACK, acks 181 request byte(s); client data -70.3 ms after the RST
+  port 33980: PUT /sensors over cap; RST 1.5 ms after the handshake ACK, acks 0 request byte(s); client data 0.1 ms after the RST
+  port 34000: - ?; RST 1.7 ms after the handshake ACK, acks 0 request byte(s); client data None ms after the RST
+  port 34004: PUT /sensors over cap; RST 1.5 ms after the handshake ACK, acks 0 request byte(s); client data -1.4 ms after the RST
+  port 34016: - ?; RST 1.8 ms after the handshake ACK, acks 0 request byte(s); client data None ms after the RST
+  port 34018: PUT /sensors within cap; RST 30.9 ms after the handshake ACK, acks 179 request byte(s); client data -30.9 ms after the RST
+  port 34038: PUT /sensors over cap; RST 85.9 ms after the handshake ACK, acks 181 request byte(s); client data -85.8 ms after the RST
+  port 34052: PUT /sensors within cap; RST 1.4 ms after the handshake ACK, acks 0 request byte(s); client data -1.3 ms after the RST
+  port 34064: PUT /sensors over cap; RST 39.2 ms after the handshake ACK, acks 181 request byte(s); client data -39.2 ms after the RST
+```
+- Against relay 44's criterion: "reset after receiving request bytes" n = 10 (4 within the cap, 6 over it), the window's
+  10 W60 HTTP_REFUSED (HTTPDropped 10), RST 30.9-175.0 ms after the handshake ACK with 179-181 request bytes acked;
+  "reset before any request byte" n = 15 (5 within the cap, 6 over, 4 with no request seen), RST 1.4-5.6 ms after the
+  handshake ACK, acking the SYN only, the client's data already in flight (-4.3 to +0.1 ms). The root cause holds on
+  this capture: the uncounted refusals are the board's handshake aborts at the full accept queue. Nothing on the board;
+  it stays serving, MQTT disabled. Evidence: logs/day9_20261115/r44_classify.out.
