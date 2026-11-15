@@ -74,7 +74,7 @@ And on 2026-10-08:
   2026-10-07: "After audit closes"); the owner retargets it to `main` and merges it. Never merge it, rebase it,
   force-push it or push to another branch.
 - **Verified on the host** (`9fd691ef`, the final base merged; the commits after it change only docs), each
-  tier run on its own, as CI's jobs run them (GitHub's Actions budget is spent until 2026-12-01, so no CI ran):
+  tier run on its own, as CI's jobs run them:
   - lint (ruff, shellcheck, actionlint, zizmor) and all three typecheck passes;
   - `scripts/test.sh` at both GC stages: 124 files, 5,381 MicroPython tests, zero memory errors; `tests_scripts/`
     6,704 passed, 6 skipped; the scenario harness on all four devices;
@@ -89,7 +89,8 @@ And on 2026-10-08:
     (412 passed, 9 skipped), the cross-browser smoke (32 of 32, no engine skipped);
   - the four devices' firmware builds and UF2 checks; `dev`'s image 1,177,644 B of the 1,228,800 B before the
     filesystem (95.8 %).
-- **CI**: none ran on this head (the Actions budget, above); the local gate stands in for it job by job.
+- **CI**: every job green on `4bb79932`, the docs commit after `9fd691ef` (run 43695470540), the coverage job and
+  the twin's eight legs included.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
