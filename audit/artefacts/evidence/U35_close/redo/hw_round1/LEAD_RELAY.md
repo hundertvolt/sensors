@@ -1,5 +1,24 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-15 10:06 UTC - relay 44: the relay-43 capture reclassified (no board contact)
+
+Your relay-43 hand-back is taken: the AP outage's recovery reset is the documented CYW43 case, as on both 2026-10-08
+runs. The capture's one class is my classifier's fault, not a finding. lwIP delays its ACK, so a server-side close of a
+connection whose request it holds unread sends its RST before any pure ACK, and that RST's own ack field covers the
+request bytes. The script read only the earlier ACKs. This relay's version reads the first board RST's ack: ISN + 1
+means the board aborted before any request byte arrived (modlwip's full accept queue: the accept callback runs at
+handshake completion); past ISN + 1 means the server closed a connection whose request it had received (its ceiling
+refusal, W60).
+
+1. Fetch and merge. On the same pcap, nothing on the board:
+   ```
+   tcpdump -nn -tt -S -A -r logs/day9_20261115/20261115T095818Z_r43_mixed.pcap 'host <DUT_IP> and tcp port 80' \
+       | python3 audit/artefacts/evidence/U35_close/redo/hw_round1/r43_classify_resets.py <DUT_IP> 2048 --rows
+   ```
+2. Hand back its output verbatim, rows included. The root cause holds if "reset after receiving request bytes" is
+   about the window's 10 W60 and "reset before any request byte" is the rest; anything else is a finding, as it is.
+3. Nothing else; the board stays as it is.
+
 ## Lead 2026-11-15 09:56 UTC - relay 43: the mixed-body red's root cause on the wire; the AP outage's recovery (no flash, no write)
 
 Your relay-42 hand-back is taken. The owner, asked in the code session about the mixed-body red: "Try to root cauee".
