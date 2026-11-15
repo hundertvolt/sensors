@@ -59,9 +59,11 @@ _DRIVER_JOIN_S = 90.0
     ("WIFI", "E", "CFG_GET_RAISED"),
     ("NTP", "E", "CFG_GET_RAISED"),
     ("NOTIFY", "E", "CFG_GET_RAISED"),
+    ("MQTT", "E", "CFG_GET_RAISED"),
     ("BMP3XX", "E", "CFG_CALLBACK_RAISED"),
     ("ISL29125", "E", "CFG_CALLBACK_RAISED"),
     ("WIFI", "E", "CFG_CALLBACK_RAISED"),
+    ("MQTT", "E", "CFG_CALLBACK_RAISED"),
 )
 @pytest.mark.ends_unreachable
 def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board", result_note: "_load.Note") -> None:
