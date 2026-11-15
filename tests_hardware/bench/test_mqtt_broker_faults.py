@@ -68,7 +68,7 @@ _STALL_PHASE_TOLERANCE_S = 1.5  # the keeper's 100 ms tick, the console's USB la
 _STATUS_TOPIC = "bench/availability"  # a status topic outside the device's own tree (owner, 2026-10-13: 'Any full topic')
 
 _E_CONNECT = code("E", "MQTT_CONNECT")
-# What this module's broker faults may log: a failed attempt, a lost connection, a missed PINGRESP, a stalled drain and
+# What this module's broker faults may log: a failed attempt, a lost connection, a missed PINGRESP, a stalled write and
 # the short-session warning; each fault test names them in provokes_log, a protocol, refusal or allocation code fails.
 _EXPECTED_MQTT_CODES = {_E_CONNECT, code("E", "MQTT_LOST"), code("E", "MQTT_NO_PINGRESP"), code("E", "MQTT_STALLED"), code("W", "MQTT_SHORT_SESSIONS")}
 
@@ -359,7 +359,7 @@ def test_a_killed_broker_is_reconnected_after_its_restart(mqtt_bench: MqttBench,
 
 
 @pytest.mark.provokes_log(
-    "the stalled broker's missed PINGRESP or stalled drain, and the reconnect's attempts",
+    "the stalled broker's missed PINGRESP or stalled write, and the reconnect's attempts",
     ("MQTT", "E", "MQTT_CONNECT"),
     ("MQTT", "E", "MQTT_LOST"),
     ("MQTT", "E", "MQTT_NO_PINGRESP"),
@@ -381,7 +381,7 @@ def test_a_stalled_broker_is_detected_by_the_pingresp_deadline(mqtt_bench: MqttB
 
 
 @pytest.mark.provokes_log(
-    "the dropped path's missed PINGRESP or stalled drain, and the attempts until it is restored",
+    "the dropped path's missed PINGRESP or stalled write, and the attempts until it is restored",
     ("MQTT", "E", "MQTT_CONNECT"),
     ("MQTT", "E", "MQTT_LOST"),
     ("MQTT", "E", "MQTT_NO_PINGRESP"),

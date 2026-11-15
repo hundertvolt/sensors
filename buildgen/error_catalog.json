@@ -115,7 +115,7 @@
       "118": {"owner": "mqtt", "name": "MQTT_PROTOCOL", "text": "a malformed or unexpected packet arrived from the broker; the connection was closed"},
       "119": {"owner": "mqtt", "name": "MQTT_NO_PINGRESP", "text": "no PINGRESP within its deadline while the link reported up; the connection was closed"},
       "120": {"owner": "mqtt", "name": "MQTT_LOST", "text": "the broker closed the connection, or a socket error ended it"},
-      "121": {"owner": "mqtt", "name": "MQTT_STALLED", "text": "the broker stopped reading (send backlog or drain timeout); the connection was closed"},
+      "121": {"owner": "mqtt", "name": "MQTT_STALLED", "text": "the broker stopped reading (no byte taken for the drain timeout); the connection was closed"},
       "122": {"owner": "mqtt", "name": "MQTT_SUB_REFUSED", "text": "the broker refused a subscription"},
       "123": {"owner": "mqtt", "name": "MQTT_DNS", "text": "the broker's name did not resolve"},
       "125": {"owner": "test", "name": "TEST_SEED_A", "text": "test seed A, written only by hardware test scripts; on a board it means a test ran against this FRAM"},

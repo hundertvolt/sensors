@@ -51,6 +51,11 @@ if TYPE_CHECKING:
 
         def write(self, buf: bytes | bytearray | memoryview) -> None: ...
 
+    class _Sock(Protocol):
+        # The connection's non-blocking socket as the keeper writes it: write(buf, off, n) sends from buf[off:off + n], as
+        # readinto(buf, nbytes) reads (py/stream.c, stream_readinto_write_generic()); the stubs type write(buf) alone.
+        def write(self, buf: bytearray, off: int, n: int) -> int | None: ...
+
     # Build-time values the generated module passes whole: the client id default and every timing (Part N's mqtt.*).
     class MqttConfig(NamedTuple):
         client_id: str
@@ -140,8 +145,6 @@ _OUT_PAYLOAD = const(256)
 _ACK_SLOTS = const(32)  # inbound QoS 1 ids awaiting their PUBACK; above the broker's in-flight window (20)
 # @tunable mqtt.last_topic_bytes = 64
 _LAST_TOPIC_BYTES = const(64)
-# @tunable mqtt.max_out_backlog = 2048
-_MAX_OUT_BACKLOG = const(2048)  # bytes the socket has not taken yet; past it the broker counts as stalled
 # @tunable mqtt.qos1_max_tries = 3
 _QOS1_MAX_TRIES = const(3)
 # @tunable mqtt.short_session_warn = 3
@@ -461,6 +464,9 @@ class MQTTClient(SensorReaderConfig):
     _unconfirmed: int
     _ping_mark: int
     _ping_early: bool
+    _tx_off: int
+    _tx_left: int
+    _tx_moved: "_TicksMs"
     # One MQTTPingInterval second in ms; a class attribute, so the device's instances hold no copy and a test shortens it.
     _ping_unit_ms = 1000
 
@@ -544,6 +550,7 @@ class MQTTClient(SensorReaderConfig):
         self._cfg_warned = False
         self._reader: asyncio.Task[None] | None = None
         self._stream: _Stream | None = None
+        self._sock: _Sock | None = None  # the stream's socket, which every write after the CONNECT's goes to
         self._host = ""
         self._port = 0
         self._user = b""
@@ -603,6 +610,7 @@ class MQTTClient(SensorReaderConfig):
         reader, self._reader = self._reader, None
         if reader is not None:
             reader.cancel()  # out of the poll set at once; its end raises nothing anyone must retrieve
+        self._sock = None
         stream, self._stream = self._stream, None
         if stream is not None:
             try:
@@ -636,6 +644,7 @@ class MQTTClient(SensorReaderConfig):
             return _R_CONNECT
         stream: _Stream = asyncio.StreamReader(sock)  # type: ignore[assignment]  # MicroPython's one Stream class
         self._stream = stream  # owned from here: _close() ends it on every path
+        self._sock = sock  # type: ignore[assignment]  # write(buf, off, n), which the stubs do not type (_Sock)
         sock.setblocking(False)
         # The keep-alive promises the next ping within the interval plus its own deadline; 0 promises none (section 3.1.2.10).
         keepalive = self._ping_s + (self._cfg.response_timeout_ms + 999) // 1000 if self._ping_s else 0
@@ -651,7 +660,7 @@ class MQTTClient(SensorReaderConfig):
                 if e.errno != errno.EINPROGRESS:
                     raise
             stream.write(self._txmv[:n])  # held in out_buf until the handshake completes
-            await asyncio.wait_for_ms(stream.drain(), self._cfg.connect_timeout_ms)
+            await asyncio.wait_for_ms(stream.drain(), self._cfg.connect_timeout_ms)  # returns with out_buf empty, for good
             reason = await self._read_connack(stream, clean=clean, quiet=quiet)
         except (OSError, asyncio.TimeoutError) as e:
             if not quiet:
@@ -692,21 +701,21 @@ class MQTTClient(SensorReaderConfig):
             if reason != _R_LINK:
                 await self._backoff_wait()
 
-    def _flush_acks(self, stream: "_Stream") -> None:
-        # The PUBACKs the reader queued, sent by the keeper alone: one writer, so no write lands in a running drain.
-        while self._ack_count > 0:
+    def _flush_acks(self, sock: "_Sock") -> None:
+        # The PUBACKs the reader queued, sent by the keeper alone: one writer, so no two packets interleave.
+        while self._ack_count > 0 and not self._tx_left:
             i = self._ack_head * 2
             n = encode_puback(self._txmv, (self._acks[i] << 8) | self._acks[i + 1])
-            self._write(stream, self._txmv[:n])  # tiny and never held: the broker's inbound flow depends on them
+            self._write(sock, n)  # never held by the cap: the broker's inbound flow depends on them
             self._ack_head = (self._ack_head + 1) % _ACK_SLOTS
             self._ack_count -= 1
 
-    def _flush_outbound(self, stream: "_Stream", now: "_TicksMs") -> None:
+    def _flush_outbound(self, sock: "_Sock", now: "_TicksMs") -> None:
         # Queued messages oldest first, then QoS 1 retransmissions; a give-up is counted, never a teardown.
         for _ in range(_OUT_SLOTS):
             i = self._oldest_queued()
-            if i < 0 or not self._send_slot(stream, i, dup=False):
-                break  # nothing queued, or no room: order is kept, the rest waits for the ping's answer
+            if i < 0 or not self._send_slot(sock, i, dup=False):
+                break  # nothing queued, or no room: order is kept, the rest waits for the ping's answer or the socket
             self._bump(_C_TX)
             if self._slot_qos[i]:
                 self._slot_state[i] = _SLOT_INFLIGHT
@@ -718,8 +727,16 @@ class MQTTClient(SensorReaderConfig):
                 if self._slot_tries[i] >= _QOS1_MAX_TRIES:
                     self._free(i)
                     self._bump(_C_TX_DROP)
-                elif self._send_slot(stream, i, dup=True):
+                elif self._send_slot(sock, i, dup=True):
                     self._slot_sent[i] = now
+
+    async def _flushed(self, sock: "_Sock") -> bool:
+        # The remainder written on the keeper's tick until none is left (True); False once it stalled (_push()).
+        while self._tx_left:
+            await asyncio.sleep_ms(self._cfg.tick_ms)
+            if not self._push(sock):
+                return False
+        return True
 
     def _free(self, i: int) -> None:
         self._slot_state[i] = _SLOT_FREE
@@ -856,6 +873,18 @@ class MQTTClient(SensorReaderConfig):
         self._detail = first
         return _R_PROTOCOL
 
+    def _push(self, sock: "_Sock") -> bool:
+        # The remainder, as much as the socket takes now; False once it took none for mqtt.drain_timeout_ms. write()
+        # answers EAGAIN with None, never raising it, and a part when only a part fits (py/stream.c); 0 counts as none.
+        n = sock.write(self._tx, self._tx_off, self._tx_left)
+        if n:
+            self._tx_off += n
+            self._tx_left -= n
+            if self._tx_left:
+                self._tx_moved = time.ticks_ms()
+            return True
+        return time.ticks_diff(time.ticks_ms(), self._tx_moved) < self._cfg.drain_timeout_ms
+
     def _queue(self, topic: bytes, payload: bytes | bytearray | memoryview, qos: int, *, retain: bool) -> bool:
         i = self._free_slot()
         if i < 0:
@@ -978,15 +1007,15 @@ class MQTTClient(SensorReaderConfig):
             self._reader_end = _R_UNEXPECTED
             self.pr.err_s("Reader ended unexpectedly:", e, errno=_ERR_UNEXPECTED)
 
-    def _resend_inflight(self, stream: "_Stream", now: "_TicksMs") -> None:
+    def _resend_inflight(self, sock: "_Sock", now: "_TicksMs") -> None:
         # Section 4.4: a resumed session's unacknowledged messages, oldest first, with their packet ids and DUP; one the
-        # unconfirmed-bytes cap holds goes with the next retransmission round instead.
+        # unconfirmed-bytes cap or a remainder holds goes with the next retransmission round instead.
         while True:
             i = -1
             for j in range(_OUT_SLOTS):
                 if self._slot_state[j] == _SLOT_INFLIGHT and not self._slot_tries[j] and (i < 0 or self._slot_seq[j] < self._slot_seq[i]):
                     i = j
-            if i < 0 or not self._send_slot(stream, i, dup=True):
+            if i < 0 or not self._send_slot(sock, i, dup=True):
                 return
             self._slot_sent[i] = now
 
@@ -1008,6 +1037,9 @@ class MQTTClient(SensorReaderConfig):
         self._unconfirmed = 0  # bytes written since the CONNACK that no PINGRESP has confirmed yet
         self._ping_mark = 0  # _unconfirmed right after the outstanding PINGREQ: what its PINGRESP confirms
         self._ping_early = False  # a PUBLISH awaits confirmation or room: the next free tick pings, interval or not
+        self._tx_off = 0  # the remainder: _tx[_tx_off:_tx_off + _tx_left], a packet the socket has not taken whole yet
+        self._tx_left = 0
+        self._tx_moved = now  # when the socket last took a byte of it, or it was written
 
     async def _retire_session(self) -> None:
         # One clean connect with the identity left behind and no will, then DISCONNECT: the broker discards that session
@@ -1020,12 +1052,14 @@ class MQTTClient(SensorReaderConfig):
         self._reset_connection_state()
         self._set_state(_ST_CONNECTING)
         try:
-            if await self._connect(host, port, client_id, user, password, b"", clean=True, quiet=True) == _R_NONE and self._stream is not None:
-                self._stream.write(_DISCONNECT_PKT)
-                await asyncio.wait_for_ms(self._stream.drain(), self._cfg.drain_timeout_ms)
-                self.pr.evt("Ended the persistent session left on", host)
-                return
-        except (OSError, asyncio.TimeoutError):
+            sock = self._sock if await self._connect(host, port, client_id, user, password, b"", clean=True, quiet=True) == _R_NONE else None
+            if sock is not None:
+                self._tx[0:2] = _DISCONNECT_PKT
+                self._write(sock, 2)
+                if await self._flushed(sock):
+                    self.pr.evt("Ended the persistent session left on", host)
+                    return
+        except OSError:
             pass
         finally:
             await self._close()
@@ -1047,8 +1081,11 @@ class MQTTClient(SensorReaderConfig):
                 self.pr.err_s("network_available_locked() callback failed:", e, errno=_ERR_CALLBACK)
                 return False
 
-    def _send_slot(self, stream: "_Stream", i: int, *, dup: bool) -> bool:
-        # False when the PUBLISH would take the unconfirmed bytes past their cap; it waits for the next ping's answer.
+    def _send_slot(self, sock: "_Sock", i: int, *, dup: bool) -> bool:
+        # False while a remainder is pending, or when the PUBLISH would take the unconfirmed bytes past their cap; it
+        # waits for the socket, or for the next ping's answer.
+        if self._tx_left:
+            return False
         if not dup and self._slot_qos[i]:
             self._slot_pid[i] = self._next_pid()
         topic = self._slot_topic[i] or b""
@@ -1061,21 +1098,23 @@ class MQTTClient(SensorReaderConfig):
                     self._ping_early = True
                 return False
             self._tx[head:n] = memoryview(self._slots[i])[:length]  # the payload after its head: one packet, one write
-            self._write(stream, self._txmv[:n])
+            self._write(sock, n)
             self._ping_early = True  # a ping of its own confirms it, whatever the interval (owner, 2026-10-13)
         self._slot_tries[i] += 1
         return True
 
-    async def _serve(self, stream: "_Stream") -> int:
-        # The keeper's tick while connected: every write, the ping and link deadlines, and stability.
+    async def _serve(self, sock: "_Sock") -> int:
+        # The keeper's tick while connected: every write, the ping, link and stall deadlines, and stability.
         cfg = self._cfg
         if self._session_present:
-            self._resend_inflight(stream, time.ticks_ms())  # before anything new (section 4.6)
+            self._resend_inflight(sock, time.ticks_ms())  # before anything new (section 4.6)
+        if self._tx_left and not await self._flushed(sock):
+            return _R_STALLED  # the SUBSCRIBE is written once: it waits for a resend's remainder, under the stall rule
         subscribe = encode_subscribe(self._txmv, self._next_pid(), self._filters)  # every partner's filter; none: no SUBSCRIBE
         if subscribe > 0:
-            self._write(stream, self._txmv[:subscribe])
+            self._write(sock, subscribe)
         self._queue(self._status_topic, self._online, self._status_qos, retain=self._status_retain)
-        self._flush_outbound(stream, time.ticks_ms())  # online in this step: a stalled loop cannot hold it past a tick
+        self._flush_outbound(sock, time.ticks_ms())  # online in this step: a stalled loop cannot hold it past a tick
         while True:
             await asyncio.sleep_ms(cfg.tick_ms)  # sleep_ms() allocates nothing
             if self._reconfigure:
@@ -1089,33 +1128,28 @@ class MQTTClient(SensorReaderConfig):
                 self._last_link = now
                 if not await self._safe_link_up():
                     return _R_LINK  # WIFI logs its own loss
+            if self._tx_left and not self._push(sock):
+                return _R_STALLED  # the remainder goes first, every tick; none of it taken for the drain timeout (Part A.12)
             if self._ping_out:
                 if time.ticks_diff(now, self._ping_sent) >= cfg.response_timeout_ms:
                     self._bump(_C_PING_TIMEOUTS)
                     return _R_PING
-            elif self._ping_early or (self._ping_s and time.ticks_diff(now, self._last_ping) >= self._ping_s * self._ping_unit_ms):
-                self._write(stream, _PINGREQ_PKT)
+            elif not self._tx_left and (self._ping_early or (self._ping_s and time.ticks_diff(now, self._last_ping) >= self._ping_s * self._ping_unit_ms)):
+                self._tx[0:2] = _PINGREQ_PKT
+                self._write(sock, 2)
                 self._ping_mark = self._unconfirmed
                 self._ping_early = False
                 self._ping_out = True
                 self._ping_sent = now
                 self._last_ping = now
-            self._flush_acks(stream)
-            self._flush_outbound(stream, now)
+            self._flush_acks(sock)
+            self._flush_outbound(sock, now)
             if self._sub_refused:
                 self._sub_refused = False
                 self.pr.err_s("Broker refused a subscription", errno=_ERR_MQTT_SUB_REFUSED)
             if self._counts[_C_CONSUMER_ERR] != self._consumer_errors_logged:
                 self._consumer_errors_logged = self._counts[_C_CONSUMER_ERR]
                 self.pr.err_s("An MQTT consumer raised", errno=_ERR_CALLBACK)
-            backlog = len(stream.out_buf)
-            if backlog > _MAX_OUT_BACKLOG:
-                return _R_STALLED
-            if backlog:
-                try:
-                    await asyncio.wait_for_ms(stream.drain(), cfg.drain_timeout_ms)
-                except asyncio.TimeoutError:
-                    return _R_STALLED  # the timeout cancelled a socket waiter: this connection ends now (Part A.12)
             if not self._stable and time.ticks_diff(time.ticks_ms(), self._connected_at) >= cfg.stable_after_ms:
                 self._stable = True
                 self._backoff_ms = cfg.backoff_min_ms
@@ -1128,8 +1162,8 @@ class MQTTClient(SensorReaderConfig):
         reason = _R_UNEXPECTED
         try:
             reason = await self._connect(self._host, self._port, self._client_id, self._user, self._password, self._offline, clean=not self._persistent)
-            stream = self._stream
-            if reason != _R_NONE or stream is None:
+            stream, sock = self._stream, self._sock
+            if reason != _R_NONE or stream is None or sock is None:
                 self._last_reason = reason
                 return reason
             self._settle_inflight()
@@ -1143,18 +1177,12 @@ class MQTTClient(SensorReaderConfig):
             self.pr.evt("Connected to", self._broker_ip, "port", self._port)
             self._reader = asyncio.create_task(self._reader_loop(stream))
             try:
-                reason = await self._serve(stream)
+                reason = await self._serve(sock)
             except OSError as e:
                 self._detail = e.errno if isinstance(e.errno, int) else 0
                 reason = _R_IO
             if reason == _R_RECONFIGURE:
-                # A DISCONNECT makes the broker drop the will, so the status is set to the offline message first.
-                n = encode_publish(self._txmv, self._status_topic, self._offline, 0, 0, retain=self._status_retain, dup=False)
-                try:
-                    stream.write(self._txmv[:n])
-                    stream.write(_DISCONNECT_PKT)
-                except OSError:
-                    pass
+                self._sign_off(sock)
             self._last_reason = reason
             return reason
         finally:
@@ -1197,6 +1225,20 @@ class MQTTClient(SensorReaderConfig):
             return text_ok(value.encode(), _MAX_TEXT_BYTES)
         return True
 
+    def _sign_off(self, sock: "_Sock") -> None:
+        # A DISCONNECT makes the broker drop the will, so the offline message goes first, in the same write; tried once, never
+        # behind a remainder. What the socket does not take goes with the close, the broker then publishing the will instead.
+        if self._tx_left:
+            return
+        n = encode_publish(self._txmv, self._status_topic, self._offline, 0, 0, retain=self._status_retain, dup=False)
+        if not 0 < n <= _TX_BYTES - 2:  # room for the DISCONNECT behind it; never short within the schema's bounds
+            return
+        self._tx[n : n + 2] = _DISCONNECT_PKT
+        try:
+            self._write(sock, n + 2)
+        except OSError:
+            pass
+
     def _take_packets(self) -> int:
         # Every complete packet in the receive buffer, in order; an oversize one switches to discarding its bytes.
         while self._rx_len >= _ID_BYTES:  # a first byte and at least one length byte
@@ -1219,10 +1261,14 @@ class MQTTClient(SensorReaderConfig):
             self._compact(total)
         return _R_NONE
 
-    def _write(self, stream: "_Stream", data: bytes | memoryview) -> None:
-        # Every keeper write but the CONNECT and the teardown's, counted until a PINGRESP confirms it (_UNCONFIRMED_MAX).
-        stream.write(data)
-        self._unconfirmed += len(data)
+    def _write(self, sock: "_Sock", n: int) -> None:
+        # Every write after the CONNECT: the packet at _tx[0:n], straight to the socket, counted until a PINGRESP confirms
+        # it (_UNCONFIRMED_MAX); what the socket does not take stays as the remainder, and nothing new is encoded meanwhile.
+        self._tx_off = 0
+        self._tx_left = n
+        self._tx_moved = time.ticks_ms()
+        self._unconfirmed += n
+        self._push(sock)
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_connection]

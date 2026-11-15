@@ -87,24 +87,14 @@ class _FlushClock(Ticks30Time):
         return value
 
 
-class _MqttStream:
-    # A connected stream that takes every write and never has output pending: no socket, so no poller (CLAUDE.md).
+class _MqttSocket:
+    # A connected socket that takes every write whole, so no remainder is ever pending: no real socket, so no poller (CLAUDE.md).
     def __init__(self) -> None:
-        self.out_buf = b""
         self.writes = 0
 
-    async def drain(self) -> None:
-        pass
-
-    async def readinto(self, _buf: memoryview) -> int:
-        await asyncio.sleep_ms(60_000)
-        return 0
-
-    async def wait_closed(self) -> None:
-        pass
-
-    def write(self, _buf: "bytes | bytearray | memoryview") -> None:
+    def write(self, _buf: bytearray, _off: int, n: int) -> int:
         self.writes += 1
+        return n
 
 
 class _PauseFlag:
@@ -257,7 +247,7 @@ def _mqtt_ping_outcome(start: int) -> "tuple[bool, int]":
         client._new_connection()
         client._ping_out = True
         client._ping_sent = fake.ticks_ms()  # type: ignore[assignment]  # a ticks value from the fake
-        task = asyncio.create_task(client._serve(_MqttStream()))
+        task = asyncio.create_task(client._serve(_MqttSocket()))
         fake.advance(_MQTT_CFG.response_timeout_ms - 1)
         await asyncio.sleep_ms(30)  # several 5 ms ticks
         serving = not task.done()
@@ -284,15 +274,15 @@ def _mqtt_retry_outcome(start: int) -> "tuple[int, int]":
     try:
         client._state = _MQTT_CONNECTED  # connected, so the publish queues
         assert client.publish("t", b"x", qos=1)
-        stream = _MqttStream()
-        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]  # a ticks value from the fake
-        sent = stream.writes
+        sock = _MqttSocket()
+        client._flush_outbound(sock, fake.ticks_ms())  # type: ignore[arg-type]  # a ticks value from the fake
+        sent = sock.writes
         fake.advance(_MQTT_CFG.qos1_retry_ms - 1)
-        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
-        before = stream.writes - sent
+        client._flush_outbound(sock, fake.ticks_ms())  # type: ignore[arg-type]
+        before = sock.writes - sent
         fake.advance(1)
-        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
-        return before, stream.writes - sent - before
+        client._flush_outbound(sock, fake.ticks_ms())  # type: ignore[arg-type]
+        return before, sock.writes - sent - before
     finally:
         _restore(asy_mqtt_client)
 

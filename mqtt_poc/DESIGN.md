@@ -46,16 +46,15 @@ run) and closing every finding in `RESULTS.md`.
   queues the PUBACK for inbound QoS 1 and dispatches. It never logs and never raises: its top records the
   reason in a field the keeper reads on its next tick, and the keeper persists it.
 - **The cancellation rule.** Exactly two things cancel a socket waiter: the keeper's teardown (which
-  cancels the reader, then closes the socket) and a `wait_for_ms()` timeout on a drain, which is itself
-  a teardown reason handled in the same tick. Nothing cancels the reader on a live connection. A unit
-  test pins it: a drain timeout always ends the connection. The teardown never awaits the cancelled
-  reader: MicroPython cannot tell the reader's cancellation from the keeper's own, so an `except
-  CancelledError` around that await swallowed a supervisor's cancel and left the keeper running (found
-  by the unit tier, 2026-10-08). `cancel()` takes the reader out of the poll set at once, and a
-  cancelled task's end is never reported, so nothing needs the await.
+  cancels the reader, then closes the socket) and a connect's own `wait_for_ms()` timeouts (the CONNECT's
+  drain, the CONNACK read), which end that attempt before any reader exists (agent, 2026-11-15). Nothing
+  cancels the reader on a live connection, and no write after the CONNECT waits on the socket. The
+  teardown never awaits the cancelled reader: MicroPython cannot tell the reader's cancellation from the
+  keeper's own, so an `except CancelledError` around that await swallowed a supervisor's cancel and left
+  the keeper running (found by the unit tier, 2026-10-08). `cancel()` takes the reader out of the poll
+  set at once, and a cancelled task's end is never reported, so nothing needs the await.
 - **PUBACKs are queued, not written by the reader**: the keeper writes them on its next tick, so every
-  write has one author and no PUBACK can land inside a running drain (which resets the stream's
-  pending output when it finishes).
+  write has one author and no two packets interleave.
 - **No publisher** (owner, 2026-11-12, §17): the client has no interval of its own but the keep-alive, and
   sends what a wired partner hands it. The measurement publisher this design first had (`_publish_loop()`,
   `MQTTPubInterval`, `mqtt.pub_step_ms`, §13 items 10 and 13, §16 item 3) is removed and moved nowhere.
@@ -69,10 +68,13 @@ run) and closing every finding in `RESULTS.md`.
   leave a socket to the GC finaliser on a timeout (RESEARCH.md §4 fact 4). The CONNECT packet is
   written at once; a connecting socket refuses it with EAGAIN (`modlwip.c` `lwip_tcp_send()`, and
   the Unix port alike), so it waits in the stream's buffer and the drain that follows is the connect
-  wait, bounded by `mqtt.connect_timeout_ms`.
-- **Writes** are `Stream.write()` calls from the keeper's tick alone, synchronous, so packets never
-  interleave; a partial socket write leaves the rest in the stream's `out_buf`, which the keeper
-  drains under `mqtt.drain_timeout_ms`.
+  wait, bounded by `mqtt.connect_timeout_ms`; it returns with the stream's buffer empty for good.
+- **Writes** after the CONNECT go straight to the socket from the transmit buffer, `write(buf, off, n)`
+  from the keeper's tick alone, synchronous, so packets never interleave (§14's memory trim, second
+  part). A packet the socket takes only a part of, or none of (EAGAIN), stays in the transmit buffer as
+  the remainder: each tick writes it first and encodes nothing new until it is gone, so order and
+  integrity hold and nothing allocates while the socket refuses. SPECIFICATION.md A.12 has the rules
+  for the SUBSCRIBE, a resend and the teardown's writes behind a remainder.
 - **No lock of its own.** Every shared field is touched only between awaits. `wifi_mode_lock` is taken
   only around the `network_available_locked()` call and never across broker I/O; the DNS server is read
   before it (the NTP ordering).
@@ -125,10 +127,11 @@ run) and closing every finding in `RESULTS.md`.
   lwIP has no TCP keepalive here, so this is the only detector (RESEARCH.md §4 fact 1).
 - **QoS 1 out**: retransmitted with DUP after `mqtt.qos1_retry_ms`, given up after
   `mqtt.qos1_max_tries` (counted, never a teardown — the `mqtt_as` A9 self-inflicted reconnect).
-- **Stalled broker**: the stream's pending output past `mqtt.max_out_backlog` bytes, or a drain not done
-  within `mqtt.drain_timeout_ms` → teardown (E `MQTT_STALLED`). Small packets keep each `tcp_write()`
-  small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed by the firmware's `modlwip_eagain`
-  override (SPECIFICATION.md B.14.4): the send answers `EAGAIN` and its rest waits in the stream's buffer.
+- **Stalled broker**: a remainder the socket takes no byte of for `mqtt.drain_timeout_ms` → teardown
+  (E `MQTT_STALLED`); a slow reader that keeps taking keeps the connection. Small packets keep each
+  `tcp_write()` small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed by the firmware's
+  `modlwip_eagain` override (SPECIFICATION.md B.14.4): the send answers `EAGAIN` and the packet waits in
+  the transmit buffer as the remainder.
 - **Unconfirmed bytes** (§14 item 2): at most `mqtt.unconfirmed_max_bytes` written that no PINGRESP has
   confirmed, the connection's 2,000 B share of lwIP's `MEM_SIZE`. A PINGRESP confirms everything up to
   its PINGREQ (TCP is in order). A PUBLISH that would pass the cap waits in the ring and the next tick
@@ -248,9 +251,9 @@ Measured with the need sieve (HEAP_FRAGMENTATION_MEASUREMENTS.md §M6.1) on the 
 
 The round's 256 B is the publisher coroutine's own frame. The split costs 544 B there, about 270 B on the
 board: eight streams carry their own headers where one ring carried one. The instance dict stays at its
-97-entry table (92 attributes, nine of them the will and session state of §15 and one the ping interval of
-§16, counted on the Unix port after construction, agent, 2026-10-13); its 73-entry step would take nineteen
-attributes out for about 190 B on the board.
+97-entry table (94 attributes, nine of them the will and session state of §15, one the ping interval of §16
+and four the write remainder of §2, counted on the Unix port after construction, agent, 2026-11-15); its
+73-entry step would take twenty-one attributes out for about 190 B on the board.
 
 The memory trim's first part, measured on the Unix port (agent, 2026-11-15; `gc.mem_alloc()` after a collect,
 around construction, with `dev`'s exerciser registered): construction 9,280 → 9,024 B, the eight slots' stream
@@ -258,9 +261,28 @@ headers (256 B), about 128 B on the board; the temporaries it no longer leaves w
 spared, not as bytes kept. Each PUBLISH sent allocates one `memoryview` more, the slot's own for the copy out (16 B
 on the board, transient), and the copy in none.
 
-Steady-state allocation: the `readinto` generator per inbound read; per written PUBLISH, the slot's
-`memoryview` and its slice for the copy out and the packet's slice for the write; per publish, nothing for the
-payload's copy into its slot; per inbound message, the two views each matching consumer gets. The exerciser allocates nothing per round beyond that publish path. Counters saturate at
+The memory trim's second part, the writes straight to the socket (§2), measured on the Unix port over loopback
+lwIP (agent, 2026-11-15; `build-lwip`, the firmware's timings, lwIP's arena held full by two peers that never
+read, eight 217 B QoS 0 messages queued, a 3 s window after a collect, three runs each; the board's objects are
+about half these sizes, its data the same):
+
+| | Through `Stream.write()` | Straight to the socket |
+|---|---|---|
+| Bytes the socket had not taken | 1,736 B, one `bytes` object rebuilt on every write | 217 B, the remainder in the transmit buffer |
+| Bytes allocated over the window | 33,536-33,920 B | 2,080 B, an idle window's 2,016 B and the one PUBLISH encoded |
+| Largest allocation between two scheduler rounds | 9,632 B | 672 B, an idle tick's link check |
+| First byte after the peers closed | 7 ms | 62-71 ms, the next tick |
+| All eight at the broker | 89-100 ms | 166-172 ms |
+
+The stream's buffer grew by concatenation, each write allocating the whole backlog again, and its `drain()`
+spun on `POLLOUT` (set while the send buffer has room, the arena full or not), a view and a slice per round;
+straight writes allocate nothing and retry once per tick. The cost is the resume: up to one tick on the first byte,
+and one tick more for a backlog past the connection's send buffer (`TCP_SND_BUF` 1,600 B).
+
+Steady-state allocation: the `readinto` generator per inbound read; per PUBLISH encoded, the slot's
+`memoryview` and its slice for the copy out; per write nothing, a remainder the socket refused included; per
+publish, nothing for the payload's copy into its slot; per inbound message, the two views each matching consumer
+gets. The exerciser allocates nothing per round beyond that publish path. Counters saturate at
 `COUNTER_CAP`. Nothing grows with uptime or traffic; the twin and bench tiers check it at
 `gc.threshold(-1)` and `32768` with zero memory markers.
 
@@ -339,7 +361,7 @@ audit merge gave 115 to `SYSTEM`'s `SUPERVISOR_RAISED`; agent, 2026-11-12, decid
 | E 118 | `MQTT_PROTOCOL` | a malformed or unexpected packet from the broker |
 | E 119 | `MQTT_NO_PINGRESP` | no PINGRESP within its deadline |
 | E 120 | `MQTT_LOST` | the broker closed the connection, or a socket error ended it |
-| E 121 | `MQTT_STALLED` | the broker stopped reading (backlog or drain timeout) |
+| E 121 | `MQTT_STALLED` | the broker stopped reading (no byte taken for the drain timeout) |
 | E 122 | `MQTT_SUB_REFUSED` | the broker refused a subscription |
 | E 123 | `MQTT_DNS` | the broker name did not resolve |
 | W 82 | `MQTT_SHORT_SESSIONS` | sessions keep ending right after they start |
@@ -357,7 +379,7 @@ Generated constants in the `dev` module (the per-service timeouts rule, N.1), pa
 `mqtt.connect_timeout_ms` 10,000, `mqtt.backoff_min_ms` 2,000, `mqtt.backoff_max_ms` 60,000,
 `mqtt.stable_after_ms` 30,000, plus the shared `dns.timeout_ms` and the client id default.
 In `src/`: `mqtt.tick_ms` 100, `mqtt.link_poll_ms` 1,000, `mqtt.idle_recheck_ms` 60,000,
-`mqtt.drain_timeout_ms` 5,000, `mqtt.max_out_backlog` 2,048, `mqtt.qos1_retry_ms` 10,000,
+`mqtt.drain_timeout_ms` 5,000, `mqtt.qos1_retry_ms` 10,000,
 `mqtt.qos1_max_tries` 3, `mqtt.short_session_warn` 3, `mqtt.unconfirmed_max_bytes`
 2,000 (an owner decision, §14) and the buffer sizes in §5; `mqtt.pub_step_ms` left with the publisher (§17). In
 the exerciser: `mqtt_link.exercise_period_ms` 10,000 (agent, 2026-11-12). Every one is an
@@ -552,9 +574,10 @@ more conservative, more easily reversible choice:
   50,500 B (agent, 2026-11-15; Part N's `l3.heap_headroom_after_full_system_build_max_added`).
 - The memory trim (owner, 2026-11-15), asked for lean, smart memory techniques that drop no feature and add no lag
   (paraphrase), of the options put to them: "try 1 and 2". The first is §5's construction: the slots as
-  `bytearray`s and the schema and every list built by one display (agent, 2026-11-15). The second, writing
-  straight to the socket from the transmit buffer instead of through asyncio's `Stream.write()`/`drain()`, is a
-  change of its own.
+  `bytearray`s and the schema and every list built by one display (agent, 2026-11-15). The second is §2's
+  writes straight to the socket from the transmit buffer instead of through asyncio's `Stream.write()`/`drain()`,
+  §5 its measurement; `mqtt.max_out_backlog` went with the stream's buffer, a remainder being one packet at
+  most (agent, 2026-11-15).
 - The bench run goes through the audit's bench session (owner, 2026-11-15): 'As the main session is considered to be
   done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related
   tests, while flashing a new image containing the MQTT code of course is allowed.' The requirement: 'For. The MQTT

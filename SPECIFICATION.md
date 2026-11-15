@@ -1592,13 +1592,13 @@ the socket.
 
 **Cancelling one waiter on a socket drops the socket's whole poll entry**
 (`extmod/asyncio/core.py`'s `IOQueue.remove()`, v1.29.0), so only two things ever cancel one: the
-keeper's teardown, and a drain's `wait_for_ms()` timeout, which ends the connection in the same tick
-(agent, 2026-10-08). The teardown cancels the reader and never awaits it: MicroPython cannot tell
-the reader's cancellation from the keeper's own, so an `except CancelledError` around that await
-would swallow a supervisor's cancel. `cancel()` takes the reader out of the poll set at once, and a
-cancelled task's end is never reported. The reader queues inbound PUBACKs for the keeper, so every
-write has one author and none lands inside a running drain, which resets the stream's pending
-output when it finishes.
+keeper's teardown, and a connect's own `wait_for_ms()` timeouts (the CONNECT's drain, the CONNACK
+read), which end that attempt before any reader exists (agent, 2026-11-15). The teardown cancels
+the reader and never awaits it: MicroPython cannot tell the reader's cancellation from the keeper's
+own, so an `except CancelledError` around that await would swallow a supervisor's cancel. `cancel()`
+takes the reader out of the poll set at once, and a cancelled task's end is never reported. The
+reader queues inbound PUBACKs for the keeper, so every write has one author and no two packets
+interleave.
 
 The broker name goes to `resolve_ipv4()` with the network's DHCP-provided DNS server alone: the
 resolver has no built-in server, and `DNSFallback` stays NTP's own setting (agent, 2026-10-08,
@@ -1609,7 +1609,34 @@ non-blocking, `connect()` to the IPv4 literal
 `asyncio.open_connection()` is never used, since its connect wait has no timeout and a timeout
 leaves its socket to the GC finaliser. The CONNECT is written at once; a connecting socket answers
 EAGAIN (`extmod/modlwip.c` `lwip_tcp_send()`), so it waits in the stream's buffer, and the drain
-that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
+that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`; it returns with that buffer
+empty, and nothing writes to it again.
+
+**Writes go straight to the socket**, the memory trim's second part (owner, 2026-11-15, asked for
+lean, smart memory techniques that drop no feature and add no lag (paraphrase), of the options put to
+them: "try 1 and 2"). Every packet after the CONNECT — SUBSCRIBE, PUBLISH new and sent again, PUBACK,
+PINGREQ, the teardown's — is encoded into the transmit buffer and written from it by
+`write(buf, off, n)`, the offset form `py/stream.c`'s `stream_readinto_write_generic()` gives every
+stream (`readinto(buf, nbytes)` is its documented read side); it allocates nothing, answers EAGAIN
+with `None` and takes a part when only a part fits (`mp_stream_rw()`), and raises every other error,
+which ends the connection as a socket error. What the socket does not take stays in the transmit
+buffer as the remainder: on each tick the keeper writes it first, and encodes nothing new until it is
+gone, so packets keep their order and stay whole, and the bytes the socket has not taken never
+exceed one packet. `Stream.write()` would instead keep them in a buffer it rebuilds by concatenation
+on every further write while the socket refuses (`extmod/asyncio/stream.py:66-74`), and its `drain()`
+allocates a view and a slice per wake (`:77-87`). A remainder waits for the next tick, never for a
+socket waiter, so a socket that takes everything at once costs no latency; one that refuses costs up
+to `mqtt.tick_ms` when it takes again (Part N's `mqtt.tick_ms` row has the measurement). The SUBSCRIBE,
+written once per connection, waits on the keeper's tick for a resent PUBLISH's remainder ahead of it,
+and a resend a remainder holds goes with the next retransmission round, as one the byte cap holds
+does. The teardown's offline message and DISCONNECT are one write, tried once and never behind a
+remainder: what the socket does not take goes with the close, and the broker then publishes the will,
+the same message on the same topic (agent, 2026-11-15). A retire's DISCONNECT is written on the
+keeper's tick until the socket has taken it, under the stall rule below.
+`tests/lwip_host/test_mqtt_client_back_pressure.py` holds this under real back-pressure: lwIP's arena
+held full by two peers that never read, eight messages held as one 217 B remainder, 64 B allocated
+over a second on the 64-bit Unix port (the one PUBLISH encoded), the stream's buffer empty throughout,
+and every message at the broker, whole and in order, once the peers close.
 
 **Connection behaviour.**
 - **Gating.** Off (`MQTTEnable` false, or an empty `MQTTHost`): no socket, no DNS, no log; the
@@ -1635,16 +1662,17 @@ that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
   status offline. A broker with `max_keepalive` set refuses a 3.1.1 client whose keep-alive is 0 or
   above it (the same file).
 - **QoS 1 out** is resent with DUP after `mqtt.qos1_retry_ms` and given up after
-  `mqtt.qos1_max_tries`, counted and never a teardown. **A stalled broker**, output past
-  `mqtt.max_out_backlog` or a drain past `mqtt.drain_timeout_ms`, closes the connection.
+  `mqtt.qos1_max_tries`, counted and never a teardown. **A stalled broker**, a remainder the socket
+  takes no byte of for `mqtt.drain_timeout_ms`, closes the connection (E `MQTT_STALLED`); a slow
+  reader that keeps taking keeps it.
 - **Unconfirmed bytes.** lwIP's TCP memory (`MEM_SIZE`) is one pool shared by every connection and
   sized at 2,000 B per connection (B.14.2); when it runs out, a write meets `ERR_MEM`, which v1.29.0
   retries every 50 ms for up to 10 s (`extmod/modlwip.c:801-813`) and this firmware's `modlwip_eagain`
-  override answers with `EAGAIN` instead (B.14.4), the rest waiting in the stream's buffer under
-  `mqtt.max_out_backlog`. So the keeper never has more than `mqtt.unconfirmed_max_bytes` written that no
+  override answers with `EAGAIN` instead (B.14.4), the packet waiting in the transmit buffer as the
+  remainder (above). So the keeper never has more than `mqtt.unconfirmed_max_bytes` written that no
   PINGRESP has confirmed (TCP delivers in order, so a PINGRESP proves everything before its
   PINGREQ arrived). A PUBLISH that would pass the cap waits in the ring, and a PINGREQ goes out on
-  the next tick instead of at its interval; PUBACKs and PINGREQs are never held (owner, 2026-10-08,
+  the next tick instead of at its interval; the cap never holds a PUBACK or a PINGREQ (owner, 2026-10-08,
   asked whether the client should cap the bytes the broker has not yet confirmed at its 2,000 B share
   of lwIP memory: 'Cap at 2,000 B (Recommended)').
 - **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and
@@ -2960,10 +2988,12 @@ place: inside the retry loop, right after `tcp_output()`'s `ERR_OK` check and be
 sleep, a socket whose timeout is 0 (non-blocking) leaves the lwIP lock and returns
 `MP_STREAM_ERROR` with `EAGAIN` — upstream PR 19708's change (owner, 2026-09-30). A blocking socket
 keeps the 10 s loop. No `src/` site sends on a blocking TCP socket: every accepted asyncio
-connection is non-blocking (`extmod/asyncio/stream.py:172`), and `src/` otherwise sends over UDP.
-`Stream.write()` keeps the unsent rest (`:66-74`) and `drain()` retries it through the event loop
-(`:77-87`), so the watchdog feeder and every other task keep running, and the webserver's per-call
-write timeout reclaims a connection whose peer never drains (A.5). No `TCP_NODELAY` call is made
+connection is non-blocking (`extmod/asyncio/stream.py:172`), as is the MQTT client's own socket, and
+`src/` otherwise sends over UDP. On an accepted connection `Stream.write()` keeps the unsent rest
+(`:66-74`) and `drain()` retries it through the event loop (`:77-87`); the MQTT client keeps its rest
+in its transmit buffer and writes it again on its next tick (A.12). So the watchdog feeder and every
+other task keep running, the webserver's per-call write timeout reclaims a connection whose peer
+never drains (A.5), and the MQTT client's stall rule one whose broker takes nothing (A.12). No `TCP_NODELAY` call is made
 anywhere, and `[lwip]` keeps its values (owner, 2026-09-30; F.9), `TCP_SND_BUF` apart (B.14.2.1).
 
 **The second patch: no listener callbacks at close** (owner, 2026-10-26). `close()` on a TCP socket
@@ -7853,7 +7883,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 23 | lwIP's network interface (`build-lwip`, B.14.4) | a loopback netif (`MICROPY_PY_LWIP_LOOPBACK=1`, `extmod/extmod.mk:413-414`) with both ends of every connection in one process, so each connection holds two pcbs and `MEMP_NUM_TCP_PCB` 9 admits 4 pairs, about half rp2's connections; every sent packet is copied into the lwIP arena on its way back (`netif_loop_output()`, a `PBUF_RAM` pbuf, `lib/lwip/src/core/netif.c:1147`), so the arena fills sooner and a write at its edge can raise `ENOMEM` from `tcp_output()` with its bytes already queued (`extmod/modlwip.c:817-826`) before the zero-window `EAGAIN` comes; a fresh connection takes `TCP_WND` + `TCP_SND_BUF` (8,000 B, 10 MSS) to a peer that never reads | the CYW43 netif: the peer is another host and the driver takes the outgoing pbufs | `tests/lwip_host/test_modlwip_eagain.py` measures the pool in-process, loads the arena with whole-MSS writes, counting a loader's `ENOMEM` as its piece queued (the drain then checks every byte), and never accepts `ENOMEM` at an edge under test | L4: `tests_hardware/bench/test_modlwip_send_stall.py` on `dev` | none (the instrument's design) |
 | 24 | lwIP struct sizes and `MEM_ALIGNMENT` (`build-lwip`) | 64-bit pointers make lwIP's structs and pool elements larger, and `MEM_ALIGNMENT` is the host's pointer size, 8, against `extmod/lwip-include/lwipopts_common.h:42`'s 4: every pool and arena threshold falls elsewhere than on rp2 | 32-bit, `MEM_ALIGNMENT` 4 | the host test reads its edges from `versions.toml`'s `[lwip]` and measures them, never asserting an rp2 figure | L4 | none |
 | 25 | IPv6 fragment reassembly (`build-lwip`) | `IPV6_FRAG_COPYHEADER` 1: with 8-byte pointers `struct ip6_reass_helper` outgrows `IP6_FRAG_HLEN`, which `ip6_reass_tmr()` asserts every second (`lib/lwip/src/core/ipv6/ip6_frag.c:117-120`); lwIP's own setting for `sizeof(void*) > 4` (`lib/lwip/src/include/lwip/ip6_frag.h:60-72`) | 0, lwIP's default | the generated host `lwipopts.h`; the build's readback runs lwIP's timers through two reassembly ticks (B.14.4) | — (nothing here reassembles fragments) | none (a pointer-width setting) |
-| 26 | what runs lwIP (`build-lwip`) | the variant's `MICROPY_INTERNAL_EVENT_HOOK` (`netif_poll_all(); sys_check_timeouts();`) in `mp_event_handle_nowait()` on every `mp_event_wait_ms()` (`py/scheduler.c:259-266`, `ports/unix/unix_mphal.c:244-252`), so lwIP advances only while MicroPython waits | PendSV and a soft timer every 64 ms (`ports/rp2/mpnetworkport.c:39, :137-171`), whatever Python is doing | `lwip_host_port.c` (B.14.4); the host tests pump with `time.sleep_ms(1)` | L4 | none |
+| 26 | what runs lwIP (`build-lwip`) | the variant's `MICROPY_INTERNAL_EVENT_HOOK` (`netif_poll_all(); sys_check_timeouts();`) in `mp_event_handle_nowait()` on every `mp_event_wait_ms()` (`py/scheduler.c:259-266`, `ports/unix/unix_mphal.c:244-252`), so lwIP advances only while MicroPython waits; asyncio's `poll()` runs the hook only between its 1 ms rounds and returns at its timeout first (`extmod/modselect.c:58, :341-396`), so a scheduler wait of 1 ms or less never runs it | PendSV and a soft timer every 64 ms (`ports/rp2/mpnetworkport.c:39, :137-171`), whatever Python is doing | `lwip_host_port.c` (B.14.4); the host tests pump with `time.sleep_ms(1)`, and an asyncio one waits 5 ms or more (`tests/lwip_host/test_mqtt_client_back_pressure.py`) | L4 | none |
 | 27 | lwIP assertions (`build-lwip`) | `LWIP_PLATFORM_ASSERT` prints the assertion and calls `abort()`, so a failed one ends the run loudly; closing a listening socket trips one, because modlwip's close calls `tcp_err()`/`tcp_recv()` on the LISTEN pcb (`extmod/modlwip.c:1680-1683`) | a no-op (`ports/rp2/lwip_inc/arch/cc.h:6`) | the generated host `arch/cc.h`; the host tests open one listener and never close it | — | none (the instrument's design) |
 | 28 | lwIP's start and `LWIP_RAND()` (`build-lwip`) | lwIP is not started at boot, the Unix port having no boot hook: until `lwip.reset()` (`extmod/modlwip.c:1781-1785`, `lwip_init()`) every socket fails with `OSError: [Errno 12] ENOMEM`; `LWIP_RAND()` is libc `rand()` | `lwip_init()` at boot (`ports/rp2/main.c:173`); `LWIP_RAND()` is `get_rand_32()` (`ports/rp2/lwip_inc/lwipopts.h:12`) | the host tests and the build's readback call `lwip.reset()` once first | — | none |
 | 29 | `modlwip.o`'s compile flags and the `listen()` backlog (`build-lwip`) | `-Wno-sign-compare` and `-DSOMAXCONN=2`, private to that object (B.7): the Unix port compiles with `-Wextra` and takes its default backlog from `<sys/socket.h>`, which `modlwip.c` never includes (`ports/unix/mpconfigport.h:176`) | `-Wall -Werror` without `-Wextra`; default backlog 2 (`py/mpconfig.h:2148`), which `SOMAXCONN=2` reproduces | the generated host `mpconfigvariant.mk` | — | upstream `modlwip.c` compiles clean under the Unix port's `-Wextra` and its backlog default stops needing the socket header |
@@ -9322,8 +9352,10 @@ callback, long-lived, fixed once the tasks start. In `setup()`, and on a reconne
 encoded settings and every partner's full topic and filter, long-lived, bounded by the schema; per settings read,
 three one-display read schemas, transient. Per connection: one socket (its lwIP pcb), its `Stream` and the
 reader task. Per publish: the payload copied into its slot by a slice store, which allocates nothing, one longer
-than the slot refused; per PUBLISH sent, the slot's `memoryview` and its slice for the copy out and the packet's
-slice for the write, transient. Per inbound packet: parsed in place, each
+than the slot refused; per PUBLISH encoded, the slot's `memoryview` and its slice for the copy out, transient. Per
+write nothing: every packet after the CONNECT goes from the transmit buffer by offset, and one the socket refuses
+stays there as the remainder, so back-pressure allocates nothing and needs no block beyond that buffer (A.12).
+Per inbound packet: parsed in place, each
 matching consumer called with two views into the receive buffer; one larger than the buffer is read
 and discarded in buffer-sized pieces, client-controlled by the broker and never allocated. The codec
 in the same file keeps no state: every encoder writes into its caller's buffer and returns a length,
@@ -12469,8 +12501,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `mqtt.backoff_max_ms` | 60000 ms | `buildgen/codegen.py` — `60000`; `scripts/_digital_twin_ci_suite.py` — `60.0`; `tests_hardware/bench/test_mqtt_broker_faults.py` — `60.0` | the retry cap; the twin suite's `_MQTT_BACKOFF_CAP_S` and the bench module's `_BACKOFF_CAP_S` equal it (the reconnect waits after the faults); a long outage writes the FRAM log once a minute | estimated (agent, `93b0976`) — measurement owed: the reconnect time after a long outage, L4 | unknown until measured | the retry policy changes |
 | `mqtt.stable_after_ms` | 30000 ms | `buildgen/codegen.py` — `30000` | the backoff reset and the short-session episode end | measured, on the bench (silicon, `dev` over the bench AP, 2026-11-15, images `9fd691ef` and `3e281e10`; records `mqtt_poc/bench_results/` in `fa86973f` and `839cc4f2`): a 20 s client-id takeover drew no retake, the backoff grown by the module's earlier faults, and the client was back 39.9 and 39.8 s after the duplicate left | none taken: no session the takeover allowed reached it | the retry policy changes |
 | `mqtt.qos1_retry_ms` | 10000 ms | `buildgen/codegen.py` — `10000` | a QoS 1 resend; × `mqtt.qos1_max_tries` before the give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK latency under load, L4 | unknown until measured | the network class changes |
-| `mqtt.drain_timeout_ms` | 5000 ms | `buildgen/codegen.py` — `5000` | the stalled-broker teardown; the drain yields, so the watchdog is not in play | estimated (agent, `93b0976`) — measurement owed: drain time against a slow reader, L4 | unknown until measured | the network class changes |
-| `mqtt.tick_ms` | 100 ms | `buildgen/codegen.py` — `100` | the keeper's write and PUBACK latency; the inbound QoS 1 rate the PUBACK queue absorbs | estimated (agent, `93b0976`) — measurement owed: the keeper's loop share, L4 | unknown until measured | the outbound rate changes |
+| `mqtt.drain_timeout_ms` | 5000 ms | `buildgen/codegen.py` — `5000` | the stalled-broker teardown: a remainder the socket takes no byte of for this long ends the connection, a slow reader that keeps taking keeps it (A.12); checked on the keeper's tick, so the watchdog is not in play | estimated (agent, `93b0976`) — measurement owed: the longest stretch a slow reader leaves a remainder untaken, L4 | unknown until measured | the network class changes |
+| `mqtt.tick_ms` | 100 ms | `buildgen/codegen.py` — `100` | the keeper's write and PUBACK latency; the inbound QoS 1 rate the PUBACK queue absorbs; the resume after back-pressure, a refused remainder being written again on the next tick (A.12) | estimated (agent, `93b0976`) — measurement owed: the keeper's loop share, L4; the resume measured on the Unix port over loopback lwIP (`build-lwip`, these timings, the arena held full by two peers that never read, eight 217 B messages held, three runs each, 2026-11-15): after the peers closed, the first byte went 62-71 ms later and all eight were at the broker in 166-172 ms, against 7 ms and 89-100 ms through `Stream.drain()` | one tick at most on the first byte; a backlog past the send buffer one tick more | the outbound rate changes |
 | `mqtt.link_poll_ms` | 1000 ms | `buildgen/codegen.py` — `1000` | how late a link loss ends a connection | estimated (agent, `93b0976`) — measurement owed: none: a link loss also ends the transport | unknown until measured | the WiFi service's detection changes |
 | `mqtt.idle_recheck_ms` | 60000 ms | `buildgen/codegen.py` — `60000` | how late a setting change reaches a disabled client without `reconnect()` | estimated (agent, `93b0976`) — measurement owed: none: the settings group calls `reconnect()` | unknown until measured | the settings path changes |
 | `mqtt.rx_buf_bytes` | 1024 B | `src/asy_mqtt_client.py` — `1024` | the largest inbound packet parsed; a larger one is discarded | estimated (agent, `93b0976`) — measurement owed: the inbound packet sizes a deployment sends, L4 | unknown until measured | a consumer needs larger messages |
@@ -12479,7 +12511,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `mqtt.out_payload_max` | 256 B | `src/asy_mqtt_client.py` — `256` | the largest payload a wired partner can publish, a longer one refused and counted (`MQTTTxDropped`); `mqtt.tx_buf_bytes` holds a PUBLISH of a full slot | estimated (agent, 2026-11-15: from 384 B, sized for the measurement publisher the restructure removed, owner, 2026-11-15, asked how `dev` with the client should meet the full-build heap bound: "Try a balanced approach, find a sweet spot, far away from critical values, then re derive") — measurement owed: none while no module publishes values: `dev`'s exerciser sends 4 B and the status messages are at most 64 B (agent, 2026-11-12) | 192 B over the status messages, four times their 64 B | a sensor service publishes over MQTT (A.12) |
 | `mqtt.ack_slots` | 32 | `src/asy_mqtt_client.py` — `32` | above mosquitto's default in-flight window (20) | estimated (agent, `93b0976`) — measurement owed: none: the broker's window bounds it | 12 slots | the broker's window changes |
 | `mqtt.last_topic_bytes` | 64 | `src/asy_mqtt_client.py` — `64` | `MQTTLastRxTopic`'s length | estimated (agent, `93b0976`) — measurement owed: none: a display bound | a longer topic shows cut at 64 bytes | the status page changes |
-| `mqtt.max_out_backlog` | 2048 B | `src/asy_mqtt_client.py` — `2048` | the stalled-broker teardown | estimated (agent, `93b0976`) — measurement owed: the backlog a slow reader produces, L4 | unknown until measured | the outbound rate changes |
 | `mqtt.qos1_max_tries` | 3 | `src/asy_mqtt_client.py` — `3` | the QoS 1 give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK loss on the bench, L4 | unknown until measured | the retry policy changes |
 | `mqtt.short_session_warn` | 3 | `src/asy_mqtt_client.py` — `3` | the short-session warning | measured, on the bench (silicon, `dev` over the bench AP, 2026-11-15, images `9fd691ef` and `3e281e10`; records `mqtt_poc/bench_results/` in `fa86973f` and `839cc4f2`): a 20 s takeover drew no retake, so no short-session streak formed | none taken | the retry policy changes |
 | `mqtt.unconfirmed_max_bytes` | 2000 B | `src/asy_mqtt_client.py` — `2000` | the connection's share of lwIP's `MEM_SIZE` (`toolchain/versions.toml`: limit × 2,000 B); the bytes written that no PINGRESP has confirmed; `tests/test_asy_mqtt_client.py` reads it from the source (`src_int()`) | owner decision (owner, 2026-10-08: 'Cap at 2,000 B (Recommended)') | the whole share, by definition | `MEM_SIZE`'s per-connection rule changes |

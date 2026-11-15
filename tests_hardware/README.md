@@ -742,7 +742,7 @@ needed. The AP outage test uses the same `ap_down()`/`ap_up()` as `test_network_
 `recover_by_reset()` for its one reported recovery reset.
 
 **The bench log check**: each test that provokes MQTT entries names them in `provokes_log` - the broker
-faults their failed attempts, lost connections, missed PINGRESPs, stalled drains and short sessions; the
+faults their failed attempts, lost connections, missed PINGRESPs, stalled writes and short sessions; the
 wrong password its `MQTT_REFUSED`; an unresolvable name its `MQTT_DNS`; the AP outage the WiFi and NTP
 entries `test_network_resilience.py`'s outage names too. Any other entry fails the test.
 

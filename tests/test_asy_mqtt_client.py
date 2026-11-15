@@ -47,6 +47,8 @@ _WAIT_MS = 8000  # every wait polls; the bound only matters on a failure
 # No in-session QoS 1 retry within a test: every PUBLISH sent again is one the session sent again.
 _SESSION_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100)
 _R_STALLED: int = src_int("src/asy_mqtt_client.py", "_R_STALLED")  # the client's const()-folded teardown reason
+_R_NONE: int = src_int("src/asy_mqtt_client.py", "_R_NONE")
+_R_RECONFIGURE: int = src_int("src/asy_mqtt_client.py", "_R_RECONFIGURE")
 _R_UNEXPECTED: int = src_int("src/asy_mqtt_client.py", "_R_UNEXPECTED")
 _SLOT_INFLIGHT: int = src_int("src/asy_mqtt_client.py", "_SLOT_INFLIGHT")
 _OUT_SLOTS: int = src_int("src/asy_mqtt_client.py", "_OUT_SLOTS")
@@ -1005,33 +1007,211 @@ class _StallingStream:
         self.written.append(bytes(buf))
 
 
+class _StallingSocket:
+    # A connected socket that takes no byte: the broker stopped reading, so write() answers EAGAIN with None.
+    def write(self, buf: bytearray, off: int, n: int) -> "int | None":
+        return None
+
+
+class _ScriptedSocket:
+    # A connected socket whose write() calls take, in turn and round again, the byte counts its script lists (None:
+    # EAGAIN); what it takes lands on `wire` in order, as the broker would read it. Pure Python: no poller behind it.
+    def __init__(self, script: "tuple[int | None, ...]") -> None:
+        self.script = script
+        self.wire = bytearray()
+        self.calls = 0
+        self.partial = 0  # calls that took only a part of what they were offered
+
+    def write(self, buf: bytearray, off: int, n: int) -> "int | None":
+        take = self.script[self.calls % len(self.script)]
+        self.calls += 1
+        if take is None:
+            return None
+        took = min(n, take)
+        self.wire += buf[off : off + took]
+        if took < n:
+            self.partial += 1
+        return took
+
+
+class _TricklingSocket:
+    # Takes one byte at most every `every_ms`, none in between, and none at all once stopped: a broker reading slowly.
+    def __init__(self, every_ms: int) -> None:
+        self.every_ms = every_ms
+        self.last = time.ticks_ms()
+        self.stopped = False
+
+    def write(self, buf: bytearray, off: int, n: int) -> "int | None":
+        now = time.ticks_ms()
+        if self.stopped or time.ticks_diff(now, self.last) < self.every_ms:
+            return None
+        self.last = now
+        return 1
+
+
+def _wire_packets(wire: "bytes | bytearray") -> "tuple[list[tuple[int, bytes]], int]":
+    # The whole packets at the start of `wire` as (first byte, body), and the bytes of an incomplete one after them.
+    packets: list[tuple[int, bytes]] = []
+    i = 0
+    while i + 2 <= len(wire):
+        value = shift = 0
+        j = i + 1
+        while j < len(wire):
+            byte = wire[j]
+            value |= (byte & 0x7F) << shift
+            shift += 7
+            j += 1
+            if not byte & 0x80:
+                break
+        else:
+            break
+        if j + value > len(wire):
+            break
+        packets.append((wire[i], bytes(wire[j : j + value])))
+        i = j + value
+    return packets, len(wire) - i
+
+
+async def _configured(config: MqttConfig = _CFG, consumers: "Consumers" = ()) -> MQTTClient:
+    # A client holding the default settings as a connect reads them, between its CONNACK and its first tick; no keeper.
+    client = _make_client(config=config, consumers=consumers)
+    await client.setup()
+    await configure(client, 1883)
+    assert await client._read_params()
+    client._new_connection()
+    client._state = _ST_CONNECTED
+    return client
+
+
 def test_a_drain_timeout_ends_the_connection() -> None:
-    # The cancellation rule: a timed-out drain cancelled a socket waiter, so the connection must end in that tick.
+    # A socket that takes nothing: the online message stays the remainder, and the tick its drain timeout passes ends it.
     async def scenario() -> int:
         client = _make_client()
         await client.setup()
         client._base = b"sensors/t1"
-        stream = _StallingStream()
+        sock = _StallingSocket()
         client._new_connection()
         start_ms = time.ticks_ms()
-        reason = await client._serve(stream)
+        reason = await client._serve(sock)
         assert time.ticks_diff(time.ticks_ms(), start_ms) < _CFG.drain_timeout_ms + 500
         return reason
 
     assert run(scenario()) == _R_STALLED
 
 
-def test_a_backlog_past_its_cap_ends_the_connection() -> None:
-    async def scenario() -> int:
+def test_a_partial_write_keeps_its_remainder_and_every_packet_reaches_the_wire_whole_and_in_order() -> None:
+    # A socket that takes 7 bytes on every other call: each packet's rest goes first on the next ticks, nothing new is
+    # encoded meanwhile, and the broker reads whole packets in the keeper's order; the stream's buffer is never used.
+    async def scenario() -> "tuple[list[tuple[int, bytes]], int, int, int]":
+        client = await _configured(_SESSION_CFG, _COMMANDS)
+        sock = _ScriptedSocket((None, 7))
+        task = asyncio.create_task(client._serve(sock))
+        await asyncio.sleep_ms(0)  # the keeper's first step: the SUBSCRIBE written, the online message queued
+        for n in range(3):
+            assert client.publish("sensors/t1/event", f"event {n}")
+
+        def events() -> "list[bytes]":
+            return [_publish_fields(f, b)[2] for f, b in _wire_packets(sock.wire)[0] if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"sensors/t1/event"]
+
+        assert await until(lambda: len(events()) == 3)
+        client._reconfigure = True
+        reason = await task
+        packets, tail = _wire_packets(sock.wire)
+        return packets, tail, sock.partial, reason
+
+    packets, tail, partial, reason = run(scenario())
+    assert reason == _R_RECONFIGURE
+    assert tail == 0 and partial > 0, (tail, partial)
+    assert packets[0][0] == 0x82, packets  # the SUBSCRIBE first, as on any socket
+    published = [_publish_fields(f, b)[2] for f, b in packets if f & 0xF0 == 0x30]
+    assert published == [b"online", b"event 0", b"event 1", b"event 2"], published
+    assert {f for f, _b in packets} <= {0x82, 0x33, 0x30, 0xC0}, packets  # nothing torn: SUBSCRIBE, PUBLISH and PINGREQ
+
+
+def test_a_remainder_the_socket_keeps_taking_lives_past_the_drain_timeout_and_one_it_stops_taking_ends_it() -> None:
+    # The stall counts from the last byte taken, not from the write: a slow reader keeps the connection.
+    trickle_ms = _CFG.drain_timeout_ms // 2
+
+    async def scenario() -> "tuple[bool, int, int]":
+        client = await _configured()
+        sock = _TricklingSocket(trickle_ms)
+        task = asyncio.create_task(client._serve(sock))
+        await asyncio.sleep_ms(3 * _CFG.drain_timeout_ms)
+        serving = not task.done() and client._tx_left > 0
+        sock.stopped = True
+        reason = await task
+        return serving, reason, time.ticks_diff(time.ticks_ms(), sock.last)
+
+    serving, reason, since_last_ms = run(scenario())
+    assert serving
+    assert reason == _R_STALLED
+    assert _CFG.drain_timeout_ms <= since_last_ms < _CFG.drain_timeout_ms + 500, since_last_ms
+
+
+def test_a_resend_the_socket_takes_in_parts_goes_whole_before_the_subscribe() -> None:
+    # A resumed session's first resend left as the remainder: the SUBSCRIBE, written once, waits for it; the second resend
+    # follows in the next retransmission round, as one the byte cap holds does, with its id and DUP.
+    async def scenario() -> "list[tuple[int, bytes]]":
+        client = await _configured(_SESSION_CFG, _COMMANDS)
+        assert client.publish("q/1", b"a", qos=1)
+        assert client.publish("q/1", b"b", qos=1)
+        client._flush_outbound(_ScriptedSocket((_TX_BYTES,)), time.ticks_ms())  # both in flight, ids 1 and 2
+        client._new_connection()
+        client._session_present = True
+        client._settle_inflight()
+        sock = _ScriptedSocket((None, 5))
+        task = asyncio.create_task(client._serve(sock))
+        assert await until(lambda: len([f for f, b in _wire_packets(sock.wire)[0] if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/1"]) == 2)
+        client._reconfigure = True
+        await task
+        assert sock.partial > 0
+        return _wire_packets(sock.wire)[0]
+
+    packets = run(scenario())
+    assert packets[0][0] == 0x3A and _publish_fields(*packets[0]) == (b"q/1", 1, b"a"), packets  # QoS 1 with DUP
+    assert packets[1][0] == 0x82, packets
+    resends = [(f, _publish_fields(f, b)) for f, b in packets if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/1"]
+    assert resends == [(0x3A, (b"q/1", 1, b"a")), (0x3A, (b"q/1", 2, b"b"))], resends
+
+
+def test_the_teardown_writes_offline_and_disconnect_in_one_write_and_never_behind_a_remainder() -> None:
+    # A reconfigure's last packets: one attempt, what the socket does not take goes with the close and the broker
+    # publishes the will (the same message), and none is written after a packet the socket holds only a part of.
+    async def scenario() -> "tuple[list[tuple[int, bytes]], int, bytearray, int]":
+        client = await _configured()
+        whole = _ScriptedSocket((_TX_BYTES,))
+        client._sign_off(whole)
+        part = _ScriptedSocket((10,))
+        client._sign_off(part)  # leaves the rest of its own packet as the remainder
+        behind = _ScriptedSocket((_TX_BYTES,))
+        client._sign_off(behind)
+        return _wire_packets(whole.wire)[0], part.calls, part.wire, behind.calls
+
+    packets, part_calls, part_wire, behind_calls = run(scenario())
+    assert [f for f, _b in packets] == [0x31, 0xE0], packets  # the offline message, retained as the will, then DISCONNECT
+    assert _publish_fields(*packets[0]) == (b"sensors/t1/status", 0, b"offline")
+    assert (part_calls, len(part_wire)) == (1, 10)
+    assert behind_calls == 0
+
+
+def test_a_retires_disconnect_goes_in_parts_on_later_ticks_and_one_the_socket_never_takes_fails_the_retire() -> None:
+    async def scenario(sock: "_ScriptedSocket | _StallingSocket") -> "list[int]":
         client = _make_client()
         await client.setup()
-        client._base = b"sensors/t1"
-        stream = _StallingStream()
-        stream.out_buf = b"x" * 2049
-        client._new_connection()
-        return await client._serve(stream)
 
-    assert run(scenario()) == _R_STALLED
+        async def connected(host: str, port: int, client_id: bytes, user: bytes, password: bytes, will: bytes, *, clean: bool, quiet: bool = False) -> int:
+            client._sock = sock
+            return _R_NONE
+
+        client._connect = connected  # type: ignore[method-assign]  # the retire's connect, its CONNACK read
+        client._retire = ("127.0.0.1", 1883, b"t0", b"sensors/t0", b"", b"")
+        await client._retire_session()
+        return await errnums(client)
+
+    halves = _ScriptedSocket((None, 1))
+    assert run(scenario(halves)) == []
+    assert (halves.wire, halves.partial) == (bytearray(b"\xe0\x00"), 1)
+    assert run(scenario(_StallingSocket())) == [code("W", "MQTT_RETIRE_FAILED")]
 
 
 class _FaultyStream(_StallingStream):

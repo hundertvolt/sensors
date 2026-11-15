@@ -43,6 +43,7 @@ ALLOWED = {
     ("tests/_boot_contiguity_probe.py", "_dump", "collect"): "baseline: the heap map that follows",
     ("tests/_boot_contiguity_probe.py", "_ProbeGc.collect", "collect"): "boot mirror: the placement reset on the probe's live arm",
     ("tests/_threshold_runner.py", "_run", "threshold"): "stage: the process's GC stage for the file it runs",
+    ("tests/lwip_host/test_mqtt_client_back_pressure.py", "_window", "collect"): "baseline: a back-pressure window's allocation",
     ("tests/microtest.py", "_reset_process_state", "threshold"): "stage: the run's own stage restored after each test",
     ("tests/test_asy_base_classes.py", "test_piecebuffer_retains_nothing_after_construction", "collect"): "baseline: the retention readings",
     ("tests/test_asy_fram_allocation_budget.py", "_priced", "collect"): "baseline: the setup's priced window",
