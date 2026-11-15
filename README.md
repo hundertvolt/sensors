@@ -1111,6 +1111,7 @@ fi
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 # uv as pyproject.toml's [tool.uv] required-version names it (any other uv refuses to sync), with pip
 # where the sandbox's egress policy blocks astral.sh.
+# A reused chroot reruns this line whenever that pin moves.
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.13.7"
 # sudo: toolchain/setup_toolchain.py's ensure_apt_packages() always prepends it, and minbase lacks it.
 # libcap2-bin (setcap, for the port-53 DNS test) is in versions.toml's apt_packages too; it stays here
@@ -1281,17 +1282,14 @@ submodule update --init datasheets`; SPECIFICATION.md Part A.6).
   peer's C implementation must mirror, and the Python-internal ones recorded as having no C impact;
   kept until the post-audit C reconciliation deletes it (owner, 2026-09-25). The protocol itself is
   SPECIFICATION.md Part J, permanent.
-- **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** and **[`audit/`](audit/)** — the whole-project
-  audit's plan, topic catalog and working records; outside the lint/typecheck scopes, deleted when the
-  audit closes and its outcomes are migrated.
 - **[`mqtt_poc/`](mqtt_poc/)** — the MQTT client proof of concept's records: `mqtt_poc/RESEARCH.md`
   (the research round, 2026-10-07: the client landscape, Peter Hinch's `mqtt_as`, the rp2 platform facts,
   what the framework requires of the service and the owner's answers), built from the six raw, unverified
   reports under `research/`; `prototype/`, a first client prototype with its dev twin torture harness and
   `prototype/RESULTS.md`; `mqtt_poc/DESIGN.md` (2026-10-08), the design of the `src/` client, its `dev`
   wiring, its tests per tier and the bench runbook; and `mqtt_poc/BENCH_HANDOVER.md`, the bench session's
-  run sheet and where its results go. Like `audit/`, outside the doc gates' scan; deleted once the PoC's
-  outcomes are migrated.
+  run sheet and where its results go. Outside the doc gates' scan; deleted once the PoC's outcomes are
+  migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated; for anything bench-related, BACKLOG.md's

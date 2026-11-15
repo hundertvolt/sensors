@@ -1280,7 +1280,7 @@ class _OrderedResetModule(_FakeModule):
 
 
 def test_reset_errors_runs_its_sources_one_after_another() -> None:
-    # One source after another, no task per source (owner, 2026-11-07): each reset ends before the next begins.
+    # One source after another, no task per source (agent, 2026-11-07, under the owner's option B): each reset ends before the next begins.
     events: list[str] = []
     mods = [_OrderedResetModule(n, events) for n in ("A", "B", "C")]
     _service, app = _make_service(error_sources=mods)
@@ -4312,7 +4312,7 @@ class _OverflowingJson:
 
 def test_a_body_whose_decoding_meets_a_stack_overflow_records_it_and_reads_as_none() -> None:
     # The body reader's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
-    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None  # type: ignore[arg-type]
+    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None
     assert fatal_reported() is True
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 

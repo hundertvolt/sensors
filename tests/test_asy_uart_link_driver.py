@@ -831,7 +831,7 @@ def test_a_put_to_the_links_own_route_starts_one_hazard_run_answers_each_outcome
             for body in ({"UartHazards": False}, {"UartHazards": True}, {"UartHazards": True}, {"Other": True}, [True]):
                 answers.append(await _answer(app, "PUT", body))  # one at a time: MicroPython has no await in a comprehension
             report = await _answer(app, "GET")
-            responder = await pair.responder.put_uart(_Body({"UartHazards": True}))  # type: ignore[arg-type]  # the body alone is read
+            responder = await pair.responder.put_uart(_Body({"UartHazards": True}))
         words = [(status, body["result"] if isinstance(body, dict) and body["code"] == 0 else body["code"]) for status, body in answers]  # type: ignore[index]
         assert words == [(200, {"UartHazards": INVALID}), (200, {"UartHazards": VALID}), (200, {"UartHazards": FAILED}), (200, {"Other": INVALID}), (200, 1)], words
         assert report == (200, {"Runs": 0, "Pending": True, "Last": None}), report

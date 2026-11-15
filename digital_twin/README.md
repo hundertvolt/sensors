@@ -312,10 +312,12 @@ the twin layout of `scripts/micropypath.toml` (`micropypath twin` of `scripts/_u
 it; the runner puts `digital_twin/unixport` on its own path):
 
 ```bash
-MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json --device <device> [flags]
+MICROPYPATH="build/portable_src:build/generated_src:src:digital_twin:fakes:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json --device <device> [flags]
 ```
 
-`build/generated_src` is listed first so `import sensortask_<device>` resolves to the freshly
+`build/portable_src` holds files only on a host not known to compile native code: copies of the
+`src/` modules with a native function, each importing its plain twin from `fakes/`.
+`build/generated_src` comes before `src` so `import sensortask_<device>` resolves to the freshly
 buildgen-generated module, not any same-named file that might otherwise be found later on this
 path — no static `src/sensortask_<device>.py` exists any more. `frozen_modules` is required here too
 (see `SPECIFICATION.md` Part A.9 for the full pipeline) — the generated module does an
@@ -404,7 +406,7 @@ predictable path before any test file runs; every other import the generated mod
 e.g. `asy_i2c_driver`, still falls through to `src/`):
 
 ```bash
-MICROPYPATH="/tmp/twin_boot:src:digital_twin:ext:.frozen" <micropython-unix-port-binary> \
+MICROPYPATH="/tmp/twin_boot:build/portable_src:src:digital_twin:fakes:ext:.frozen" <micropython-unix-port-binary> \
     digital_twin/run_generic_integration.py --module sensortask_novel_combo \
     --wiring-plan /tmp/twin_boot/wiring_plan.json --device novel_combo --host 127.0.0.1 --port 8080
 ```
@@ -642,9 +644,9 @@ the UDP shim; a plan naming a UART pair (`dev`) gets the bench's crossover jumpe
 `TwinBoard` launches it behind `Board`'s API (`pytest tests_hardware/flash --twin`), each board's
 FRAM, SCD30 and `mem_backup()` state and its filesystem (each run's working directory) in one
 directory kept across its runs, so nothing a script writes lands in the checkout.
-`scripts/record_twin_instrument_runs.py` writes the twin record (twin_record.json in
-`tests_hardware/`), each instrument's twin run at both GC stages. A script that cannot run here is an
-`exception` entry with its reason in the record, never listed in this file.
+`scripts/record_twin_instrument_runs.py` writes the twin record, each instrument's twin run at both
+GC stages, to twin_record.json in `tests_hardware/`, a local output that is not committed; a script
+that cannot run here is an `exception` entry there with its reason.
 
 ## Automated CI suite
 
@@ -751,7 +753,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    skip of runs 5 and 5b.
    **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
    left exactly three failures on a *healthy* chip, write-through (`asy_print_log.py`'s
-   `_store_err()` writes on every push — there is no deferred flush to race), so they should come
+   `err_s()` writes on every push — there is no deferred flush to race), so they should come
    back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
    go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,
    `PrintLogHistoryStore.setup()`'s `_read()` then fails, and its `_write()` fallback stores the
@@ -770,7 +772,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    exactly, every *other* registered error source (`SYSTEM`/`NOTIFY`/`NTP`/`WEBSERVER`/`DNSSRV`, every
    FRAM-backed `CFGMGR_*`, every `uart_link` instance) at least what it held, the same set of sources
    registered, the storage pause *not* surviving (RAM-only), and a `ResetErrors` PUT clearing the
-   restored history on the chip. `FRAM` and `CFGMGR_SCD30` are the RAM-only sources, exempt from the
+   restored history on the chip. `FRAM` is the RAM-only source, exempt from the
    sweep, and `tests/_sensortask_scenarios.py` pins the same set from the real object graph. The same
    all-or-nothing claim is mirrored at the mock tier (`tests/test_fram_integration.py`) and on real
    silicon (`tests_hardware/flash/test_fram_storage.py`'s reset-race test).

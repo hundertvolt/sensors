@@ -1,3 +1,0 @@
-Traceback (most recent call last):
-  File "tests/test_asy_base_classes.py", line 20, in <module>
-ImportError: can't import name UNAVAILABLE

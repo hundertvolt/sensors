@@ -1,5 +1,5 @@
 # The Unix-port MICROPYPATH layouts, read by every launcher (scripts/_unix_port.sh, tomllib, tests_js/_micropypath.js).
 # unit has no ext/: a unit file exercising vendored Microdot inserts it itself (grep sys.path.insert(0, "ext")).
-# A derived launcher swaps frozen_modules for build/generated_html/<device> and says why.
+# A derived launcher swaps frozen_modules for build/generated_html/<device> and says why; any path keeps build/portable_src before src/.
 unit = "build/portable_src:build/generated_src:src:tests:fakes:frozen_modules:.frozen"
 twin = "build/portable_src:build/generated_src:src:digital_twin:fakes:ext:frozen_modules:.frozen"

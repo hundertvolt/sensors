@@ -19,9 +19,9 @@ from test_import_placement import _NAMED_EXCEPTIONS, f1_named_paths
 
 from buildgen.generate import generate_device
 
-# What a scan of the repository never reads: the reference-only legacy tree, the C peer, the audit set,
+# What a scan of the repository never reads: the reference-only legacy tree, the C peer,
 # and the two checks whose fixtures are the patterns themselves.
-_NOT_SCANNED = ("legacy/", "arduino/", "audit/", "node_modules/")
+_NOT_SCANNED = ("legacy/", "arduino/", "node_modules/")
 _OWN_FIXTURES = frozenset({"tests_scripts/test_import_graph.py", "tests_scripts/test_import_placement.py"})
 _WEBSITE_MODULE = "frozen_html"
 

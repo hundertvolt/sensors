@@ -10,7 +10,7 @@ from binascii import hexlify
 _TREE = "build/generated_src"
 _STAMP = "build/generated_src/.inputs_stamp.json"
 _STALE = "build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py"
-_NAMED = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py")
+_NAMED = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py", "fakes/_native_twins.py")
 _LISTED = (("devices", ".toml"), ("buildgen", ".py"), ("src", ".py"), ("ext", ".py"))
 _CHUNK = bytearray(4096)  # one read buffer for every file: hashing allocates no file-sized block
 

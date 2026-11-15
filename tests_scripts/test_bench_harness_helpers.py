@@ -947,9 +947,9 @@ def test_reflash_retries_only_while_no_bootsel_device_is_enumerated(monkeypatch:
     board = Board()
     if outcome == "raises":
         with pytest.raises(harness.HardwareTestFailureError, match=r"picotool load .* failed"):
-            harness.reflash(board, tmp_path / "image.uf2")  # type: ignore[arg-type]
+            harness.reflash(board, tmp_path / "image.uf2", None)  # type: ignore[arg-type]
     else:
-        harness.reflash(board, tmp_path / "image.uf2")  # type: ignore[arg-type]
+        harness.reflash(board, tmp_path / "image.uf2", None)  # type: ignore[arg-type]
     assert calls == ["bootloader"] + ["sudo picotool load"] * loads
     assert len(board.recovery_events) == loads - 1, board.recovery_events
 

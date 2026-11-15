@@ -812,7 +812,7 @@ class WebserverService:
                 # asked "Clear nothing when ResetErrors answers Failed in mempause?": '1 b').
                 result[key] = FAILED
                 continue
-            # One source after another, no task per source, this service's own entry last (owner, 2026-11-07). One store
+            # One source after another, no task per source, this service's own entry last (agent, 2026-11-07). One store
             # whose write failed answers "Failed"; a raise reaches the catch-all (500).
             ok = True
             for module in self._error_sources.values():

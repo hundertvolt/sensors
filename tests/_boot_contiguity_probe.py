@@ -1,5 +1,5 @@
 """Boots one real generated device and prints a labelled micropython.mem_info(1) map at each end of the two one-time
-boot lists. Not a test_*.py file: scripts/test.sh never runs it.
+boot lists, with SystemService's gc.collect() calls live or suppressed. Not a test_*.py file: scripts/test.sh never runs it.
 
 Its consumer, tests_scripts/test_digital_twin_boot_contiguity.py, spawns it under the Unix-port binary and measures the
 maps with tests_hardware/heap_map.py; the map goes to the platform print, not sys.stdout, so it is never read in-process
@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 # The bound mirroring tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py's, so a
 # twin reading and a board reading are taken at the same positions of the same sequence.
 _TIMERS_TIMEOUT_S = 15
+
+_ARM_LIVE = "collects"
+_ARM_SUPPRESSED = "suppressed"
 
 
 def _keep_nothing(_log: object, _entry: object) -> None:
@@ -93,23 +96,56 @@ def _rings(label: str, module: "ModuleType") -> None:
             print(f"RING {label} {name} {where}")
 
 
+class _ProbeGc:
+    # Stands in for asy_system_service's `gc` at both boot lists' collect sites: dumps a map at the positions
+    # asked for, then forwards to the real collect only on the live arm. Its label names the list running,
+    # "batch" inside SystemService.run_setups(), else "starter"; reassigning the module attribute is the mock.
+
+    # A dumped position collects on BOTH arms, via _dump() - the seam map has to be post-collect or
+    # the two arms anchor at different places and nothing is comparable. So the suppressed arm keeps
+    # the leading collect and loses the per-module ones, which makes it a conservative control.
+
+    def __init__(self, *, live: bool, dump_at: "dict[str, tuple[int, ...]]") -> None:
+        self.live = live
+        self.dump_at = dump_at
+        self.label = "starter"
+        self.calls = {"batch": 0, "starter": 0}
+
+    def collect(self) -> None:
+        n = self.calls[self.label]
+        if n in self.dump_at.get(self.label, ()):
+            _dump(f"{self.label}_{n:02d}")
+        if self.live:
+            gc.collect()
+        self.calls[self.label] = n + 1
+
+
 async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[TaskStarter]", task_names: "list[str]") -> None:
-    # main()'s step after the setup list. The map follows start_tasks() at once; the supervisor is never entered.
+    # main()'s step after the setup list. start_tasks() returns after its final collect, so the map follows at
+    # once; the supervisor is never entered.
     await sysfunct.start_tasks(task_starters, task_names=task_names)
     _dump("after_starter_loop_end")
 
 
-async def _main(device: str, cfg_path: str, settle_ms: int) -> int:
+async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
     unix_port_unretrieved_report.install()  # as microtest does for the suite this probe measures (Part I.4(e))
+    # Checked, not assumed: an unrecognised arm would silently measure the suppressed one and
+    # turn the live bound into a confusing failure rather than an obvious argument mistake.
+    assert arm in (_ARM_LIVE, _ARM_SUPPRESSED), f"unknown arm {arm!r} - expected {_ARM_LIVE!r} or {_ARM_SUPPRESSED!r}"
     asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
     module = __import__(f"sensortask_{device}")
+    probe_gc = _ProbeGc(live=arm == _ARM_LIVE, dump_at={"batch": (0,)})
+    asy_system_service.gc = probe_gc  # type: ignore[assignment]
     real_run_setups = asy_system_service.SystemService.run_setups
 
-    async def seamed_run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:
-        _dump("batch_00")  # the seam: right before the setup list's first unit
-        await real_run_setups(self, setups)
+    async def labelled_run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:
+        probe_gc.label = "batch"
+        try:
+            await real_run_setups(self, setups)
+        finally:
+            probe_gc.label = "starter"
 
-    asy_system_service.SystemService.run_setups = seamed_run_setups  # type: ignore[method-assign]
+    asy_system_service.SystemService.run_setups = labelled_run_setups  # type: ignore[method-assign]
 
     _dump("baseline")
     started_ms = time.ticks_ms()
@@ -123,21 +159,22 @@ async def _main(device: str, cfg_path: str, settle_ms: int) -> int:
         print("RESULT: FAIL build_system() completed but left sysfunct unset")
         return 1
     # main()'s order: the task lists at the task starts, the trigger and timer lists once start_tasks() returned, then
-    # the timers; the supervisor is never entered.
+    # the timers; the supervisor is never entered. So the starter loop's collects never see the later two lists.
     task_starters = module._collect_task_starters()
     task_names = module._collect_task_names()
     await _run_starter_loop(sysfunct, task_starters, task_names)
     _rings("after_starter_loop_end", module)
     trigger_starters = module._collect_trigger_starters()
     timer_starters = module._collect_timer_starters()
-    print(f"LISTS starters={len(task_starters)} triggers={len(trigger_starters)} timers={len(timer_starters)}")
+    print(f"LISTS starters={len(task_starters)} triggers={len(trigger_starters)} timers={len(timer_starters)} batch_collects={probe_gc.calls['batch']}")
     if not await _drive_timers(sysfunct, trigger_starters, timer_starters):
         return 1
+    print(f"COUNTS batch_collects={probe_gc.calls['batch']} starter_collects={probe_gc.calls['starter']}")
 
     if settle_ms > 0:  # reported, never asserted on: the run phase undoes most of it (MEASUREMENTS M3.9)
         await asyncio.sleep_ms(settle_ms)
         _dump("after_settle")
-    print(f"BOOT device={device} build_system_ms={build_ms} settle_ms={settle_ms}")
+    print(f"BOOT device={device} arm={arm} build_system_ms={build_ms} settle_ms={settle_ms}")
     print("RESULT: PASS")
     return 0
 
@@ -149,7 +186,8 @@ sys.exit(
         _main(
             sys.argv[1],
             sys.argv[2],
-            int(sys.argv[3]) if len(sys.argv) > 3 else 0,
+            sys.argv[3],
+            int(sys.argv[4]) if len(sys.argv) > 4 else 0,
         ),
     ),
 )

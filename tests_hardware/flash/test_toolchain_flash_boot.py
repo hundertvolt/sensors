@@ -61,4 +61,4 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: "Board", bench_device_name:
     assert build.returncode == 0, f"scripts/build_firmware.py failed (exit {build.returncode}):\n{build.stdout}\n{build.stderr}"
     assert uf2_path.exists(), f"build_firmware.py reported success but {uf2_path} doesn't exist"
     assert uf2_path.with_suffix(".json").exists(), f"build_firmware.py wrote no image record beside {uf2_path}"
-    reflash(board, uf2_path)
+    reflash(board, uf2_path, None)

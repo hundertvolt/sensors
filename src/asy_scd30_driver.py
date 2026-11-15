@@ -190,9 +190,6 @@ if TYPE_CHECKING:
 
 
 class SCD30_Reader(SensorReaderConfig):
-    # CFGMGR_SCD30 stays RAM-only: no extra FRAM chunk for the FRC settings (owner, 2026-09-29).
-    _CFG_LOG_FRAM = False
-
     def __init__(
         self,
         i2c: I2C,
@@ -274,8 +271,7 @@ class SCD30_Reader(SensorReaderConfig):
             current = snapshot
         # TempOffset compares in chip ticks; the primitive applies the rounding only to a value the schema validated as a float.
         resolution = {"TempOffset": _temp_offset_ticks}
-        outcome = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]  # _temp_offset_ticks takes TempOffset's validated float, not any CfgValue
-        write, results = outcome  # type: ignore[misc]  # rest is a dict: compare_before_write() answers None only for a non-dict
+        write, results = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]  # _temp_offset_ticks takes TempOffset's validated float, not any CfgValue
         for key, result in results.items():
             if result == INVALID:
                 self.pr.err_s("Invalid value for", key, errno=_ERR_BAD_ARG)
@@ -311,7 +307,7 @@ class SCD30_Reader(SensorReaderConfig):
             elif await self.stop_continuous_measurement(value=False):
                 results["ContMeas"] = VALID
                 self._frc_reset()
-                await self._frc_not_measuring()
+                self._frc_not_measuring()
             else:
                 results["ContMeas"] = FAILED
         if frc:
@@ -393,11 +389,11 @@ class SCD30_Reader(SensorReaderConfig):
             return _FRC_NOISY
         return _FRC_READY
 
-    async def _frc_not_measuring(self) -> None:
-        # The sample's own TS with no values and state 0, in one data-lock hold (no await inside): a stopped sensor
-        # publishes nothing stale (owner, 2026-11-04: "For the stopped sensor, option c, the clean solution").
+    def _frc_not_measuring(self) -> None:
+        # The sample's own TS with no values and state 0, stored with no await: a stopped sensor publishes nothing
+        # stale (owner, 2026-11-04: "For the stopped sensor, option c, the clean solution").
         self._frc_measuring = False
-        await self._republish(_FIELDS, CO2=None, Temp=None, Hum=None, WetBulb=None, DewPoint=None, FRCState=_FRC_NOT_MEASURING, FRCWait=None)
+        self._datastruct = SCD30(None, None, None, None, None, _FRC_NOT_MEASURING, None, getattr(self._datastruct, "TS", None))
 
     def _frc_reset(self) -> None:
         # Readiness starts over: a soft reset, an interval change, a measurement start, a stop or a missed measurement.
@@ -463,7 +459,7 @@ class SCD30_Reader(SensorReaderConfig):
                 self._frc_idle_ticks += 1
                 if self._frc_idle_ticks == idle_limit:
                     self._frc_restart()
-                    await self._frc_not_measuring()
+                    self._frc_not_measuring()
 
             if self._scd_timer_triggers >= self._trigger_half_ticks:
                 self.pr.evt("Interrupt Start Trigger")

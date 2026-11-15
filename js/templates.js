@@ -22,7 +22,7 @@ import { formatFieldValue } from "./field-format.js";
  */
 /** @typedef {{deviceNowS: number | null, defaultDecimals: number | undefined, unavailable: boolean, siblingLabel: string | undefined}} FieldDisplay */
 /** @typedef {{num: number, type: "N"|"E"|"W"}} HistoryItem */
-/** @typedef {{count: string, worst: "N"|"E"|"W"|"none", history: HistoryItem[] | null}} ErrcountRowState */
+/** @typedef {{count: string, hasErrors: boolean, worst: "N"|"E"|"W"|"none", history: HistoryItem[] | null}} ErrcountRowState */
 
 const SOURCE_UNAVAILABLE_TEXT = "unavailable";
 const NO_DATA_TEXT = "no data";
@@ -416,19 +416,19 @@ function epochInstant(field, value) {
 
 /**
  * @param {unknown} entry one module's errcount entry; undefined when the body carried none
- * @returns {ErrcountRowState} the row's count text, its one severity and its history (null when there is no data)
+ * @returns {ErrcountRowState} the row's count text, whether it is non-zero, its one severity and its history (null when there is no data)
  */
 function errcountRowState(entry) {
     if (isUnavailable(entry)) {
-        return { count: SOURCE_UNAVAILABLE_TEXT, worst: "none", history: null };
+        return { count: SOURCE_UNAVAILABLE_TEXT, hasErrors: false, worst: "none", history: null };
     }
     if (typeof entry !== "object" || entry === null) {
-        return { count: NO_DATA_TEXT, worst: "none", history: null };
+        return { count: NO_DATA_TEXT, hasErrors: false, worst: "none", history: null };
     }
     const { counter, history } = /** @type {{counter: unknown, history?: unknown}} */ (entry);
     const items = Array.isArray(history) ? /** @type {HistoryItem[]} */ (history) : [];
     const count = typeof counter === "number" && counter >= ERR_COUNT_CAP ? `${ERR_COUNT_CAP}+` : String(counter);
-    return { count, worst: worstErrcountType(items), history: items };
+    return { count, hasErrors: typeof counter === "number" && counter > 0, worst: worstErrcountType(items), history: items };
 }
 
 /**
@@ -564,6 +564,7 @@ function paintErrcountGroup(card, group, errcount, codes) {
  */
 function paintErrcountRow(rowWrapper, codes, state) {
     rowWrapper.dataset.worst = state.worst;
+    rowWrapper.dataset.hasErrors = String(state.hasErrors);
     const count = rowWrapper.querySelector(".errcount-row-count");
     const list = rowWrapper.querySelector(".history-list");
     if (count === null || !(list instanceof HTMLElement)) {

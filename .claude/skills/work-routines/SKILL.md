@@ -109,7 +109,7 @@ Each is enforced by the named gate unless it says none; the full text is in CLAU
 - Types: `X | Y`, never `Union` (ruff UP007). No `type: ignore[method-assign]` in `src/` (lint.sh). `# noqa: E402`
   only after a statement other than `sys.path` setup (RUF100).
 - Memory: zero `MemoryError` and zero `memory allocation failed`, caught-and-logged included, at gc -1 first and
-  then at 32768 (test.sh, the twin CI, the hardware gates). No `gc.collect()` in the firmware (lint.sh).
+  then at 32768 (test.sh, the twin CI, the hardware gates). `gc.collect()` only at the boot placement reset (lint.sh).
 - asyncio: a test helper that calls `asyncio.run()` is called from the synchronous test body, never from a coroutine.
 - Hardware: only with the owner's go-ahead given in this session's own conversation. Without it: `collect` and
   `pytest tests_hardware/flash --twin` only; no `mpremote`, `picotool`, `nmcli`, `iw` or `iptables`.
@@ -123,6 +123,8 @@ Each is enforced by the named gate unless it says none; the full text is in CLAU
   literal anywhere.
 - A build-environment change that adds an install, a host requirement or a recipe step gets a line in BACKLOG.md's
   chroot entry.
+- Restraint (no gate; SPECIFICATION.md 0.2, "Restraint in practice"): verify a finding before acting on it, fix root
+  causes without runaway chains, do not drift into fixing tests, and ask before removing a possibly unused feature.
 
 ## Bench work, setup and cleanup
 

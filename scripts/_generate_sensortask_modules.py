@@ -25,6 +25,7 @@ import json
 import platform
 import sys
 from pathlib import Path
+from typing import cast
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -32,36 +33,41 @@ sys.path.insert(0, str(REPO_ROOT))
 from buildgen.api_reference import api_reference_json, generate_api_reference  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.buildspec import MANDATORY_FILES  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.definitions import generate_definitions  # noqa: E402 - the repo root is on sys.path from the line above
-from buildgen.driver_registry import parse_name_constant, parse_source_file  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.driver_registry import parse_name_constant  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.errors import BuildError, BuildInternalError  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.generate import generate_device  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.graph import build_construction_order  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.jsontypes import JsonDict  # noqa: E402 - the repo root is on sys.path from the line above
-from buildgen.model import DeviceModel, instance_label  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.model import DeviceModel, TomlDoc, instance_label  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.source_ast import parse_source  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.twin_wiring import compute_twin_wiring  # noqa: E402 - the repo root is on sys.path from the line above
-from buildgen.validate import _DEVICE_WIRING_CONSUMERS, _owns_config_store  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.validate import _DEVICE_WIRING_CONSUMERS, _WDT_TIMEOUT_MS, _checked_str, _uart_bus_value, _uart_links, device_max_connections, module_int_const  # noqa: E402 - the repo root is on sys.path from the line above
 from buildgen.version import current_build_date  # noqa: E402 - the repo root is on sys.path from the line above
 
 # Every file a generation reads besides the device TOMLs: the catalog and lwIP table (buildgen/definitions.py,
-# model.py), the overrides validate.py loads by path, this script, and the ext/ modules the frozen closure parses.
-_NAMED_INPUTS = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py")
+# model.py), the overrides validate.py loads by path, this script, the twins the portable copies below swap in, and the
+# ext/ modules the frozen closure parses.
+_NAMED_INPUTS = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py", "fakes/_native_twins.py")
 _INPUT_GLOBS = ("buildgen/*.py", "src/*.py", "ext/*.py")
 _STAMP_NAMES = (".inputs_stamp.json", "definitions/inputs_stamp.json")
-# The hosts whose Unix port compiles no native code (MicroPython 1.29, ports/unix/mpconfigport.h): there each src/
-# module with a native function gets a copy in build/portable_src/, first on every launcher's path (micropypath.toml),
-# that function swapped for its plain twin in fakes/_native_twins.py.
-_NO_NATIVE_EMITTER = ("aarch64", "arm64", "riscv64")
+# The platform.machine() prefixes whose Unix port compiles native code: x86, x86-64, 32-bit ARM, RV32 (MicroPython 1.29,
+# ports/unix/mpconfigport.h:67-85). On any other host each src/ module with a native function gets a copy in
+# build/portable_src/, first on every launcher's path (micropypath.toml), that function swapped for its plain twin.
+_NATIVE_EMITTER = ("x86", "amd64", "i386", "i486", "i586", "i686", "armv", "riscv32")
 # The generated main()'s statements in order: each awaited call by name, each boot-phase mark by its
 # constant (SPECIFICATION.md Part A.7). The boot-sequence scenarios record a real run against it.
 BOOT_PHASES = ("build_system", "BOOT_SETUP", "run_setups", "BOOT_TASKS", "start_tasks", "BOOT_TIMERS", "start_timers", "BOOT_NTP", "ntp_force_sync", "BOOT_DONE", "supervise_tasks")
 
 
-def _config_log_on_fram(path: Path, device: str) -> bool:
-    # False where a class in the module sets _CFG_LOG_FRAM = False at class level, keeping its config store's log off
-    # FRAM (asy_base_classes.SensorReaderConfig reads it); read from the driver source, so buildgen names no module.
-    text, _tree = parse_source_file(path, device, path.name)
-    return not _sets_config_log_off(text, str(path))
+@functools.lru_cache(maxsize=64)
+def _declares_config_store(source: str, filename: str) -> bool:
+    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
+    for node in ast.walk(parse_source(source, filename)):
+        if isinstance(node, ast.ClassDef) and any(isinstance(b, ast.Name) and b.id == "SensorReaderConfig" for b in node.bases):
+            return True
+        if isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id == "ConfigManager") or (isinstance(node.func, ast.Attribute) and node.func.attr == "ConfigManager")):
+            return True
+    return False
 
 
 def _device_outputs(device_toml: Path, out_dir: Path, build_date: str) -> "dict[Path, str] | None":
@@ -98,8 +104,8 @@ def _expected_setups(model: DeviceModel, order: "list[str | tuple[str, str]]") -
 
 
 def _fram_backed_loggers(model: DeviceModel, src_dir: Path) -> "list[str]":
-    # Every logger a FRAM-wired module keeps on FRAM: its own, its CFGMGR_<name> where it owns a config store whose
-    # log stays on FRAM, and conn's captive DNS server; the FRAM store's own log is never among them.
+    # Every logger a FRAM-wired module keeps on FRAM: its own, its CFGMGR_<name> where it owns a config store, and
+    # conn's captive DNS server; the FRAM store's own log is never among them.
     by_label = {spec.label: spec for spec in model.instances.values()}
     names = []
     for label in _fram_wired(model):
@@ -112,7 +118,7 @@ def _fram_backed_loggers(model: DeviceModel, src_dir: Path) -> "list[str]":
         else:
             path, name = spec.driver_info.source_path, spec.resolved_name
         names.append(name)
-        if _owns_config_store(path) and _config_log_on_fram(path, model.device):
+        if _owns_config_store(path):
             names.append("CFGMGR_" + name)
         if label == "conn":
             names.append(parse_name_constant(src_dir / MANDATORY_FILES["dns"], model.device, MANDATORY_FILES["dns"]))
@@ -131,10 +137,12 @@ def _fram_wired(model: DeviceModel) -> "list[str]":
 
 
 def _fresh(out_dir: Path, hashes: "dict[str, str]") -> bool:
-    # The tree's stamp still holds: the same inputs at the same hashes, and every output it lists is there.
+    # The tree's stamp still holds: the same inputs at the same hashes, every output it lists is there, and
+    # build/portable_src/ holds copies exactly where this host needs them (a tree generated on another host is stale).
     try:
         stamp = json.loads((out_dir / _STAMP_NAMES[0]).read_text(encoding="utf-8"))
-        return bool(stamp["inputs"] == hashes and all((out_dir / rel).is_file() for rel in stamp["outputs"]))
+        copies = any((REPO_ROOT / "build" / "portable_src").glob("*.py"))
+        return bool(stamp["inputs"] == hashes and all((out_dir / rel).is_file() for rel in stamp["outputs"]) and copies != _native_emitter())
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
@@ -176,7 +184,7 @@ def _generate_tree(out_dir: Path, *, if_stale: bool) -> int:
         if device_outputs is None:
             return 1
         outputs.update(device_outputs)
-    if not _write_through_rename(outputs):
+    if not _sync_portable_copies() or not _write_through_rename(outputs):
         return 1
     written = set(outputs)
     stamps = _stamps(hashes, device_tomls, [p.relative_to(out_dir).as_posix() for p in written])
@@ -197,18 +205,35 @@ def _input_hashes(device_tomls: "list[Path]") -> "dict[str, str]":
     return {path.relative_to(REPO_ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs if path.is_file()}
 
 
+def _native_emitter() -> bool:
+    # Known to compile native code; any other host takes the plain-twin copies, which run everywhere.
+    return platform.machine().lower().startswith(_NATIVE_EMITTER)
+
+
+def _owns_config_store(path: Path) -> bool:
+    # Whether the module builds a ConfigManager: a SensorReaderConfig subclass gets one from its base, any
+    # other class constructs it. The store logs as CFGMGR_<name>, beside the module's own logger.
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise BuildError("<src>", f"cannot read {path} to find its config store: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", field=path.name) from e
+    return _declares_config_store(source, str(path))
+
+
 def _portable_copies(portable_dir: Path) -> "dict[Path, str] | None":
     # Every src/ module with a @micropython.native or .viper function, each such function replaced by an import of its
-    # twin; checked on every host, so a native function with no twin fails here first, not on an arm64 host later.
+    # twin; checked on every host, so a native function with no twin fails here first, not on an arm64 host later. Only
+    # a module-level def can be swapped for an import, so a native method or nested def counts as having none.
     twins_path = REPO_ROOT / "fakes" / "_native_twins.py"
-    twins = {node.name for node in parse_source(twins_path.read_text(encoding="utf-8"), str(twins_path)).body if isinstance(node, ast.FunctionDef)}
+    twins = {node.name for node in parse_source(twins_path.read_text(encoding="utf-8"), str(twins_path)).body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
     copies: dict[Path, str] = {}
     for path in sorted((REPO_ROOT / "src").glob("*.py")):
         text = path.read_text(encoding="utf-8")
-        native = [node for node in parse_source(text, str(path)).body if isinstance(node, ast.FunctionDef) and any(isinstance(d, ast.Attribute) and isinstance(d.value, ast.Name) and d.value.id == "micropython" and d.attr in ("native", "viper") for d in node.decorator_list)]
+        module = parse_source(text, str(path))
+        native = sorted((node for node in ast.walk(module) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(isinstance(d, ast.Attribute) and isinstance(d.value, ast.Name) and d.value.id == "micropython" and d.attr in ("native", "viper") for d in node.decorator_list)), key=lambda node: node.lineno)
         lines = text.splitlines(keepends=True)
         for node in reversed(native):
-            if node.name not in twins:
+            if node.name not in twins or node not in module.body:
                 print(f"error: src/{path.name}'s native function {node.name}() has no plain twin in fakes/_native_twins.py", file=sys.stderr)
                 return None
             lines[min(d.lineno for d in node.decorator_list) - 1 : node.end_lineno] = [f"from _native_twins import {node.name}\n"]
@@ -232,17 +257,6 @@ def _remove_all_but(out_dir: Path, kept: "set[Path]") -> bool:
     return True
 
 
-@functools.lru_cache(maxsize=64)
-def _sets_config_log_off(source: str, filename: str) -> bool:
-    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
-    for node in ast.walk(parse_source(source, filename)):
-        if isinstance(node, ast.ClassDef):
-            for stmt in node.body:
-                if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and stmt.value.value is False and any(isinstance(t, ast.Name) and t.id == "_CFG_LOG_FRAM" for t in stmt.targets):
-                    return True
-    return False
-
-
 def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list[str]") -> "dict[str, str]":
     # The inputs read and every file of the tree, stamps included, for tests/_generated_tree.py; each TOML's hash for the JS loader.
     tomls = {path.stem: hashes[path.relative_to(REPO_ROOT).as_posix()] for path in device_tomls}
@@ -250,12 +264,13 @@ def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list
 
 
 def _sync_portable_copies() -> bool:
-    # Written on a host without a native emitter, emptied on every other, so a host that compiles native code runs it.
+    # Written on a host not known to have a native emitter, emptied on every other, so a host that compiles native code
+    # runs it; part of a stale tree's regeneration, so the copies keep to the stamp's inputs.
     portable_dir = REPO_ROOT / "build" / "portable_src"
     copies = _portable_copies(portable_dir)
     if copies is None:
         return False
-    if platform.machine().lower() not in _NO_NATIVE_EMITTER:
+    if _native_emitter():
         if not portable_dir.is_dir():
             return True
         copies = {}
@@ -280,6 +295,12 @@ def _write_through_rename(files: "dict[Path, str]") -> bool:
         print(f"error: cannot write {e.filename or written[-1]}: {e.strerror}", file=sys.stderr)
         return False
     return True
+
+
+def device_max_connections_by_name(device: str) -> int:
+    # The ceiling devices/<device>.toml builds, devices/ and src/ found from this script's own location, so a host
+    # instrument naming a device needs no path of its own.
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
 
 
 def expected_facts(model: DeviceModel, src_dir: Path = REPO_ROOT / "src") -> JsonDict:
@@ -314,7 +335,22 @@ def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:
     # One whole-tree run at a time: two at once rename each other's .tmp files away. A second waits, then finds it current.
     with (out_dir.parent / "generated_src.lock").open("a", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _generate_tree(out_dir, if_stale=args.if_stale) or (0 if _sync_portable_copies() else 1)
+        return _generate_tree(out_dir, if_stale=args.if_stale)
+
+
+def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> int:
+    # The device's smallest hard consumer of loop time in ms (Part F.3), read by the twin's loop-lag scenario and the
+    # bench lag test: the watchdog's room beside one supervisor sleep, and each uart_link's reply timeout less its two
+    # polls, its idle poll and one GC pause (agent, 2026-10-21).
+    task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
+    consumers = [_WDT_TIMEOUT_MS - task_check_s * 1000]
+    reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))
+    buses = cast("dict[str, TomlDoc]", model.doc.get("bus", {}))
+    for spec in _uart_links(model):
+        bus = _checked_str(spec.fields["bus"])
+        poll_wait, poll_idle = (_uart_bus_value(src_dir, buses[bus], n) for n in ("poll_wait_ms", "poll_idle_ms"))
+        consumers.append(reply_ms - (2 * poll_wait + poll_idle + gc_pause))
+    return min(consumers)
 
 
 if __name__ == "__main__":

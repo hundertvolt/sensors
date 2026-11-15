@@ -191,18 +191,16 @@ def checked_numeric(check_val: object, field: "FieldSchema", *, check_special: b
 
 
 def compare_before_write(
-    data: object,
+    data: "JsonMapping",
     cfg_vals: "ConfigSchema",
     current: "dict[str, CfgValue]",
     *,
     always: tuple[str, ...] = (),
     resolution: "dict[str, Callable[[CfgValue], CfgValue]] | None" = None,
-) -> "tuple[dict[str, CfgValue], WriteValidity] | None":
+) -> "tuple[dict[str, CfgValue], WriteValidity]":
     # The shared compare-before-write primitive (SPECIFICATION.md Part G.2): per key of data, in its order,
     # the outcome and, for a "Valid" key, the coerced value to write. Logs nothing; the caller writes and
-    # logs. None for a non-dict data; an `always` key is a command, never compared and never "Unchanged".
-    if type(data) is not dict:
-        return None
+    # logs. An `always` key is a command, never compared and never "Unchanged".
     fields = schema_dict(cfg_vals)
     write: dict[str, CfgValue] = {}
     results: WriteValidity = {}
@@ -595,9 +593,6 @@ class ConfigManager:
                 outcome = compare_before_write(data, self._cfg_vals, self._current(), always=always, resolution=resolution)
             except MemoryError as e:  # the compare exhausting the heap - no file I/O happens in this method
                 self.pr.err_s(self._config_file, "- Error validating config data:", e, errno=_ERR_ALLOC)
-                return False, {}
-            if outcome is None:
-                self.pr.err_s(self._config_file, "- write data is not an object", errno=_ERR_BAD_ARG)
                 return False, {}
             write, dict_results = outcome
             # No bad-default check: the manager's own schema passed setup()'s self-check, and a malformed

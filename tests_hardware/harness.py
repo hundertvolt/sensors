@@ -35,9 +35,9 @@ from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
-from buildgen.validate import _WDT_TIMEOUT_MS, build_model, device_max_connections_by_name
+from buildgen.validate import _WDT_TIMEOUT_MS, build_model
 from scripts import _twin_process
-from scripts._generate_sensortask_modules import expected_facts
+from scripts._generate_sensortask_modules import device_max_connections_by_name, expected_facts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -653,10 +653,13 @@ def recover_by_reset(
         wait_until(ready, retry_wait_s, description=f"{description} (after one recovery kick + hard_reset())")
 
 
-def reflash(board: "Board", uf2_path: Path) -> None:
+def reflash(board: "Board", uf2_path: Path, bench: "BenchBridge | None") -> None:
     # The board onto `uf2_path`, an image its caller built: bootloader, then `picotool load` (picotool()'s retry), then a
-    # passive wait for presence and a boot line. Builds nothing.
+    # passive wait for presence and a boot line. Builds nothing. A bench's stations are kicked once the old image is
+    # gone, as kick_after_reset() does: its stale AP-side entry would block the new image's join.
     board.enter_bootloader()
+    if bench is not None:
+        bench.kick_all_stations()
     picotool(board, "load", "-x", "-v", str(uf2_path), timeout_s=_PICOTOOL_LOAD_TIMEOUT_S)
     wait_until(board.is_device_present, timeout_s=_REFLASH_PRESENT_TIMEOUT_S, description=f"board back on USB after flashing {uf2_path.name}")
     wait_for_boot(board, _REFLASH_BOOT_TIMEOUT_S)

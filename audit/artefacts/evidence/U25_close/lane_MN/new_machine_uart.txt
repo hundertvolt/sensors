@@ -1,1 +1,0 @@
-test_reset_peripherals_frees_every_dma_channel

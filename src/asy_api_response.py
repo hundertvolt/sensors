@@ -21,17 +21,11 @@ if TYPE_CHECKING:
 
     ResponseEnvelope = dict[str, "str | int | JsonMapping"]
 
-    class _Holder(Protocol):
-        def hold(self, closable: object) -> None: ...
-
     class _RequestLike(Protocol):
         # Structural stand-in for microdot.Request: typed via the vendored upstream stub (ext/typings/microdot/),
         # which leaves get/put/route unannotated (v2.7.0).
         @property
         def json(self) -> object: ...
-
-        @property
-        def sock(self) -> "tuple[_Holder, _Holder]": ...  # read-only, so any holder pair satisfies it
 
 # Global catalog numbers, valid on any logger.
 _ERR_CALLBACK = const(14)

@@ -534,13 +534,6 @@ class SensorReader:
             # Console only: the store that refused the recovery persisted its own entry.
             self.pr.err("Recovery of", key, "after a failed push was not stored:", res.get(key))
 
-    async def _republish(self, names: tuple[str, ...], **changes: object) -> None:
-        # The last sample again with the named fields changed, with no await between the read and the store, so a
-        # concurrent store is never overwritten by a stale copy; names are the namedtuple's fields in order.
-        old = self._datastruct
-        values = (changes[n] if n in changes else getattr(old, n) for n in names)
-        self._datastruct = type(old)(*values)  # type: ignore[arg-type]  # the sample's own namedtuple class, not NamedTuple's factory
-
     async def _trigger_loop(self) -> None:
         # The shared divider (Part C.9): every n-th base tick sets the read event, n the trigger period.
         self._trigger_counter = 0
@@ -595,9 +588,6 @@ def utc_now() -> int | None:
 
 
 class SensorReaderConfig(SensorReader):
-    # False where the owner keeps a module's config store off FRAM (SCD30, owner, 2026-09-29: 'no extra FRAM chunk')
-    _CFG_LOG_FRAM = True
-
     def __init__(
         self,
         init_data: "NamedTuple",
@@ -614,8 +604,7 @@ class SensorReaderConfig(SensorReader):
         # self.name - already instance_name(name, name_ext) from super().__init__() - threads the
         # per-instance extension into both the on-flash filename and this ConfigManager's own
         # "CFGMGR_<name>" logger (Part C.14). Never the raw `name`, which is the type's base name.
-        cfg_log = log if self._CFG_LOG_FRAM else LogConfig(None, log.history_length, log.debug)
-        self.cfgmgr = ConfigManager(config_filename(cfg_path, self.name), default_vals, self.name, log=cfg_log)
+        self.cfgmgr = ConfigManager(config_filename(cfg_path, self.name), default_vals, self.name, log=log)
         self.cfgmgr.owner_lock = self._set_lock  # this module's one PUT lock (_set_dict_cfg())
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:

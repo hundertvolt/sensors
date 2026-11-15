@@ -51,7 +51,7 @@ def test_the_link_suite_runs_on_a_crc16_image(board: "Board", bench: "BenchBridg
     flashed = False
     try:
         flashed = True
-        harness.reflash(board, uf2)
+        harness.reflash(board, uf2, bench)
         harness.wait_until(lambda: _load.serving(dut_ip), timeout_s=_SERVING_TIMEOUT_S, description="the CRC16 image serving")
         assert _load.image_deviations(request, dut_ip, record) == [], f"the board does not run the CRC16 image just flashed: {_load.image_deviations(request, dut_ip, record)}"
         check_link_healthy_under_load(dut_ip, reason)
@@ -59,7 +59,7 @@ def test_the_link_suite_runs_on_a_crc16_image(board: "Board", bench: "BenchBridg
         check_overload_does_not_corrupt(dut_ip, reason)
     finally:
         if flashed:
-            harness.reflash(board, round_uf2)  # the round's own image, unchanged: a rebuild would carry a new build date
+            harness.reflash(board, round_uf2, bench)  # the round's own image, unchanged: a rebuild would carry a new build date
             harness.wait_until(lambda: _load.serving(dut_ip), timeout_s=_SERVING_TIMEOUT_S, description="the round's image serving again")
             assert _load.image_deviations(request, dut_ip, round_record) == [], f"the board is not back on the round's image: {_load.image_deviations(request, dut_ip, round_record)}"
             _assert_no_link_failure(dut_ip)

@@ -34,11 +34,14 @@ if TYPE_CHECKING:
 SCOPES = ("src", "tests", "digital_twin", "fakes", "tests_hardware")
 POLICY = ("collect", "threshold", "disable", "enable")  # threshold only as a set: the zero-argument call reads it
 # Why a site may call gc (SPECIFICATION.md I.4(e)/(f.1)): every row names one.
-CATEGORIES = ("baseline", "before a timed window", "twin exception", "measured collection pause", "stage")
+CATEGORIES = ("placement reset", "baseline", "boot mirror", "before a timed window", "twin exception", "measured collection pause", "stage")
 _DS = "tests_hardware/device_scripts/"
 # The whole allowance, (module, enclosing function, call) -> its category and reason; a baseline's reading follows it.
 ALLOWED = {
+    ("src/asy_system_service.py", "SystemService.run_setups", "collect"): "placement reset: between the units of the one-time setup list",
+    ("src/asy_system_service.py", "SystemService.start_tasks", "collect"): "placement reset: between the units of the one-time task-start list",
     ("tests/_boot_contiguity_probe.py", "_dump", "collect"): "baseline: the heap map that follows",
+    ("tests/_boot_contiguity_probe.py", "_ProbeGc.collect", "collect"): "boot mirror: the placement reset on the probe's live arm",
     ("tests/_threshold_runner.py", "_run", "threshold"): "stage: the process's GC stage for the file it runs",
     ("tests/microtest.py", "_reset_process_state", "threshold"): "stage: the run's own stage restored after each test",
     ("tests/test_asy_base_classes.py", "test_piecebuffer_retains_nothing_after_construction", "collect"): "baseline: the retention readings",

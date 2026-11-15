@@ -87,6 +87,7 @@ _W_WEL_RETRIED = const(256)  # console only: a recovered transient
 # Error-catalog codes this module logs (buildgen/error_catalog.json, SPECIFICATION.md Part C.7.1).
 _ERR_NOT_INIT = const(18)
 _ERR_BAD_ARG = const(21)
+_ERR_UNEXPECTED = const(23)
 _ERR_FRAM_WP_MISMATCH = const(45)
 _WRN_FRAM_WEL_NOT_SET = const(26)
 _WRN_FRAM_WEL_STUCK = const(27)
@@ -285,7 +286,8 @@ class FRAM_SPI:
         if not self.initialized:
             self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
-        self.begin()
+        if not self.begin_or_refuse():
+            return False
         status = self._set_write_protected(value=value)
         if status & _W_WEL_NOT_SET:
             self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)
@@ -304,6 +306,16 @@ class FRAM_SPI:
         # One bus session per operation, before its first command (C.8): raises while an async session holds the bus or the
         # bus is down; configures the bus when another device configured it last. get_values()/set_values() run inside one.
         self._cs, self._cs_on, self._bus_write, self._bus_readinto = self._spidev.begin_sync()
+
+    def begin_or_refuse(self) -> bool:
+        # begin() for a call that never raises on a live bus: another device's async session holding it is a refusal,
+        # logged; the chunk layer opens each operation's one bus session (C.8) through it too.
+        try:
+            self.begin()
+        except Exception as e:
+            self.pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
+            return False
+        return True
 
     async def setup(self) -> None:
         await self._spidev.setup()
@@ -330,6 +342,7 @@ class FRAM_SPI:
         if not self.initialized:
             self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
-        self.begin()
+        if not self.begin_or_refuse():
+            return False
         self.initialized = self._check_device_id()
         return self.initialized

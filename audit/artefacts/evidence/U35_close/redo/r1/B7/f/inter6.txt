@@ -1,6 +1,0 @@
-get_data
-get_dict_cfg
-get_dict_data
-get_error_counter
-get_task_starters
-get_timer_starters

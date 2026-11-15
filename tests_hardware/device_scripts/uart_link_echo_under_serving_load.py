@@ -30,6 +30,11 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _CMD_ECHO = 0x02  # source: src/asy_uart_link_driver.py _CMD_ECHO (a folded const, unreadable at run time)
+_EXERCISE_PERIOD_MS = 1000  # source: src/asy_uart_link_driver.py _EXERCISE_PERIOD_MS (a folded const, unreadable at run time)
+# A round waits at most three exerciser periods for a transfer to end (one ends per period, ~1.26 s under load), polling
+# often enough to start early in the exerciser's sleep after it.
+_ROUND_WAIT_MS = 3 * _EXERCISE_PERIOD_MS
+_ROUND_POLL_MS = 10
 # A fixed wait, never an in-process readiness request: one would share the heap under the load (SPECIFICATION.md E.9).
 _BOOT_WAIT_S = 20
 # At least this many rounds, and rounds until the window has passed, so the echoes span the host's whole load.
@@ -54,9 +59,16 @@ async def _echo_rounds(wdt: "WDT", link: "UARTLinkDriver") -> None:
         # The exerciser's banner GETs share this initiator, which refuses a second transaction (J.2): each round waits
         # for the next of them to end, then runs in the exerciser's sleep after it.
         ticks = link._transfers + link._failures
-        while link._transfers + link._failures == ticks:
+        waited = time.ticks_ms()
+        while link._transfers + link._failures == ticks and time.ticks_diff(time.ticks_ms(), waited) < _ROUND_WAIT_MS:
             wdt.feed()
-            await asyncio.sleep_ms(0)
+            await asyncio.sleep_ms(_ROUND_POLL_MS)
+        if link._transfers + link._failures == ticks:  # none ended: the round fails unrun, its facts still reported
+            total_failed += 1
+            if len(failed) < _ERRORS_KEPT:
+                failed.append("round " + str(round_no) + ": no exerciser transfer ended within " + str(_ROUND_WAIT_MS) + " ms")
+            round_no += 1
+            continue
         for i in range(size):
             sent[i] = (round_no * 31 + i) & 0xFF
         stored = await comm.uart_set(_CMD_ECHO, sent)

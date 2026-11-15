@@ -921,7 +921,7 @@ class UARTComm:
             return _ERR_BAD_ARG
         if not isinstance(self._timeout, int) or self._timeout <= 0 or self._timeout > self._max_timeout():
             return _ERR_UART_TIMEOUT_PARAM
-        if not isinstance(bus.poll_wait_ms, int) or not 1 <= bus.poll_wait_ms <= _POLL_WAIT_MAX_MS:
+        if not 1 <= bus.poll_wait_ms <= _POLL_WAIT_MAX_MS:
             return _ERR_UART_POLL_RATE  # J.6
         if self._timeout < self._min_timeout():
             return _ERR_UART_TIMEOUT_PARAM  # J.6: a GC pause or the peer's idle poll would read as a fault
@@ -930,9 +930,9 @@ class UARTComm:
     def _validate_receive(self, bus: "UART") -> int:
         if self._role == ROLE_RESPONDER and (self._get_callback is None or self._set_callback is None):
             return _ERR_BAD_ARG  # every request would be unanswerable
-        if not isinstance(self._chunk_bytes, int) or self._chunk_bytes < 1:
+        if self._chunk_bytes < 1:
             return _ERR_BAD_ARG
-        if not isinstance(self._max_transfer_bytes, int) or self._max_transfer_bytes < self._payload_size:
+        if self._max_transfer_bytes < self._payload_size:
             return _ERR_BAD_ARG  # a cap below one frame's payload refuses every train
         if bus.rxbuf < self._min_rxbuf() or bus.rx_ring < self._min_rx_ring():
             return _ERR_UART_RXBUF

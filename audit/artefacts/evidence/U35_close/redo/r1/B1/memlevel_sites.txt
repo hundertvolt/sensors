@@ -1,6 +1,0 @@
-asy_config_manager.py:546 wrn_s catches ['MemoryError', 'OSError']
-asy_webserver_service.py:736 wrn_s catches ['Exception']
-asy_webserver_service.py:740 wrn_s catches ['Exception']
-asy_webserver_service.py:975 wrn catches ['MemoryError', 'OSError']
-asy_webserver_service.py:970 wrn_s catches ['MemoryError', 'OSError']
-asy_webserver_service.py:973 wrn_s catches ['MemoryError', 'OSError']

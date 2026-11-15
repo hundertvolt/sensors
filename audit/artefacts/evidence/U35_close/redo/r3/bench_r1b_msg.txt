@@ -1,9 +1,0 @@
-Bench campaign: round 1's opt-in wear runs last, once, behind WEAR.txt; the two-image GC proof folded in [skip ci]
-
-The owner, 2026-11-05: wear tests on code as final as possible, never re-run for an unrelated reason. The wear steps
-(7f, 7b, 8f, 8b, 10b, 15) refuse until WEAR.txt is cleared and skip once passed; a fixed failure reruns only its
-failed tests (PYTEST_K). OR40.a (3)'s no-threshold image runs both tiers first (3g, 4g, 5g). Each step logs the host's
-load average.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

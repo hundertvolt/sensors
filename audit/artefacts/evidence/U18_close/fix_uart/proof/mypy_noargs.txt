@@ -1,2 +1,0 @@
-Success: no issues found in 183 source files
-noargs exit=0

@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine, Sequence
     from typing import NoReturn
 
+    from asy_base_classes import JsonValue
+
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Every test
@@ -1692,7 +1694,7 @@ def test_the_four_result_words_are_plain_module_constants() -> None:
 def test_compare_before_write_outcome_rows() -> None:
     schema = _SCHEMA + _VAL_FLOAT_SPECIAL
     current: dict[str, cm.CfgValue] = {"Count": 5, "Offset": 1.5, "Name": "abc"}
-    rows: list[tuple[str, object, str, bool, object]] = [  # key, value, outcome, written, value written
+    rows: list[tuple[str, JsonValue, str, bool, object]] = [  # key, value, outcome, written, value written
         ("Ghost", 1, "Invalid", False, None),  # unknown key
         ("Count", "7", "Invalid", False, None),  # type error
         ("Count", 11, "Invalid", False, None),  # range error
@@ -1719,7 +1721,7 @@ def test_compare_before_write_outcome_rows() -> None:
 
 
 def test_compare_before_write_answers_every_key_of_a_multi_key_body() -> None:
-    data = {"Name": "xyz", "Ghost": 1, "Count": 5, "Offset": 2.5}
+    data: dict[str, JsonValue] = {"Name": "xyz", "Ghost": 1, "Count": 5, "Offset": 2.5}
     result = cm.compare_before_write(data, _SCHEMA, {"Count": 5, "Offset": 1.5, "Name": "abc"})
     assert result is not None
     write, results = result
@@ -1727,9 +1729,7 @@ def test_compare_before_write_answers_every_key_of_a_multi_key_body() -> None:
     assert write == {"Name": "xyz", "Offset": 2.5}
 
 
-def test_compare_before_write_refuses_a_non_object() -> None:
-    for data in (None, 5, "abc", ["Count", 1], ("Count", 1)):
-        assert cm.compare_before_write(data, _SCHEMA, {"Count": 5}) is None, data
+def test_compare_before_write_answers_an_empty_body_with_nothing() -> None:
     assert cm.compare_before_write({}, _SCHEMA, {"Count": 5}) == ({}, {})
 
 
@@ -1966,23 +1966,6 @@ def test_write_config_wrong_type_value_for_ordinary_bool_field_marked_invalid() 
     try:
         ok, results = run(mgr.write_config({"Enabled": 1}))
         assert (ok, results) == (True, {"Enabled": "Invalid"})
-    finally:
-        _remove(path)
-
-
-def test_write_config_non_dict_data_returns_false_not_uncaught() -> None:
-    # compare_before_write() answers None for anything that isn't a dict, and write_config() turns that
-    # into the ordinary "write failed" (False, {}) sentinel with one BAD_ARG entry per call.
-    mgr, path = _make("nondictdata.cfg")
-    try:
-        for bad_data in (None, 5, 12.5, "abc", ["Count", 1]):
-            before = mgr.pr._err_count
-            ok, results = run(mgr.write_config(bad_data))  # type: ignore[arg-type]
-            assert (ok, results) == (False, {})
-            assert mgr.pr._err_count - before == 1
-            assert _newest_code(mgr) == code("E", "BAD_ARG")
-        assert mgr._pending_flush is None
-        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched by any of the above
     finally:
         _remove(path)
 

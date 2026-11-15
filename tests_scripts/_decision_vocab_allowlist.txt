@@ -6,7 +6,6 @@ CLAUDE.md	`tests/` and `digital_twin/` reassign methods to mock them — that IS
 DEVICE_REFERENCE.md	**`0` disables this staleness check** — a restored backup is accepted no matter
 DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux scale to shift with
 HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build_system`, `after_starter_loop_end`
-HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000
 README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
 README.md	Set the log level to `all` (5) via the real API, then reboot to see a full start
 README.md	| soak | Same as bench, plus a deliberate long run | `scripts/run_bench_soak_tes
@@ -46,9 +45,9 @@ SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove 
 SPECIFICATION.md	The widened gate still costs nothing: measured over a full 85-file run at `gc.th
 SPECIFICATION.md	`SensorReaderConfig.__init__` captures `default_vals` as the private `self._cfg_
 SPECIFICATION.md	`TCP_SND_QUEUELEN` is per connection.** One connection can drain the pool, leavi
-SPECIFICATION.md	`_store_err()` does not.** The asymmetry is deliberate.
 SPECIFICATION.md	`asy_uart_comm.py` carries six statements of a third variant: a buffer or a boun
 SPECIFICATION.md	`disable_error_code = assignment` is deliberately not set.
+SPECIFICATION.md	`err_s()`/`wrn_s()` do not.** The asymmetry is deliberate.
 SPECIFICATION.md	`js/mock-server.js` is deliberately never staged at all — its `fetch` patching h
 SPECIFICATION.md	`run_project_dependency_install()` (`uv sync`/`npm ci`) runs with `env=None` (in
 SPECIFICATION.md	`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception

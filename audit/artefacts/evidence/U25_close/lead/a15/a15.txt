@@ -1,2 +1,0 @@
-gc=-1 rc=0 wall=1799s
-gc=32768 rc=0 wall=1847s

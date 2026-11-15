@@ -29,16 +29,20 @@ _BOOTS_AT_ONCE = 6
 _COMPILE_TIMEOUT_S = 60
 
 
-def _compile(mpy_cross: Path, stage: Path, cache: "dict[tuple[str, str], bytes]", kept: str) -> None:
+def _compile(mpy_cross: Path, stage: Path, cache: "dict[tuple[str, str], bytes]", kept: str, portable: "list[Path]") -> None:
     # Every staged module but the boot entry and `kept` to .mpy, its .py removed; one compile per distinct module text
     # across the devices, run from the stage so the name each embeds is the bare file name, as the image's freeze has it.
     (stage / "main.py").unlink()
+    for copy in portable:  # a host with no native emitter: its plain-twin copies, compiled with no -march
+        if (stage / copy.name).exists():
+            shutil.copyfile(copy, stage / copy.name)
+    march = [] if portable else ["-march=host"]
     for source in sorted(stage.glob("*.py")):
         if source.name == kept:
             continue
         key = (source.name, hashlib.sha256(source.read_bytes()).hexdigest())
         if key not in cache:
-            done = subprocess.run([str(mpy_cross), "-march=host", source.name], cwd=stage, capture_output=True, text=True, check=False, timeout=_COMPILE_TIMEOUT_S)  # native code for the Unix port's twin
+            done = subprocess.run([str(mpy_cross), *march, source.name], cwd=stage, capture_output=True, text=True, check=False, timeout=_COMPILE_TIMEOUT_S)  # native code for the Unix port's twin, where it has an emitter
             assert done.returncode == 0, f"mpy-cross refused {source.name}:\n{done.stdout}{done.stderr}"
             cache[key] = source.with_suffix(".mpy").read_bytes()
         source.with_suffix(".mpy").write_bytes(cache[key])
@@ -67,6 +71,7 @@ def images(build_firmware: ModuleType, mpy_cross: Path, repo_root: Path, tmp_pat
     # it once: the stripper's result depends on its text and path alone (scripts/_strip_type_checking.py).
     cache: dict[tuple[str, str], bytes] = {}
     found = {}
+    portable = sorted((repo_root / "build" / "portable_src").glob("*.py"))  # filled by the generator on such a host only
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(build_firmware, "strip_type_checking_blocks", functools.cache(build_firmware.strip_type_checking_blocks))
         for device in distinct_devices():
@@ -75,7 +80,7 @@ def images(build_firmware: ModuleType, mpy_cross: Path, repo_root: Path, tmp_pat
             build_firmware.stage_python_modules(stage, generated)
             # The device module stays its stripped .py: the twin runner reads its construction lines from the module's
             # __file__ (digital_twin/run_generic_integration.py's _uart_links()), which a .mpy cannot give it.
-            _compile(mpy_cross, stage, cache, kept=f"sensortask_{device}.py")
+            _compile(mpy_cross, stage, cache, kept=f"sensortask_{device}.py", portable=portable)
             found[device] = (generated, stage)
     return found
 

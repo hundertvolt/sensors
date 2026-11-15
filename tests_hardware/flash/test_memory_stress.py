@@ -15,7 +15,7 @@ from heap_bounds import WORST_CASE_ALLOCATION
 from soak_durations import SOAK_DURATION_SECONDS
 
 from buildgen.model import load_device
-from buildgen.validate import smallest_hard_consumer
+from scripts._generate_sensortask_modules import smallest_hard_consumer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,7 +40,8 @@ _FLASH_GAP_SCRIPT_TIMEOUT_S = 30.0
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
 _C_STACK_SCRIPT_TIMEOUT_S = 60.0
-# The C stack the deepest FRAM-backed log entry must leave free: about four call levels (owner, 2026-11-11).
+# The C stack the deepest FRAM-backed log entry must leave free: about four call levels (owner, 2026-11-11: "A",
+# asked which bound the C-stack check holds).
 # @tunable l3.c_stack_reserve_b = 1024
 _C_STACK_RESERVE_B = 1024
 # The twin run's server: the script's scratch-config main() binds it inside the run's own network namespace.
@@ -120,8 +121,11 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: "Board", resu
     layout = maps["after_build_system"]
     result_note(f"MAP after_build_system: {layout.summary()}")
     # The probe allocates and the map does not, so they fail in different ways: a disagreement means one is wrong, and
-    # the probe understating by a power-of-two fraction of 192 KB is the known pinning artefact.
-    assert abs(layout.largest_free_run - largest) <= layout.block_bytes * _PROBE_MAP_TOLERANCE_BLOCKS, f"the allocating probe says {largest} B and the block map says {layout.largest_free_run} B for one run:\n{output}"
+    # the probe understating by a power-of-two fraction of 192 KB is the known pinning artefact. The control probe is
+    # the one taken at the map's own position, with only a collect between them.
+    control = facts.get("heap_after_build_system_control")
+    probed = control.get("largest_block") if isinstance(control, dict) else None
+    assert isinstance(probed, int) and abs(layout.largest_free_run - probed) <= layout.block_bytes * _PROBE_MAP_TOLERANCE_BLOCKS, f"the allocating probe says {probed} B and the block map says {layout.largest_free_run} B for one run:\n{output}"
     # Long-lived objects stay out of the heap top (owner, 2026-10-02, heap-floors-kept); asserted twice (agent, 2026-09-19), because the two fail
     # for different reasons - the boot's own placement, and whatever already sat up there.
     assert "baseline" in maps, f"no baseline block map in the device output - the placement delta cannot be computed:\n{output}"
@@ -166,7 +170,7 @@ def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "
     finally:
         stop.set()
         load.join(2 * _LOOP_LAG_SCRIPT_TIMEOUT_S)
-    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the twin scenario's one source too
+    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR) * 1000  # the twin scenario's one source too
     lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
     result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); answers per route {served}")
     assert not load.is_alive() and not failures, f"the HTTP load did not end cleanly: {failures}"

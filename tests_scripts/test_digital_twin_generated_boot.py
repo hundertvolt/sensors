@@ -427,9 +427,10 @@ def test_the_status_field_parity_check_reads_a_maintenance_field_by_its_path() -
 
 def _twin_micropypath(root: Path, *, image: bool = False) -> str:
     # scripts/micropypath.toml's twin layout, root in place of build/generated_src: root carries its own module and stub
-    # frozen_html.py, so frozen_modules goes, and a compiled image's stage holds every module it freezes, so src and ext.
+    # frozen_html.py, so frozen_modules goes, and a compiled image's stage holds every module it freezes, so src, ext and
+    # build/portable_src (the stage compiles its plain-twin copies in their place).
     micropypath = tomllib.loads(_LAYOUTS.read_text(encoding="utf-8"))["twin"]
-    dropped = {"frozen_modules", "src", "ext"} if image else {"frozen_modules"}
+    dropped = {"frozen_modules", "src", "ext", "build/portable_src"} if image else {"frozen_modules"}
     # Each segment of the read layout kept or swapped, for the reason above.
     return ":".join(str(root) if segment == "build/generated_src" else segment for segment in micropypath.split(":") if segment not in dropped)
 

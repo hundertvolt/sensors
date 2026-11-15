@@ -67,10 +67,7 @@ _LOAD_CODES = (("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
-    # The board may come straight from a reboot whose clock is unsynced: SGP40's restore then waits for the sync, the
-    # resets delete the backup it waits for (W65) and the next one goes undated (W35). NTP's retry timer resyncs
-    # within one retry wait and the attempt after it.
-    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_load.ntp_retry_period_s() + _load.ntp_attempt_s() + _NTP_BLOCK_MARGIN_S, poll_interval_s=_NTP_RESYNC_POLL_S, description="NTP synced before the SGP40 resets")
+    _ntp_synced_before_the_resets(dut_ip)
     reset_all_error_logs(dut_ip, request.node.name)
     load = _load.Load()
     resets = threading.Thread(target=_sgp40_resets, args=(dut_ip, load, _FETCH_TIMEOUT_S, ""), name="sgp40-resets")
@@ -102,6 +99,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
+    _ntp_synced_before_the_resets(dut_ip)
     reset_all_error_logs(dut_ip, request.node.name)
     context = " under degraded network"
     load = _load.Load(context)
@@ -196,6 +194,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     ("NTP", "E", "NTP_RETRIES"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    _ntp_synced_before_the_resets(dut_ip)
     reset_all_error_logs(dut_ip, request.node.name)
     context = " during WiFi flapping"
     load = _load.Load(context)
@@ -490,6 +489,13 @@ def _noted_ceiling_retries(note: "_load.Note") -> "Iterator[None]":
     counts = _take_ceiling_retries()
     if counts:
         note(f"CEILING_RETRIES rest of the test: {counts}")
+
+
+def _ntp_synced_before_the_resets(dut_ip: str) -> None:
+    # The board may come straight from a reboot whose clock is unsynced: SGP40's restore then waits for the sync, the
+    # resets delete the backup it waits for (W65) and the next one goes undated (W35). NTP's retry timer resyncs
+    # within one retry wait and the attempt after it.
+    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_load.ntp_retry_period_s() + _load.ntp_attempt_s() + _NTP_BLOCK_MARGIN_S, poll_interval_s=_NTP_RESYNC_POLL_S, description="NTP synced before the SGP40 resets")
 
 
 def _offset_values(original: float) -> "list[float]":

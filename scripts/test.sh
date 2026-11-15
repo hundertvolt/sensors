@@ -319,7 +319,7 @@ if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     max_parallel=1
 fi
 
-# Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts first.
+# Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts ahead of src/.
 # It runs before tests_scripts/ is backgrounded: that tier creates and deletes zz_test_ device fixtures, and the
 # generator globs devices/*.toml, so generating first keeps every fixture out of the generated tree.
 echo "== Generating buildgen device modules into build/generated_src/"
@@ -461,8 +461,8 @@ tests_scripts_pid=$!
 # none is solved by raising everyone's default, which would make a genuine future hang 2-3x slower to detect. The
 # scenario harness has its own: one job boots a twin per scenario (measured figures: Part E.3.1 and Part N).
 declare -A per_file_timeout_overrides_s=()
-# @tunable runner.scenarios_timeout_s = 2555
-per_file_timeout_overrides_s[scenarios]=2555
+# @tunable runner.scenarios_timeout_s = 1200
+per_file_timeout_overrides_s[scenarios]=1200
 
 # SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged ones included; the twin tier checks its logs alike.
 # Both markers, from their one definition: src/'s degrade handlers log str(e), so a caught allocation failure prints
@@ -581,8 +581,8 @@ run_test_file() {
     # frozen-in modules resolvable - drop it and `import asyncio` breaks with no clue why.
     #
     # "frozen_modules" for the generated module's own `import frozen_html` (Part A.9 for why that
-    # cannot be ".frozen" itself), and "build/generated_src" FIRST so a device module resolves to
-    # the freshly generated one rather than any same-named file elsewhere on the path.
+    # cannot be ".frozen" itself), and "build/generated_src" ahead of src/ (only build/portable_src's copies
+    # precede it) so a device module resolves to the freshly generated one, not a same-named file elsewhere.
     if [ "$coverage" = "1" ]; then
         runner=(tests/_coverage_runner.py "$test_file" "$raw_dir/$(_job_tag "$test_file${device:+[$device]}").json")
     elif [ -n "${GC_THRESHOLD:-}" ]; then

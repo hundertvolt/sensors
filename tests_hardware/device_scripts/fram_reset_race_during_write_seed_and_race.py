@@ -3,6 +3,7 @@ target between two guards, then fires a real machine.reset() inside the payload 
 the driver's synchronous seam. Run through run_isolated_expect_reset(); its facts and banner come before the reset."""
 
 import asyncio
+import time
 
 import machine
 
@@ -38,6 +39,7 @@ _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
 _VICTIM_BOUND_S = 30.0
 # The line the host waits for: printed right before the raced write, so a run without it never reached the race.
 _BANNER = "RESET_RACE_ARMED"
+_FLUSH_MS = 200  # the banner leaves rp2's USB queue before machine.reset() cuts it, as an immediate reset can lose it
 
 
 async def _main() -> None:
@@ -69,6 +71,7 @@ async def _main() -> None:
 
     def resetting_write(buf: "bytes | bytearray | memoryview") -> None:
         if len(buf) == len(_NEW_TARGET_PATTERN):  # the command buffers around the payload are 1 or 5 bytes
+            time.sleep_ms(_FLUSH_MS)
             machine.reset()  # never returns: a real RP2040 reset with CS still asserted
         original_write(buf)
 

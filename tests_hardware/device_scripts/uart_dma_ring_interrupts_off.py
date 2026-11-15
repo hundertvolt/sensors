@@ -180,28 +180,6 @@ def _comm(driver: "asy_uart_driver.UART", role: str, bus: "BusFacts") -> UARTCom
     return UARTComm(driver, ROLE_RESPONDER, limits=limits, callbacks=ResponderCallbacks(lambda _c: (True, b"r"), lambda _c: (True, None), None), name="UART_RESP")
 
 
-async def _config_write(wdt: "machine.WDT") -> None:
-    # The stream while a scratch manager flushes one changed value: a real flash write's interrupts-off window.
-    send_bus, recv_bus = _bus("uart_link_init"), _bus("uart_link_resp")
-    writer = _raw_uart(send_bus)
-    sender = _Sender(send_bus, _FLASH_WINDOWS_US[-1])
-    await sender.build(wdt)
-    driver = _driver(recv_bus)
-    fact("setup", await _comm(driver, ROLE_RESPONDER, recv_bus).setup())
-    _remove_scratch()
-    try:
-        sender.start(0, sender.frames)
-        flush_us = await _flush_us(_scratch_manager(), 1)
-        oe = _oe(recv_bus)
-        streamed = await sender.finished(wdt)
-        fact("config_write", {"flush_us": flush_us, "streamed": streamed, "frames_sent": sender.frames, "frames_intact": len(await _drain(driver)), "uartrsr_oe": oe})
-    finally:
-        _remove_scratch()
-        sender.dma.close()
-        writer.deinit()
-        driver.deinit()
-
-
 async def _config_write_link(wdt: "machine.WDT") -> None:
     # The pair exchanging frames longer than the 32-byte TX FIFO while each transaction meets one config flush.
     initiator, responder, drivers = await _pair()
@@ -436,8 +414,6 @@ async def _main() -> None:
         await _soft_reset(wdt)
     elif state == "after_soft_reset":
         await _after_soft_reset(wdt)
-    elif state == "config_write":
-        await _config_write(wdt)
     elif state == "break":
         await _break(wdt)
     elif state == "config_write_link":

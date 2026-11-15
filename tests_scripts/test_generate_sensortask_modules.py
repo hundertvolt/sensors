@@ -175,7 +175,8 @@ def test_no_output_is_ever_opened_for_writing_under_its_final_name(generate_sens
         return real_open(file, mode, *args, **kwargs)  # type: ignore[call-overload]
 
     def recording_replace(src: "str | Path", dst: "str | Path") -> None:
-        renamed.append((Path(src), Path(dst)))
+        if Path(dst).is_relative_to(out_dir):  # build/portable_src (a host with no native emitter) is not this test's
+            renamed.append((Path(src), Path(dst)))
         real_replace(src, dst)
 
     monkeypatch.setattr(io, "open", recording_open)
@@ -250,7 +251,8 @@ def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_outpu
     real_replace = os.replace
 
     def recording_replace(src: "str | Path", dst: "str | Path") -> None:
-        renamed.append(Path(dst))
+        if Path(dst).is_relative_to(out_dir):  # build/portable_src (a host with no native emitter) is not stamped
+            renamed.append(Path(dst))
         real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", recording_replace)
@@ -259,7 +261,7 @@ def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_outpu
     stamps = [out_dir / ".inputs_stamp.json", out_dir / "definitions" / "inputs_stamp.json"]
     assert sorted(renamed[-2:]) == sorted(stamps), renamed[-4:]
     tomls = sorted(p for p in (tmp_path / "devices").glob("*.toml") if not p.stem.startswith("zz_test_"))
-    named = ["buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py"]
+    named = ["buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py", "fakes/_native_twins.py"]
     inputs = [*tomls, *(tmp_path / name for name in named)] + [p for pattern in ("buildgen/*.py", "src/*.py", "ext/*.py") for p in tmp_path.glob(pattern)]
     expected = {str(p.relative_to(tmp_path)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     assert "ext/microdot.py" in expected  # the frozen-module closure reads it (buildgen/frozen_modules.py)

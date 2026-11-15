@@ -1,6 +1,6 @@
 """The C-stack peak of the bench build on silicon: the I2C leaves and the FRAM driver's SPI commands record stack_use()
 by phase (setup batch, a fed window of the started tasks and timers, one GET /status); then a second GET /status writes
-the deepest FRAM-backed log entry, its end apart. The host holds the peak to half of 7,936 B, not the twin's."""
+the deepest FRAM-backed log entry, its end apart. The host holds that end to l3.c_stack_reserve_b of 7,936 B."""
 
 import asyncio
 import errno

@@ -1414,16 +1414,6 @@ def test_trigger_loop_sets_the_read_event_on_every_nth_tick() -> None:
         assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 0
 
 
-def test_republish_replaces_the_named_fields_and_keeps_the_rest() -> None:
-    reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
-    assert run(reader._republish(("temp", "hum"), hum=60)) is None
-    assert run(reader._get_meas_data()) == Meas(20.0, 60)
-    run(reader._republish(("temp", "hum")))  # nothing changed: an equal tuple of the same type
-    data = run(reader._get_meas_data())
-    assert data == Meas(20.0, 60)
-    assert type(data) is Meas
-
-
 def test_get_dict_cfg_default_returns_all_none() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _TEST_SCHEMA_SI))
@@ -2092,38 +2082,6 @@ def test_one_log_config_reaches_both_loggers_with_its_store_length_and_level() -
         assert own.fram is not store.fram
     finally:
         _remove(path_prefix + "config_logcfg.cfg")
-
-
-class _RamConfigLogReader(SensorReaderConfig):
-    _CFG_LOG_FRAM = False  # the class attribute a driver sets to keep its config store's logger off FRAM
-
-
-def test_a_reader_that_keeps_its_config_log_off_fram_still_logs_its_own_to_fram() -> None:
-    # One LogConfig: the reader's own logger takes its FRAM store, the config store's stays RAM-only with
-    # the same history length and level, and allocates no chunk.
-    path_prefix = _SHARED_CFG_DIR
-    _remove(path_prefix + "config_ramcfglog.cfg")
-    try:
-        manager, _chip = make_fram_manager()
-        run(manager.setup())
-        start = manager._allocated_size
-        SensorReader(Meas(20.0, 50), "onechunk", max_module_error=3, log=LogConfig(manager, 4, 1))
-        one_chunk = manager._allocated_size - start
-        start = manager._allocated_size
-        reader = _RamConfigLogReader(Meas(20.0, 50), "ramcfglog", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix, log=LogConfig(manager, 4, 1))
-        assert manager._allocated_size - start == one_chunk  # the reader's own chunk only
-        assert isinstance(reader.pr, PrintLogHistoryStore)
-        assert reader.pr.fram is not None
-        store = reader.cfgmgr.pr
-        assert isinstance(store, PrintLogHistory)
-        assert not isinstance(store, PrintLogHistoryStore)
-        assert len(store.history) == 4
-        assert store.level == 1
-        assert SensorReaderConfig._CFG_LOG_FRAM is True  # every other reader keeps both on FRAM
-        run(reader.setup())
-        assert reader.cfgmgr.valid is True
-    finally:
-        _remove(path_prefix + "config_ramcfglog.cfg")
 
 
 def test_sensorreaderconfig_cfgmgr_stays_ram_only_when_fram_is_none() -> None:

@@ -1,7 +1,0 @@
-Bench campaign: the audit branch's head (009f193e) merged in, for round 1's final firmware [skip ci]
-
-Both conflicts (the UART driver's receive-ring stop and its changelog row) take the audit side, which carries this
-branch's October fix as B94. Outside audit/ the tree now equals 009f193e.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

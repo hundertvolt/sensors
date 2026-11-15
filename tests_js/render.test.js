@@ -95,7 +95,7 @@ function answerPuts(url, result) {
 }
 
 /**
- * Arms the mock's one-shot failure for the next PUT only, so the GET an Apply sends first still answers.
+ * Arms the mock's one-shot failure for the next PUT only, so no GET before it can take it.
  * @param {import("../js/mock-server.js").MockFetchControls} controls
  * @param {import("../js/mock-server.js").MockFailure} failure
  */
@@ -1755,21 +1755,6 @@ describe("renderSection", () => {
             expect(mustQuery(card, ".apply-result").textContent).toBe("Command executed — MeasInterval: Invalid, COffset: Invalid");
         });
 
-        it("shows a toggle and a dropdown as the post-write GET reports them, not as sent", async () => {
-            uninstall = installMockFetch(DEFS, DATA);
-            // The device reports its own stored values whatever this page sends.
-            answerGets({ "/sensors": [{ SCD30: { MeasInterval: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } }] });
-            const puts = capturePutBodies();
-            const card = await mountSensors();
-
-            mustQuery(card, '[data-field-key="MeasEnabled"]').click(); // On -> Off
-            /** @type {HTMLSelectElement} */ (mustQuery(card, '[data-field-key="Oversampling"]')).value = "4";
-            await applyAndSettle(card);
-            expect(puts).toEqual([{ SCD30: { MeasEnabled: false, Oversampling: 4 } }]);
-            expect(mustQuery(card, '[data-field-key="MeasEnabled"]').dataset.value).toBe("true");
-            expect(/** @type {HTMLSelectElement} */ (mustQuery(card, '[data-field-key="Oversampling"]')).value).toBe("1");
-        });
-
         it("keeps the Apply button disabled until the post-write GET settles", async () => {
             uninstall = installMockFetch(DEFS, DATA);
             const gate = { putSeen: false, release: () => { /* replaced when the post-write GET arrives */ }, held: false };
@@ -2041,37 +2026,53 @@ describe("renderSection", () => {
             expect((await response.json()).code).toBe(0); // HTTP 200 alone also carries a refused body's code 1
         }
 
-        it("sends one GET of the section before the PUT, and a toggle and dropdown another client changed", async () => {
+        it("never sends a toggle or dropdown another client changed that the visitor left untouched", async () => {
             uninstall = installMockFetch(DEFS, DATA);
             const card = await mountSensors();
             await anotherClientWrites({ MeasEnabled: false, Oversampling: 4 });
-            const button = /** @type {HTMLButtonElement} */ (mustQuery(card, ".apply-button"));
-            /** @type {string[]} */
-            const log = [];
-            const inner = window.fetch;
-            window.fetch = (input, init) => {
-                log.push(`${init?.method ?? "GET"} ${String(input)} disabled=${String(button.disabled)}`);
-                return inner(input, init);
-            };
+            const log = recordRequests();
             const puts = capturePutBodies();
 
-            // The page still shows On and x1; the visitor wants exactly those.
+            inputOf(card, "MeasInterval").value = "10";
             await applyAndSettle(card);
-            expect(log).toEqual(["GET /sensors disabled=true", "PUT /sensors disabled=true", "GET /sensors disabled=true"]);
-            expect(puts).toEqual([{ SCD30: { MeasEnabled: true, Oversampling: 1 } }]);
+            // The post-write GET reports the other client's values; it moves no baseline.
+            inputOf(card, "COffset").value = "20";
+            await applyAndSettle(card);
+            expect(log).toEqual(["PUT /sensors", "GET /sensors", "PUT /sensors", "GET /sensors"]);
+            expect(puts).toEqual([{ SCD30: { MeasInterval: 10 } }, { SCD30: { COffset: 20 } }]);
         });
 
-        it("has nothing to submit when the form equals the refreshed values, and re-enables Apply", async () => {
+        it("sends nothing for an Apply with no edits, whatever another client changed, and re-enables Apply", async () => {
             uninstall = installMockFetch(DEFS, DATA);
             const card = await mountSensors();
-            await anotherClientWrites({ MeasEnabled: false });
-            const puts = capturePutBodies();
+            await anotherClientWrites({ MeasEnabled: false, Oversampling: 4 });
+            const log = recordRequests();
 
-            mustQuery(card, '[data-field-key="MeasEnabled"]').click(); // On -> Off, what the device now holds
             await applyAndSettle(card);
-            expect(puts).toEqual([]);
+            expect(log).toEqual([]);
             expect(mustQuery(card, ".apply-result").textContent).toBe("Nothing to submit - no fields were changed.");
             expect(/** @type {HTMLButtonElement} */ (mustQuery(card, ".apply-button")).disabled).toBe(false);
+        });
+
+        it("makes each key the device stored the baseline, keeping the controls as sent", async () => {
+            uninstall = installMockFetch(DEFS, DATA);
+            // The device reports its old values whatever this page sends, so only the stored keys can move a baseline.
+            answerGets({ "/sensors": [{ SCD30: { MeasInterval: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } }] });
+            const puts = capturePutBodies();
+            const card = await mountSensors();
+            const toggle = mustQuery(card, '[data-field-key="MeasEnabled"]');
+            const select = /** @type {HTMLSelectElement} */ (mustQuery(card, '[data-field-key="Oversampling"]'));
+
+            toggle.click(); // On -> Off
+            select.value = "4";
+            await applyAndSettle(card);
+            expect(toggle.dataset.value).toBe("false");
+            expect(select.value).toBe("4");
+            await applyAndSettle(card);
+            expect(mustQuery(card, ".apply-result").textContent).toBe("Nothing to submit - no fields were changed.");
+            toggle.click(); // Off -> On, a change from the stored Off
+            await applyAndSettle(card);
+            expect(puts).toEqual([{ SCD30: { MeasEnabled: false, Oversampling: 4 } }, { SCD30: { MeasEnabled: true } }]);
         });
 
         it("sends no GET from a stopped section", async () => {

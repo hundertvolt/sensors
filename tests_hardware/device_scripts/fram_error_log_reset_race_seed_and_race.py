@@ -3,6 +3,7 @@ nonce-chosen test-band history, then lands a real machine.reset() right after tr
 write. Run through board.run_isolated_expect_reset(); it ends in the reset, so the verify phase clears the chunk."""
 
 import asyncio
+import time
 
 import machine
 
@@ -30,6 +31,7 @@ _LOG_NAME = "ERRRACE"
 E_TEST_SEED_A = 125  # the first of the error catalog's test band 125-127; the nonce picks one of its 27 sequences
 _SEED = [E_TEST_SEED_A + (BENCH["NONCE"] // 3**i) % 3 for i in range(3)]
 _RACED = E_TEST_SEED_A + BENCH["NONCE"] % 3  # the fourth entry, whose chunk write the reset interrupts
+_FLUSH_MS = 200  # the facts leave rp2's USB queue before machine.reset() cuts it, as an immediate reset can lose them
 
 
 async def _main() -> None:
@@ -64,6 +66,7 @@ async def _main() -> None:
         transfers[0] += 1
         if transfers[0] == BENCH["SEAM"]:
             print("LANDED seam=" + str(BENCH["SEAM"]))
+            time.sleep_ms(_FLUSH_MS)
             machine.reset()
         return ok
 

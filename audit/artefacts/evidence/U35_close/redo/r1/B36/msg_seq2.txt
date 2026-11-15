@@ -1,9 +1,0 @@
-U35: the system service test file keeps the canonical microtest trailer
-
-The previous fix moved the file's `import microtest` to the top and dropped it from the `__main__` block, so the
-file no longer ended with the canonical trailer tests_scripts/test_microtest.py pins for every test file (CI: one
-tests_scripts failure in both unit-test lanes). The trailer is back as it was; the top-level import stays for the
-after-each clear, as test_asy_webserver_service.py has both.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

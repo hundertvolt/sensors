@@ -1,7 +1,0 @@
-?? build_arzi.out
-?? build_dev.out
-?? build_grkizi.out
-?? build_klkizi.out
-?? build_schlafzi.out
-?? build_wozi.out
-?? node_modules

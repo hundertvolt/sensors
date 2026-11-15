@@ -301,7 +301,8 @@ def board_state_deviations(level: "int | None", files: "list[str]", write_protec
 @pytest.fixture(scope="session")
 def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> str:
     # The DUT's STA address on the bench bridge network. An exec stops main.py and hard_reset() restarts it, so the
-    # address is read once the log shows the STA connect, then the board is reset and serving is awaited.
+    # address is read once the board has joined (the log shows the STA connect, or GET /status answers at --dut-ip),
+    # then the board is reset and serving is awaited.
     config = request.config
     seen: list[str] = []
 
@@ -333,7 +334,7 @@ def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> 
         harness.kick_then_reset(board, bench)
     ips = [line[len("DUT_IP=") :].strip() for line in output.splitlines() if line.startswith("DUT_IP=")]
     if not ips or not ips[0]:
-        raise HardwareTestFailureError(f"the log showed 'WLAN connection established' but the board reported no STA address:\n{output}")
+        raise HardwareTestFailureError(f"the board reported no STA address after the wait for its STA connect (the 'WLAN connection established' log line, or GET /status answering at --dut-ip):\n{output}")
     ip = ips[0]
     wait_until(
         lambda: http_client.fetch(ip, 80, "GET", "/status", timeout_s=_HTTP_READY_PROBE_TIMEOUT_S).status_code == 200,
@@ -391,7 +392,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--bench-device", default=None, metavar="NAME", help="the board on the bench; default $BENCH_DEVICE, else the one devices/*.toml with [device].bench = true")
     parser.addoption("--image-record", default=None, metavar="PATH", help="the image record of the build on the board (default build/firmware-<bench device>.json, beside its .uf2)")
     parser.addoption("--dut-ip", default=None, metavar="ADDR", help="the DUT's last known address on the bench network; lets the session save /status before anything resets the board")
-    parser.addoption("--lwip-control-image", default=None, metavar="PATH", help="the unpatched control image a phase-C round built in a throwaway worktree; required by the unpatched lwIP test, never defaulted")
     parser.addoption("--rollover-image", default=None, metavar="PATH", help="the tick-offset test image the rollover round built; required by the rollover test, never defaulted")
     parser.addoption("--twin", action="store_true", default=False, help="run flash-tier tests and device scripts against the Unix-port twin instead of a board")
     durations = ", ".join(f"{name}={seconds:.0f} s" for name, seconds in SOAK_DURATION_SECONDS.items())
