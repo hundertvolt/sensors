@@ -95,8 +95,8 @@ And on 2026-10-08:
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
   100,000 B tripwire. The owner wants that bound obeyed in the final version, a topic once the audit is done
-  (owner, 2026-10-08, DESIGN.md §14); the audit is done, the bound is now at most 41,000 B added by the build and
-  its setups, and this run's flash-step reading is the figure BACKLOG.md's deferred entry waits on (section 1.7).
+  (owner, 2026-10-08, DESIGN.md §14); the audit is done, and the bound is now at most 50,500 B added by the build and
+  its setups, re-derived on 2026-11-15 from `dev` with the client (section 1.7, item 2).
   Changed after both runs, so the next run is the first to see them on the board: the `online` timing
   (`43b5373`), the memory layout (DESIGN.md §5: one stream per outbound slot, the settings and topics born at
   boot), and the audit's later rounds to its close (merged in `1efe566`, `f26f227f`, `a8d075cc` and `df3916bd`),
@@ -216,21 +216,15 @@ name (`tests_hardware/bench/conftest.py`). The connection-ceiling and malformed-
 `HTTP_REFUSED` and W61 `HTTP_BAD_HEAD` entries they provoke, and the MQTT module's fault tests the MQTT codes theirs
 do. A code outside a test's marker is a real failure (section 6).
 
-**This branch's own, expected: the full-build heap bound (item 2).**
+**The full-build heap bound, re-derived with the client (item 2).**
 `tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build` bounds what
-`build_system()` and the setups keep at 41,000 B (SPECIFICATION.md Part N
-`l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev` without the client
-(35,984 B). The final base's image read 36,368 B on the bench (the audit's bench session's hand-back,
-2026-11-13, image `3aaf013e`, whose firmware is `a6f28126`'s), 4,632 B under the bound. The client's construction
-comes on top: one held 8,432 B on the 2026-10-08
-image, its buffers about 5 KB of it (DESIGN.md §5; its imports sit before the test's baseline). So the test is
-expected to fail (agent estimate, 2026-11-15) with "the build and its setups keep <N> B, over 41000 B".
-BACKLOG.md's deferred entry waits on that reading. If it fails that way and on nothing else:
-- record its result note (the kept bytes, the largest block and the heap figures, written before its assertions)
-  and the whole failure text in the results;
-- go on with the bench step, section 5's second call (the owner's 2026-11-15 words, section 1.5, cover it);
-- report the run NOT CLEAN naming the bound. Never edit the bound or the test: it changes only through a new
-  derivation of the need (owner, 2026-10-02), the owner's to make.
+`build_system()` and the setups keep at 50,500 B (SPECIFICATION.md Part N
+`l3.heap_headroom_after_full_system_build_max_added`). The owner's 2026-11-11 bound of 41,000 B came from `dev` without
+the client. On the bench `dev` with it kept 45,488 B (2026-11-15, `9fd691ef`), then 44,320 B once the client's payload
+slots and transmit buffer were trimmed (2026-11-15, `3e281e10`). Asked how `dev` with the client should meet the
+bound, the owner (2026-11-15): "Try a balanced approach, find a sweet spot, far away from critical values, then re
+derive". The bound is the second reading plus the same ~14 % (agent, 2026-11-15). The test is expected to pass;
+it changes only through a new derivation of the need (owner, 2026-10-02), the owner's to make.
 
 Any other assertion of that test failing (the largest free block, the placement) is a real failure (section 6).
 
@@ -342,7 +336,7 @@ scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_m
 
 **The flash step: 4 tests.**
 - The FRAM chunk layout after a full system build, which now holds the two MQTT chunks.
-- The full-build heap headroom, with the client's buffers resident: expected to fail its 41,000 B bound
+- The full-build heap headroom, with the client's buffers resident, against its re-derived 50,500 B bound
   (section 1.7, item 2).
 - The boot's heap layout: the client's boot survivors under the high band the boot's placement reset keeps
   (SPECIFICATION.md I.4(f.1)), and the boot's timed stretches with its `setup()` in the batch. Added 2026-11-15:

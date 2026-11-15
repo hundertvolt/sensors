@@ -37,11 +37,11 @@ _SCRATCH_CFG_PATH = "hwtest-scratch/"
 # @tunable l3.heap_headroom_after_full_system_build_worst_case_factor = 2
 _WORST_CASE_FACTOR = 2
 _MIN_LARGEST_BLOCK = _WORST_CASE_FACTOR * BENCH["worst_case_allocation"]
-# Survivor volume: what build_system() and the setups keep over the heap in use before them, 35,984 B on dev, so ~14 %
-# over it; the script's own size and the imports do not move it (owner, 2026-11-11: "A", asked which bound the
-# full-build heap check holds).
-# @tunable l3.heap_headroom_after_full_system_build_max_added = 41_000
-_MAX_ADDED = 41_000
+# Survivor volume: what build_system() and the setups keep over the heap in use before them, 44,320 B on dev with
+# the MQTT client, so ~14 % over it; the script's own size and the imports do not move it (owner, 2026-11-11: "A",
+# asked which bound the full-build heap check holds); re-derived with it (agent, 2026-11-15; Part N quotes the owner).
+# @tunable l3.heap_headroom_after_full_system_build_max_added = 50_500
+_MAX_ADDED = 50_500
 
 
 async def _main() -> None:

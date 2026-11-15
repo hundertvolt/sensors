@@ -414,7 +414,9 @@ tests' (`--allow-persistence-write-to=networking/mqtt`, the group's six other te
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
-chunk layout and the `env --tier flash` rerun; every SCD30 write waits for the full bench run.
+chunk layout, the boot's heap layout and the `env --tier flash` rerun; every SCD30 write waits for the full bench
+run. Run on 2026-11-15 on `9fd691ef` (`mqtt_poc/bench_results/2026-11-15_9fd691ef/`): the MQTT module 22 of 22, the
+heap bound red as expected, the mixed-body refusal count the base's (BENCH_HANDOVER.md section 1.7, item 3).
 
 ## 12. Where the rules land when the PoC merges
 
@@ -531,7 +533,8 @@ more conservative, more easily reversible choice:
   read 45,488 B against 41,000 B: 'Try a balanced approach, find a sweet spot, far away from critical values, then
   re derive'. The slots' payload went 384 → 256 B, four times the 64-B status messages, and the transmit buffer
   640 → 512 B, 121 B over the largest PUBLISH (agent, 2026-11-15); the receive buffer, the eight slots (twice the
-  worst case) and the ack queue stay. The bound is re-derived from the next flash step's reading.
+  worst case) and the ack queue stay. The trimmed image read 44,320 B, and the bound is that plus the same ~14 %,
+  50,500 B (agent, 2026-11-15; Part N's `l3.heap_headroom_after_full_system_build_max_added`).
 - The bench run goes through the audit's bench session (owner, 2026-11-15): 'As the main session is considered to be
   done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related
   tests, while flashing a new image containing the MQTT code of course is allowed.' The requirement: 'For. The MQTT
@@ -619,7 +622,7 @@ What that became (SPECIFICATION.md A.12 is the permanent form):
 Decided on the owner's behalf (agent, 2026-11-12), each adding no flash write site and no REST surface, each
 reversible:
 - The exerciser has a fixed period (`mqtt_link.exercise_period_ms`, 10 s) and no setting or route.
-- It logs through the client's logger, so it has no log, errcount row or FRAM chunk of its own.
+- It logs through the client's logger, so it has no log, errcount row or FRAM chunk of its own; adopted (owner, 2026-11-15, told it has no logger or FRAM chunk of its own unlike the UART exerciser: "Yes, the exerciser is test code, all correct").
 - A busy `wifi_mode_lock` postpones the client's link check by one tick, not one poll.
 - Consumer callbacks get the PUBLISH flag bits as an int (ruff's FBT001 refuses a positional bool in `src/`).
 - The bench module's traffic is the exerciser's: its probes, its `MQTTLINK` counters and a `cmd/#` publish
