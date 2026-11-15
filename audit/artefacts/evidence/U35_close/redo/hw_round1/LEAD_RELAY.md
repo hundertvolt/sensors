@@ -1,5 +1,83 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-15 08:13 UTC - relay 42: the MQTT image and the MQTT scope, the two login tests the only owned writes (owner, 2026-11-15, in the code session: "As the main session is considered to be done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related tests, while flashing a new image containing the MQTT code of course is allowed.")
+
+The lead is now the MQTT PoC's code session (PR #110, `claude/whole-project-audit-plan-followup`). Start only on the
+owner's go-ahead in your own session, and ask the owner there for this reflash. The code on this branch is now that
+branch at `9fd691ef`: the final base `a6f28126` (your relay-41 image's firmware, unchanged) plus the MQTT client
+(`src/asy_mqtt_client.py`, SPECIFICATION.md A.12) and `dev`'s link exerciser (`src/asy_mqtt_link_driver.py`), on
+`dev` only, the client off until enabled and running in station mode only. Local checks on that commit: lint, the three typecheck passes, the unit tier at both GC stages, `dev`'s twin suite at both stages, npm, collect-only and all four firmware builds green (`dev` 1,177,644 B, 95.8 %); the coverage rerun's one red is a base test race (the gc check reads `tests/_tmp/` while a twin test writes an indented fixture there), no image change; the other devices' twins and the web tiers are still running, and any red reaches you as a relay.
+The runbook is `mqtt_poc/BENCH_HANDOVER.md` (section 3's checks, section 5's order); where it differs, this relay holds:
+this branch, your hand-back, and the writes below.
+
+What the run has to show (owner, 2026-11-15): "For. The MQTT bench tests, a running Mosquitto broker and contract over
+the WiFi, including successful login, communication, error simulation, detection and handling, recovery, all on a real
+network with real hardware, just is the basic requirement."
+
+Wear:
+- Allowed: this one flash cycle (FC +1) and what it brings: the first boot writes `config_MQTT.cfg`'s defaults once (an
+  absent file since its deletion on 11-12).
+- One group for two tests: `--allow-persistence-write-to=networking/mqtt` for the correct-password and the
+  wrong-password test (owner, 2026-11-15, asked "How should login be covered on the bench?", each test storing
+  credentials in `config_MQTT.cfg`: "Both login tests (Recommended)"): 5 writes of `config_MQTT.cfg` (2 + 3), each undone
+  by its test. The group's other six tests are deselected by name (step 6). No other flag: no `--allow-persistence-write`,
+  no other group, no `--allow-scd30-extra-write`, no `--allow-flash-cycle`. 68 of the scope's 79 bench tests run; out
+  besides those six: 4 hotspot (both PUTs over the hotspot link, both failed-credential stages), 1 NTP (the garbage host
+  over REST).
+- The unmarked prerequisite writes stay (`tests_hardware/README.md`, the write table): the flash step's scratch builds
+  (one defaults write per store into `hwtest-scratch/`, removed again), the MQTT module's enabling PUT and its closing
+  disabling PUT, the hotspot module's SSID clear and restore, and `dut_ip`'s bench-credential push if the board cannot
+  rejoin. The owner has seen this list in the code session.
+
+Steps, in this order:
+1. Fetch and merge (your standing rules), then `scripts/uv_sync_retried.sh` (the runner's own first step, which the
+   direct calls below skip). Host: `command -v mosquitto`; if missing, `uv run toolchain/setup_toolchain.py env --tier
+   bench` installs it, now in `toolchain/versions.toml`'s apt packages (owner, 2026-11-15: "you can absolutely add the
+   local Mosquitto installation to the bench specific setup scripts, or tell the bench to do this"). The tests start
+   their own brokers on 18883 and 18884, not the system one on 1883. `ip route get 1.1.1.1` leaves through `br0` over
+   `eth0`: the AP-outage test and the hotspot module take the bench AP down (handover section 3).
+2. Before flashing: save `GET /status` (errcount in full) and `GET /system` (the standing FRAM rule). `MQTT`'s and
+   `CFGMGR_MQTT`'s chunks follow `NOTIFY`'s, so `UART_init`, `UART_resp` and `WEBSERVER` move and read blank after.
+3. Build and flash `dev` from this branch head: `uv run scripts/build_firmware.py dev` (`"dirty": false`),
+   `harness.reflash()`, `harness.restore_board_to_serving()`; `build.BuildDate` matches; FC +1. Record the image size
+   and its percentage next to relay 41's 1,158,444 B (94.3 %).
+4. First boot, before any flash-tier script touches FRAM: errcount and `/status` (`MQTTState` reads `disabled`,
+   `MQTTLINK`'s counters 0); the moved owners blank, an E49 + W63 per moved block in the FRAM module's RAM-only log on
+   this boot only (your relay-41 3a). One REST `reboot`, errcount again: no new FRAM entry.
+5. The flash step alone, the scoped runner's own call (the lower levels run in the code session):
+   ```
+   scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt_flash_step \
+       --levels "L3, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
+       $(python3 tests_hardware/run_scopes.py mqtt flash)
+   ```
+   Expected: the heap headroom test fails its 41,000 B bound, "the build and its setups keep <N> B, over 41000 B" (your
+   36,368 B without the client, plus the client and the exerciser; about 45 KB by a rough agent estimate, 2026-11-15).
+   Hand back its result note in full (kept bytes, largest block, the three heap readings, the placement figures) and the
+   failure text. Any other red in this step is a real failure: hand back and run nothing further.
+6. The bench step alone, 68 tests (collect it first with `--collect-only -q` added: 68 of 79, both login tests in):
+   ```
+   M=tests_hardware/bench/test_mqtt_broker_faults.py
+   scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt \
+       --levels "L4, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
+       --not-clean-reason "lower levels skipped; scope mqtt: the bench step alone after the flash step's known heap-bound red; owned writes only the two login tests' (owner, 2026-11-15)" \
+       $(python3 tests_hardware/run_scopes.py mqtt bench) --allow-persistence-write-to=networking/mqtt \
+       --deselect=$M::test_the_broker_is_found_by_the_bench_hosts_local_name \
+       --deselect=$M::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff \
+       --deselect=$M::test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fires \
+       --deselect=$M::test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted \
+       --deselect=$M::test_a_changed_client_id_retires_the_old_persistent_session
+   ```
+   A test-side red is recorded and rerun once, not fixed; a real one is handed back with its deciding lines. Nothing
+   is fixed on this branch: the code session fixes on its own branch and relays any new image.
+7. Hand back, your usual blocks, plus: the flash step's figures next to relay 41's (survivors 36,368 B; largest block
+   after the build 72,128 B; boot placement 2,259 new blocks, highest 61 %; boot starter loop, `build_system`,
+   `start_timers`; FRAM allocated 1,140 of 262,144 B); the MQTT module's result notes as lines (connect, echo probes,
+   reconnects, detection times, takeover connects, REST under the flood, the QoS 1 burst, both logins, the default-GC
+   window); the errcount added (the MQTT tests' `provokes_log` codes are expected, anything else is a finding); the
+   write count spent (5 owned, plus the prerequisites).
+8. Leave the board serving this image (the module's teardown switches the client off); no reflash back. Do not push to
+   `claude/whole-project-audit-plan-followup`: the code session carries the results over.
+
 ## Lead 2026-11-13 13:30 UTC - relay 41: one short round on the final fix image (owner, 13:30 UTC: "Go ahead with the flash.")
 
 Start only on the owner's go-ahead in your own session. The code on this branch is now the final scan's fix round
