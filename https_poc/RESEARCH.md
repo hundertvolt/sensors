@@ -41,7 +41,9 @@ outside source, not reproduced.
    margin (SPECIFICATION.md H.7). One HTTPS connection does not fit beside a full HTTP ceiling on any device, and
    under peak HTTP load the largest free block is about 1.5 KB. So HTTPS cannot be added without taking memory
    from HTTP (fewer HTTP connections) or from somewhere else. That is in tension with "the existing functionality
-   stays as it is", which makes it the first question for the owner (section 9).
+   stays as it is", which makes it the first question for the owner (section 9). The owner has since ruled that
+   HTTP and HTTPS share one connection count; with a 4 KB receive buffer and at most one HTTPS slot, about 4 slots
+   fit on `dev` and 5 on the other devices, against 6 today (section 4.4).
 3. **Every HTTPS request pays a full handshake.** The pinned mbedTLS configuration has no session cache and no
    session tickets, and Microdot closes every connection after one response [source]. The open web page polls
    every 3 s (`buildgen/definitions.py:31-32`), so an open page over HTTPS means one full handshake every 3 s.
@@ -50,7 +52,8 @@ outside source, not reproduced.
    [source]. From published RP2040 benchmarks these are about 0.18 s and 0.23 s with a P-256 certificate, and about
    3.4 s for one call with an RSA-2048 certificate [derived]. Both P-256 figures cross the 21 ms routine-stall
    budget and the 50 ms LED frame (SPECIFICATION.md F.3); RSA-2048 also crosses `dev`'s 925 ms UART reply bound.
-   **Only an ECDSA P-256 certificate is workable.**
+   **Only an ECDSA P-256 certificate is workable.** Only new C code running the handshake on core 1 removes the
+   freeze; session tickets make it rare instead (section 4.5).
 5. **v1.29.0 leaks a TCP connection on every refused handshake** until the next garbage collection: a browser
    meeting the self-signed certificate for the first time sends alert 46, which takes exactly that path
    [source + measured, section 6]. Fixed upstream in `9ee1531` (2026-10-02), which is in no release yet.
@@ -186,7 +189,67 @@ cosmetic); `con.uart_reply` 925 ms on `dev` held by P-256 but crossed by RSA (ha
 owner once the bench has measured it (section 8). mbedTLS's restartable ECC would split the work but applies only to TLS 1.2 clients
 (`lib/mbedtls/include/mbedtls/mbedtls_config.h:811-819`) [source].
 
-### 4.4 Flash and C stack
+### 4.4 Memory per connection, HTTP against HTTPS
+
+Worst case on `dev` (a `/status` response); the HTTP figure is H.7's serving demand per connection, 68,790 B / 6:
+
+| | HTTP | HTTPS, stock receive buffer | HTTPS, 4 KB receive buffer |
+|---|---|---|---|
+| request and response, both kinds | about 11.5 KB | about 11.5 KB | about 11.5 KB |
+| TLS receive buffer | — | 16,736 B, one block | about 4.4 KB |
+| TLS send buffer | — | 4,448 B | 4,448 B |
+| session, transform, socket object | — | about 2 KB | about 2 KB |
+| **per connection** | **about 11.5 KB** | **about 35 KB, 3x** | **about 22 KB, 2x** |
+
+[source for the buffers, measured on the 64-bit Unix port for the session (+24.9 KB), derived for the rest]. The
+other devices' HTTP figure is about 9.6-10.2 KB. On top: the listener's context and certificate once, about 4-5 KB,
+and a few KB per handshake while it runs. Silicon measured about 7.5-8 KB of live heap per open HTTP connection at
+peak (H.7).
+
+**The smaller receive buffer.** The server's own limits cap every request at a 2,048 B head and a 2,048 B body,
+so a 4-6 KB `MBEDTLS_SSL_IN_CONTENT_LEN` holds every record a request this server answers can need; a client
+sending a larger record has that connection refused (`lib/mbedtls/library/ssl_msg.c:4303`). It departs from the TLS
+rule that a peer may send 16 KB records unless one is negotiated, which no browser offers (4.1). The value is set
+unconditionally in `extmod/mbedtls/mbedtls_config_common.h:63-65`, so it needs a config override, and Chrome, Firefox
+and Safari need checking against it on the bench.
+
+**One shared connection count** (owner, 2026-11-15: "Generally, the connection count always is for Http and https
+together, so not for each."). The serving budget then has to hold the worst mix of that count. With the listener's
+context taken from the heap free after boot as well, the total that fits [derived; the bench sets the figures]:
+
+| Shared total | any slot may be HTTPS | at most one slot HTTPS |
+|---|---|---|
+| stock receive buffer | `dev` 1, others 2 | `dev` 3, others 4 |
+| 4 KB receive buffer | `dev` 3, others 3 | `dev` 4, others 5 |
+
+### 4.5 Mitigations
+
+**The freeze.** No stock-mbedTLS setting removes it; the work can only be made shorter, rarer or moved off the
+event loop.
+
+| Measure | Effect | Cost |
+|---|---|---|
+| ECDSA P-256 only, ECDHE-ECDSA suites | stalls about 0.18 s and 0.23 s instead of 3.4 s | a cipher-list setting |
+| **Session tickets** (`MBEDTLS_SSL_SESSION_TICKETS`, `MBEDTLS_SSL_TICKET_C`; prerequisites cipher and GCM, both on, `check_config.h:974-982`) | a returning browser's connections resume with symmetric crypto only, so full handshakes happen on first contact, after a reboot and at ticket expiry | a config override plus a patch to `modtls_mbedtls.c` setting up a ticket context (two keys, about 1-2 KB once, nothing per session) |
+| `MBEDTLS_HAVE_ASM` (a Thumb-1 bignum path exists, `library/bn_mul.h:663`; upstream master enables it for bare-metal ports, `9e348d293`) | shorter stalls, gain on the M0+ unmeasured | a config override |
+| 200 MHz system clock (certified for the RP2040 from pico-sdk 2.1.1, at a regulator voltage of at least 1.15 V) | stalls about 40 % shorter | every timing of the firmware was measured at 125 MHz, so all of it is re-measured |
+| `MBEDTLS_SSL_ASYNC_PRIVATE` (`mbedtls_config.h:1628-1637`; the server's hook at `ssl_tls12_server.c:3063-3076`) with the signature on core 1 | removes the signature, about 0.09 s of 0.4 s | a C module and core-1 code; key generation and the ECDH secret stay in the loop |
+| the whole handshake on core 1, socket I/O kept on core 0 | removes the freeze | a new C subsystem: rp2's lwIP lock only suspends PendSV on its own core (`ports/rp2/mpnetworkport.c:127-135`), `_thread` runs without a GIL (`ports/rp2/mpconfigport.h:140-142`), so core 1 may not touch the network stack; high effort and risk |
+| defer a full handshake while an LED animation runs | hides the stutter | a short wait for the client; Python only |
+
+Recommended for discussion (agent, 2026-11-15): P-256 only and session tickets, with `MBEDTLS_HAVE_ASM` once its
+gain is measured. The hard bounds (watchdog, `dev`'s UART reply) then hold, and a first connection still costs an LED
+stutter.
+
+**The other findings.**
+- The connection leak: backport `9ee1531` as an override (B.14.4), removed when a release carries it.
+- Allocation before admission, a silent `ENOMEM` and a `MemoryError` ending the accept task: an own TLS accept loop
+  that admits first, counts every refusal and runs as its own supervised task (section 3).
+- A refused certificate logged as W51: its own warning code (section 3).
+- The static-RSA path's 1 KB stack frame: gone with the ECDHE-ECDSA cipher list; the handshake's stack peak still
+  needs the bench (4.6).
+
+### 4.6 Flash and C stack
 
 - **Flash.** TLS serving needs nothing new compiled in. The release image on `dev` is 1,158,444 B of 1,228,800 B
   before the filesystem (bench relay 41, 2026-11-13), about 70 KB free. On-device certificate generation in C would
@@ -316,6 +379,18 @@ Playwright (`chromium.launch()` with `--log-net-log`, `page.goto()`, `response.s
 ## 9. Questions for the owner (asked in session, 2026-11-15)
 
 Asked one at a time; each answer is recorded here with the owner's words once given.
+
+**Answered.** On question 1 (owner, 2026-11-15): "Generally, the connection count always is for Http and https
+together, so not for each." The same message asked whether the freeze can be prevented and what an HTTPS connection
+costs against an HTTP one, answered in 4.4 and 4.5. That leaves the split inside the shared count open, asked as
+question 1a.
+
+1a. **Within the shared count: at most one HTTPS slot, or any slot?** (section 4.4)
+   - (a) At most one of the shared slots is HTTPS at a time, with the 4 KB receive buffer and session tickets
+     (recommended): about 4 slots in all on `dev` and 5 on the other devices; a second HTTPS client waits or is
+     refused while one is served.
+   - (b) Any slot may be HTTPS: about 3 slots in all on every device with the 4 KB buffer, 1-2 with the stock one;
+     every client may use either scheme.
 
 1. **HTTPS memory: take it from HTTP connections, or stop?** (section 4.1)
    - (a) HTTPS gets one connection at a time and the HTTP ceiling drops to pay for it, about 6 → 3 on `dev` and
