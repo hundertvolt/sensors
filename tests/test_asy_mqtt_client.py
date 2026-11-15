@@ -3,7 +3,6 @@ gating (the hotspot's too) and backoff, QoS 0/1 both ways, the unconfirmed-bytes
 
 import asyncio
 import gc
-import io
 import json
 import socket
 import time
@@ -50,6 +49,8 @@ _SESSION_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 20
 _R_STALLED: int = src_int("src/asy_mqtt_client.py", "_R_STALLED")  # the client's const()-folded teardown reason
 _R_UNEXPECTED: int = src_int("src/asy_mqtt_client.py", "_R_UNEXPECTED")
 _SLOT_INFLIGHT: int = src_int("src/asy_mqtt_client.py", "_SLOT_INFLIGHT")
+_OUT_SLOTS: int = src_int("src/asy_mqtt_client.py", "_OUT_SLOTS")
+_COUNTERS: int = src_int("src/asy_mqtt_client.py", "_COUNTERS")
 _ST_CONNECTED: int = src_int("src/asy_mqtt_client.py", "_ST_CONNECTED")
 _C_CONSUMER_ERR: int = src_int("src/asy_mqtt_client.py", "_C_CONSUMER_ERR")
 _OUT_PAYLOAD: int = src_int("src/asy_mqtt_client.py", "_OUT_PAYLOAD")  # a slot's payload, refused one byte past it
@@ -1055,12 +1056,22 @@ def test_an_unexpected_reader_fault_is_logged_once_by_its_task_top() -> None:
 
 
 def test_no_client_buffer_needs_more_contiguous_heap_than_the_receive_buffer() -> None:
-    # Contiguous chunk splitting: the outbound ring is one preallocated stream per slot, never one 3 KB block.
+    # Contiguous chunk splitting: the outbound ring is one preallocated bytearray per slot, never one 2 KB block.
     client = _make_client()
     sizes = [len(v) for v in client.__dict__.values() if isinstance(v, (bytearray, memoryview))]
     assert max(sizes) == 1024, sizes
     assert len(client._slots) == 8, client._slots
-    assert all(isinstance(slot, io.BytesIO) for slot in client._slots)
+    assert all(isinstance(slot, bytearray) for slot in client._slots)
+
+
+def test_each_per_slot_display_covers_every_slot() -> None:
+    # The per-slot arrays and the counters are displays, so no temporary lands among the buffers; each must still
+    # match mqtt.out_slots, and _COUNTERS.
+    client = _make_client()
+    assert [len(slot) for slot in client._slots] == [_OUT_PAYLOAD] * _OUT_SLOTS
+    lists = (client._slot_len, client._slot_topic, client._slot_seq, client._slot_pid, client._slot_sent)
+    assert [len(values) for values in lists] == [_OUT_SLOTS] * len(lists)
+    assert client._counts == [0] * _COUNTERS
 
 
 def test_settings_and_topics_are_born_at_setup_and_kept_while_unchanged() -> None:

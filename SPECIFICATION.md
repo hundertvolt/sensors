@@ -1722,9 +1722,13 @@ apply here as everywhere (owner, 2026-10-08: "Contiguous chunk splitting, long t
 placement and conservative memory management are techniques to be applied in any case here."). Every
 long-lived buffer is allocated once at construction: receive `mqtt.rx_buf_bytes`, transmit
 `mqtt.tx_buf_bytes`, `mqtt.out_slots` outbound slots of `mqtt.out_payload_max` each, the PUBACK queue
-and the last-topic buffer, about 3.7 KB. Each slot is its own `io.BytesIO(alloc_size)`, never one ring,
-so no long-lived block outgrows the receive buffer; a payload is copied into its slot, and one longer than the
-slot is refused. The encoded settings and the partners' full topics and filters are born in `setup()`, inside the
+and the last-topic buffer, about 3.7 KB. Each slot is its own `bytearray`, never one ring,
+so no long-lived block outgrows the receive buffer; a payload is copied in by a slice store, which allocates
+nothing (`py/vm.c`'s stack-allocated slice, v1.29.0), and out after its PUBLISH head through a `memoryview`, and
+one longer than the slot is refused. The lean construction (owner, 2026-11-15, asked for memory techniques that
+drop no feature and add no lag, paraphrase; of the options put to them: "try 1 and 2"; this is the first): the
+schema is one tuple display and every list a display, so no `+` chain, comprehension or `[x] * n` leaves a
+temporary among the buffers, and each settings read is one display per type. The encoded settings and the partners' full topics and filters are born in `setup()`, inside the
 boot list's placement reset (I.4(f.1)), and a reconnect with an unchanged value keeps its object; the partners
 register before the tasks start, so their lists are fixed for the program's life. A
 failed allocation leaves the client off (`MQTTState` `no memory`, shared `ALLOC` logged by
@@ -9312,12 +9316,14 @@ Calibration only: `_cal_recent`, at most `_CAL_CONVERGE_N` ratios, cleared at th
 
 **`asy_mqtt_client.py`** (`dev` only) — construction, long-lived, fixed: the receive and transmit
 buffers (`mqtt.rx_buf_bytes`, `mqtt.tx_buf_bytes`), `mqtt.out_slots` outbound slots, each its own
-`io.BytesIO` of `mqtt.out_payload_max`, the PUBACK queue and the last-topic buffer, about 3.7 KB (A.12).
-Per partner registration, at construction: its relative topic or filter and its callback, long-lived,
-fixed once the tasks start. In `setup()`, and on a reconnect for each changed value: the encoded
-settings and every partner's full topic and filter, long-lived, bounded by the schema. Per
-connection: one socket (its lwIP pcb), its `Stream` and the reader task. Per publish: the payload
-copied into its slot, one longer than the slot refused. Per inbound packet: parsed in place, each
+`bytearray` of `mqtt.out_payload_max`, the PUBACK queue and the last-topic buffer, about 3.7 KB, and the schema,
+one tuple display (A.12). Per partner registration, at construction: its relative topic or filter and its
+callback, long-lived, fixed once the tasks start. In `setup()`, and on a reconnect for each changed value: the
+encoded settings and every partner's full topic and filter, long-lived, bounded by the schema; per settings read,
+three one-display read schemas, transient. Per connection: one socket (its lwIP pcb), its `Stream` and the
+reader task. Per publish: the payload copied into its slot by a slice store, which allocates nothing, one longer
+than the slot refused; per PUBLISH sent, the slot's `memoryview` and its slice for the copy out and the packet's
+slice for the write, transient. Per inbound packet: parsed in place, each
 matching consumer called with two views into the receive buffer; one larger than the buffer is read
 and discarded in buffer-sized pieces, client-controlled by the broker and never allocated. The codec
 in the same file keeps no state: every encoder writes into its caller's buffer and returns a length,

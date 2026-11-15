@@ -4,7 +4,6 @@ subscribe and publish under the device's base topic. WifiService owns the radio;
 
 import asyncio
 import errno
-import io
 import socket
 import time
 from collections import namedtuple
@@ -480,8 +479,11 @@ class MQTTClient(SensorReaderConfig):
         super().__init__(
             MQTT(Connected=False, TS=None),
             _NAME,
-            _VAL_MQTT_ENABLE + _VAL_MQTT_HOST + _VAL_MQTT_PORT + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX
-            + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_PERSISTENT + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG + _VAL_MQTT_WILL_QOS + _VAL_MQTT_WILL_RETAIN,
+            (  # one display: a chain of + would leave a garbage tuple per step, const() folding no tuple sum
+                _VAL_MQTT_ENABLE[0], _VAL_MQTT_HOST[0], _VAL_MQTT_PORT[0], _VAL_MQTT_USER[0], _VAL_MQTT_PW[0], self._val_client_id[0],
+                _VAL_MQTT_PREFIX[0], _VAL_MQTT_PING_INTERVAL[0], _VAL_MQTT_PERSISTENT[0], _VAL_MQTT_WILL_TOPIC[0],
+                _VAL_MQTT_ONLINE_MSG[0], _VAL_MQTT_WILL_MSG[0], _VAL_MQTT_WILL_QOS[0], _VAL_MQTT_WILL_RETAIN[0],
+            ),
             max_module_error=0,  # no failure streak: a broker outage is routine, never a restart (Part C.7.2)
             cfg_path=cfg_path,
             log=log,
@@ -498,19 +500,23 @@ class MQTTClient(SensorReaderConfig):
             self._last_topic = bytearray(_LAST_TOPIC_BYTES)
             self._rxmv = memoryview(self._rx)
             self._txmv = memoryview(self._tx)
-            # One preallocated stream per slot (io.BytesIO(alloc_size)), never one ring: no long-lived block here needs
-            # more contiguous heap than _rx does.
-            self._slots = [io.BytesIO(_OUT_PAYLOAD) for _ in range(_OUT_SLOTS)]
-            self._slot_len = [0] * _OUT_SLOTS
-            self._slot_topic: list[bytes | None] = [None] * _OUT_SLOTS
+            # One bytearray per slot, never one ring: no long-lived block here needs more contiguous heap than _rx does.
+            # Displays, not a comprehension or [x] * n, so no temporary lands among the buffers; the tests hold their lengths.
+            self._slots = [
+                bytearray(_OUT_PAYLOAD), bytearray(_OUT_PAYLOAD), bytearray(_OUT_PAYLOAD), bytearray(_OUT_PAYLOAD),
+                bytearray(_OUT_PAYLOAD), bytearray(_OUT_PAYLOAD), bytearray(_OUT_PAYLOAD), bytearray(_OUT_PAYLOAD),
+            ]
+            self._slot_len = [0, 0, 0, 0, 0, 0, 0, 0]
+            self._slot_topic: list[bytes | None] = [None, None, None, None, None, None, None, None]
             self._slot_qos = bytearray(_OUT_SLOTS)
             self._slot_retain = bytearray(_OUT_SLOTS)
             self._slot_state = bytearray(_OUT_SLOTS)
             self._slot_tries = bytearray(_OUT_SLOTS)
-            self._slot_seq = [0] * _OUT_SLOTS
-            self._slot_pid = [0] * _OUT_SLOTS
-            self._slot_sent = [time.ticks_ms()] * _OUT_SLOTS
-            self._counts = [0] * _COUNTERS
+            self._slot_seq = [0, 0, 0, 0, 0, 0, 0, 0]
+            self._slot_pid = [0, 0, 0, 0, 0, 0, 0, 0]
+            now = time.ticks_ms()
+            self._slot_sent = [now, now, now, now, now, now, now, now]
+            self._counts = [0, 0, 0, 0, 0, 0, 0, 0, 0]
         except MemoryError as e:  # boot-time only: the client stays off, and setup() persists the ALLOC entry
             self._alloc_error = e
             self.pr.err("MQTT buffers could not be allocated:", e)
@@ -855,10 +861,9 @@ class MQTTClient(SensorReaderConfig):
         if i < 0:
             self._bump(_C_TX_DROP)
             return False
-        slot = self._slots[i]
-        slot.seek(0)
-        slot.write(payload)  # within the slot: publish() refuses a payload above _OUT_PAYLOAD
-        self._queued(i, len(payload), topic, qos, retain=retain)
+        n = len(payload)
+        self._slots[i][0:n] = payload  # within the slot, publish() refusing a longer payload; a slice store allocates nothing
+        self._queued(i, n, topic, qos, retain=retain)
         return True
 
     def _queued(self, i: int, n: int, topic: bytes, qos: int, *, retain: bool) -> None:
@@ -899,12 +904,16 @@ class MQTTClient(SensorReaderConfig):
 
     async def _read_params(self) -> bool:
         # The configuration for the next connect; False when off, or when a read or a stored shape fails. A read that
-        # succeeds also settles which persistent session is owed and which one is left behind (_settle_session()).
-        bools = await self.cfgmgr.get_bool_values(_VAL_MQTT_ENABLE + _VAL_MQTT_PERSISTENT + _VAL_MQTT_WILL_RETAIN)
+        # succeeds also settles which persistent session is owed and which one is left behind (_settle_session()). Each
+        # read is one display (the getters read the names alone), not a chain of + leaving a garbage tuple per step.
+        bools = await self.cfgmgr.get_bool_values((_VAL_MQTT_ENABLE[0], _VAL_MQTT_PERSISTENT[0], _VAL_MQTT_WILL_RETAIN[0]))
         texts = await self.cfgmgr.get_str_values(
-            _VAL_MQTT_HOST + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG,
+            (
+                _VAL_MQTT_HOST[0], _VAL_MQTT_USER[0], _VAL_MQTT_PW[0], _VAL_MQTT_CLIENT_ID[0], _VAL_MQTT_PREFIX[0], _VAL_MQTT_WILL_TOPIC[0],
+                _VAL_MQTT_ONLINE_MSG[0], _VAL_MQTT_WILL_MSG[0],
+            ),
         )
-        ints = await self.cfgmgr.get_int_values(_VAL_MQTT_PORT + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_WILL_QOS)
+        ints = await self.cfgmgr.get_int_values((_VAL_MQTT_PORT[0], _VAL_MQTT_PING_INTERVAL[0], _VAL_MQTT_WILL_QOS[0]))
         if bools is None or texts is None or ints is None or len(bools) != _BOOL_FIELDS or len(texts) != _TEXT_FIELDS or len(ints) != _INT_FIELDS:
             if not self._cfg_warned:
                 self._cfg_warned = True
@@ -1051,9 +1060,7 @@ class MQTTClient(SensorReaderConfig):
                 if not self._ping_out:
                     self._ping_early = True
                 return False
-            slot = self._slots[i]
-            slot.seek(0)
-            slot.readinto(self._txmv[head:n])  # the payload after its head: one packet, one write
+            self._tx[head:n] = memoryview(self._slots[i])[:length]  # the payload after its head: one packet, one write
             self._write(stream, self._txmv[:n])
             self._ping_early = True  # a ping of its own confirms it, whatever the interval (owner, 2026-10-13)
         self._slot_tries[i] += 1

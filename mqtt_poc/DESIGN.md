@@ -198,14 +198,14 @@ message is still acknowledged. `dev`'s one consumer is its exerciser, which coun
 
 All long-lived buffers are allocated once in `__init__` (construction runs once per boot, A.7), in one
 pass: receive and transmit a `bytearray` with a `memoryview` each, every outbound slot its own
-`io.BytesIO(alloc_size)`; an allocation failure there is the shared `ALLOC` errno and leaves the client
+`bytearray`; an allocation failure there is the shared `ALLOC` errno and leaves the client
 permanently disabled (status `State: "no memory"`), never a crash.
 
 | Buffer | Bytes | Tunable |
 |---|---|---|
 | receive | 1,024 | `mqtt.rx_buf_bytes` |
 | transmit | 512 | `mqtt.tx_buf_bytes` |
-| outbound slots | 8 × 256, one stream each | `mqtt.out_slots`, `mqtt.out_payload_max` |
+| outbound slots | 8 × 256, one `bytearray` each | `mqtt.out_slots`, `mqtt.out_payload_max` |
 | last inbound topic | 64 | `mqtt.last_topic_bytes` |
 
 The buffers are about 3.7 KB, against the ~7.5–8 KB one HTTP connection holds at peak, which the
@@ -221,11 +221,16 @@ free run; they stay allocated at boot (agent, 2026-10-08).
 
 Contiguous chunk splitting, survivor placement and conservative allocation (owner, 2026-10-08, §14) shape the rest:
 
-- **No long-lived block outgrows the receive buffer.** The eight slots are eight streams, not one 3 KB
+- **No long-lived block outgrows the receive buffer.** The eight slots are eight `bytearray`s, not one 2 KB
   ring.
-- **A payload is copied into its slot**; one longer than the slot is refused and counted. (The measurement
-  publisher wrote each object into its slot one key or scalar at a time by `json.dump()`; it is gone with the
-  publisher, §17.)
+- **A payload is copied into its slot** by a slice store, which allocates nothing (`py/vm.c`'s stack-allocated
+  slice, v1.29.0), and out after its PUBLISH head through a `memoryview`; one longer than the slot is refused and
+  counted. (The measurement publisher wrote each object into its slot one key or scalar at a time by
+  `json.dump()`; it is gone with the publisher, §17.)
+- **Construction leaves no temporary among its survivors** (the memory trim, owner, 2026-11-15, §14). The schema
+  is one tuple display, not a chain of 13 `+` (`const()` folds no tuple sum, so each step was a garbage tuple), and
+  every list a display, not a comprehension or `[x] * n`; the tests hold each display's length to `mqtt.out_slots`.
+  Each settings read is one display per type too.
 - **Settings and topics are born at boot.** `setup()` reads the settings and builds every wired partner's
   full topics and filters inside the boot list's placement reset (SPECIFICATION.md I.4(f.1)); a reconnect
   keeps every object whose value did not change, so a reconnect re-births no long-lived copy.
@@ -247,9 +252,15 @@ board: eight streams carry their own headers where one ring carried one. The ins
 §16, counted on the Unix port after construction, agent, 2026-10-13); its 73-entry step would take nineteen
 attributes out for about 190 B on the board.
 
-Steady-state allocation: the `readinto` generator per inbound read; two `memoryview` slices per
-written PUBLISH; per publish, the payload's copy into its slot; per inbound message, the two views each
-matching consumer gets. The exerciser allocates nothing per round beyond that publish path. Counters saturate at
+The memory trim's first part, measured on the Unix port (agent, 2026-11-15; `gc.mem_alloc()` after a collect,
+around construction, with `dev`'s exerciser registered): construction 9,280 → 9,024 B, the eight slots' stream
+headers (256 B), about 128 B on the board; the temporaries it no longer leaves were garbage, so they show as holes
+spared, not as bytes kept. Each PUBLISH sent allocates one `memoryview` more, the slot's own for the copy out (16 B
+on the board, transient), and the copy in none.
+
+Steady-state allocation: the `readinto` generator per inbound read; per written PUBLISH, the slot's
+`memoryview` and its slice for the copy out and the packet's slice for the write; per publish, nothing for the
+payload's copy into its slot; per inbound message, the two views each matching consumer gets. The exerciser allocates nothing per round beyond that publish path. Counters saturate at
 `COUNTER_CAP`. Nothing grows with uptime or traffic; the twin and bench tiers check it at
 `gc.threshold(-1)` and `32768` with zero memory markers.
 
@@ -474,7 +485,9 @@ Each the more conservative, more easily reversible choice, for review:
     stream from stack buffers. The other way to split the publish path, a PUBLISH head from the transmit
     buffer and its payload straight from the slot in a second write, is not taken: two writes per packet
     would double the segments lwIP queues against `TCP_SND_QUEUELEN`, the budget the 2,000 B cap (§3.3)
-    protects. The slot is copied into the transmit buffer after its head, one packet in one write.
+    protects. The slot is copied into the transmit buffer after its head, one packet in one write. The
+    streams are superseded by the memory trim (owner, 2026-11-15, §14): each slot is a `bytearray`, its
+    payload copied in by a slice store and out through a `memoryview`; one packet in one write stands.
 
 Decided on the owner's behalf while designing the will and session settings (agent, 2026-10-13), each the
 more conservative, more easily reversible choice:
@@ -537,6 +550,11 @@ more conservative, more easily reversible choice:
   640 → 512 B, 121 B over the largest PUBLISH (agent, 2026-11-15); the receive buffer, the eight slots (twice the
   worst case) and the ack queue stay. The trimmed image read 44,320 B, and the bound is that plus the same ~14 %,
   50,500 B (agent, 2026-11-15; Part N's `l3.heap_headroom_after_full_system_build_max_added`).
+- The memory trim (owner, 2026-11-15), asked for lean, smart memory techniques that drop no feature and add no lag
+  (paraphrase), of the options put to them: "try 1 and 2". The first is §5's construction: the slots as
+  `bytearray`s and the schema and every list built by one display (agent, 2026-11-15). The second, writing
+  straight to the socket from the transmit buffer instead of through asyncio's `Stream.write()`/`drain()`, is a
+  change of its own.
 - The bench run goes through the audit's bench session (owner, 2026-11-15): 'As the main session is considered to be
   done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related
   tests, while flashing a new image containing the MQTT code of course is allowed.' The requirement: 'For. The MQTT
