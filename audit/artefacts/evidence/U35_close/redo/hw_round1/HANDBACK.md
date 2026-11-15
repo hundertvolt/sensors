@@ -44441,3 +44441,38 @@ reset connections:
 - Writes: FC 1 (FC 2 today); the two login tests' owned writes (5 by design, both PASS); the listed prerequisites. The
   rerun owned none. Board left serving this image.
 - Evidence: logs/day9_20261115/*r45*; build/archive/run_bench_hardware_suite_scope_mqtt/ (11:29 and 12:17 runs).
+
+## Bench 2026-11-15 13:05 UTC - relay 46 on the board's image (11:23:36Z, code e680db9c's firmware = 3e281e10's): headroom PASS under 50,500 B; hammer PASS; in operation ~12 KB less free, 6-reader resets x10
+
+- No flash, no wear-gated flag (within the owner's go-ahead in this session). uv sync rc 0; pre /status saved 12:40.
+- 2. Headroom alone (r46_headroom, 12:40:32-12:42:09): PASS.
+  | figure | relay 41 (no client) | relay 46 |
+  |---|---|---|
+  | build's own | 36,368 (max 41,000) | 44,352 (max 50,500) |
+  | used | 103,648 | 115,024 |
+  | largest block after build (min 32,768) | 72,128 | 59,200 |
+  | baseline alloc / free / largest | 67,280 / 120,800 / 118,992 | 70,672 / 117,408 / 116,927 |
+  | after build alloc / free / largest | 103,648 / 84,496 / 72,128 | 115,024 / 73,120 / 59,200 |
+  | control / production threshold | 103,488 / 72,128; 103,472 / 72,128 | 114,832 / 73,360 / 59,200; 114,896 / 73,328 / 59,200 |
+  | MAP largest free run / free above top survivor | 72,128 / 72,128 | 59,200 / 59,200 |
+  | MAP gaps >= 4 K / >= 16 K | 1 / 1 | 1 / 1 |
+  | MAP deciles | 1173 1169 1155 1117 922 756 158 0 0 0 | 1174 1174 1166 1127 970 902 646 0 0 0 |
+  | boot placement new blocks / highest / top 16 K / top 32 K | 2,259 / 61 % / 0 / 0 | 2,767 / 68 % / 0 / 0 |
+- 3. Hammer alone (r46_hammer, 12:42:09-12:45:38): PASS. "497 reads answered, 7 ResetVOC writes accepted, 776 refused;
+  MemFree floor 15872 B over 65 /status answers" (relay 41: 579 reads, 6 accepted, 850 refused; MemFree floor 29,216 B
+  over 79).
+- 4. In operation, step 5h unchanged (12:45:38-12:59:09, client disabled as shipped):
+  | figure | relay 41 (840a2213 week / 3aaf013e) | relay 46 |
+  |---|---|---|
+  | free after the one collect after each 120 s idle | 82,016 / 82,000 / 81,968 / 81,968 | 70,224 / 69,424 / 70,176 / 69,456 |
+  | largest block then | 16,960 / 16,192 / 19,904 / 53,040 | 27,216 / 16,240 / 16,368 / 42,224 |
+  | boot free / largest | 73,584 / 71,760 | 61,376 / 59,120 |
+  | under load free min (6, 6, 6 readers; 2) | 15,200 / 15,168 / 20,384; 41,248 | 9,168 / 4,384 / 6,224; 25,424 |
+  | under load largest min | 12,000 / 11,696 / 11,584; 19,904 | 5,440 / 2,832 / 4,672; 15,184 |
+  | /status under 6 readers: 200 / ConnectionResetError | 111 / 43, 111 / 43, 110 / 47 | 71 / 497, 70 / 500, 70 / 481 |
+  | /status under 2 readers | 105 / 0 | 94 / 0 |
+  The 6-reader rows changed most: about a third fewer answers and ten times the resets (refusals, WEBSERVER W60 1,478
+  after the step against 379 on 11-13 for the whole day), with free min down to 4,384 B and largest to 2,832 B. No
+  MemoryError, no task end, no reboot (5h's DONE seen, serving after).
+- End 13:00: RR 21 (5h's script exit), LastTaskEnd null, MQTTState disabled; errcount SGP40 W65 (3), WEBSERVER W60
+  (1,478). Board serving. Evidence: logs/day9_20261115/r46_*.out, status_r46_*.json, logs/5h.log, heap_loads.out.
