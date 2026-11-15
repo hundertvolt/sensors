@@ -932,6 +932,121 @@
             }
           ],
           "key": "dns"
+        },
+        {
+          "fields": [
+            {
+              "key": "MQTTEnable",
+              "kind": "toggle"
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTHost",
+              "kind": "string",
+              "maxLength": 253,
+              "minLength": 1,
+              "shape": "hostName",
+              "specialValues": [
+                {
+                  "meaning": "No broker (client off)",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "key": "MQTTPort",
+              "kind": "number",
+              "max": 65535,
+              "min": 1
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTUser",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 0
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTPW",
+              "kind": "string",
+              "mask": true,
+              "maxLength": 64,
+              "minLength": 0
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTClientId",
+              "kind": "string",
+              "maxLength": 23,
+              "minLength": 1,
+              "shape": "hostLabel"
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTPrefix",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            {
+              "key": "MQTTPingInterval",
+              "kind": "number",
+              "max": 3600,
+              "min": 10,
+              "specialValues": [
+                {
+                  "meaning": "Off",
+                  "value": 0
+                }
+              ],
+              "unit": "s"
+            },
+            {
+              "key": "MQTTPersistent",
+              "kind": "toggle"
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTWillTopic",
+              "kind": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "specialValues": [
+                {
+                  "meaning": "<prefix>/<client id>/status",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTOnlineMsg",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTWillMsg",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            {
+              "key": "MQTTWillQoS",
+              "kind": "enum",
+              "options": [
+                0,
+                1
+              ]
+            },
+            {
+              "key": "MQTTWillRetain",
+              "kind": "toggle"
+            }
+          ],
+          "key": "mqtt"
         }
       ],
       "method": "GET",
@@ -1035,6 +1150,121 @@
             }
           ],
           "key": "dns"
+        },
+        {
+          "fields": [
+            {
+              "key": "MQTTEnable",
+              "kind": "toggle"
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTHost",
+              "kind": "string",
+              "maxLength": 253,
+              "minLength": 1,
+              "shape": "hostName",
+              "specialValues": [
+                {
+                  "meaning": "No broker (client off)",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "key": "MQTTPort",
+              "kind": "number",
+              "max": 65535,
+              "min": 1
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTUser",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 0
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTPW",
+              "kind": "string",
+              "mask": true,
+              "maxLength": 64,
+              "minLength": 0
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTClientId",
+              "kind": "string",
+              "maxLength": 23,
+              "minLength": 1,
+              "shape": "hostLabel"
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTPrefix",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            {
+              "key": "MQTTPingInterval",
+              "kind": "number",
+              "max": 3600,
+              "min": 10,
+              "specialValues": [
+                {
+                  "meaning": "Off",
+                  "value": 0
+                }
+              ],
+              "unit": "s"
+            },
+            {
+              "key": "MQTTPersistent",
+              "kind": "toggle"
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTWillTopic",
+              "kind": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "specialValues": [
+                {
+                  "meaning": "<prefix>/<client id>/status",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTOnlineMsg",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            {
+              "byteLength": true,
+              "key": "MQTTWillMsg",
+              "kind": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            {
+              "key": "MQTTWillQoS",
+              "kind": "enum",
+              "options": [
+                0,
+                1
+              ]
+            },
+            {
+              "key": "MQTTWillRetain",
+              "kind": "toggle"
+            }
+          ],
+          "key": "mqtt"
         }
       ],
       "method": "PUT",
@@ -1208,6 +1438,63 @@
             {
               "key": "HTTPDropped",
               "kind": "readonly"
+            },
+            {
+              "key": "MQTTState",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTConnected",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTBroker",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTUptime",
+              "kind": "readonly",
+              "unit": "s"
+            },
+            {
+              "key": "MQTTConnects",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTTeardowns",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTLastReason",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTTxMsgs",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTTxDropped",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTRxMsgs",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTRxDropped",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTPingTimeouts",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTShortSessions",
+              "kind": "readonly"
+            },
+            {
+              "key": "MQTTLastRxTopic",
+              "kind": "readonly"
             }
           ],
           "key": "networking"
@@ -1353,6 +1640,30 @@
                 "UART_init",
                 "Pending"
               ]
+            },
+            {
+              "key": "MQTTLINK_Transfers",
+              "kind": "readonly",
+              "path": [
+                "MQTTLINK",
+                "Transfers"
+              ]
+            },
+            {
+              "key": "MQTTLINK_Failures",
+              "kind": "readonly",
+              "path": [
+                "MQTTLINK",
+                "Failures"
+              ]
+            },
+            {
+              "key": "MQTTLINK_Commands",
+              "kind": "readonly",
+              "path": [
+                "MQTTLINK",
+                "Commands"
+              ]
             }
           ],
           "key": "sensors"
@@ -1389,6 +1700,8 @@
             "CFGMGR_NOTIFY",
             "UART_init",
             "UART_resp",
+            "MQTT",
+            "CFGMGR_MQTT",
             "WEBSERVER",
             "DNSSRV"
           ]

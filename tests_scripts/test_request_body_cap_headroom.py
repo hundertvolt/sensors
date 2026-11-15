@@ -36,7 +36,7 @@ _NESTED_ROUTES = frozenset({"/sensors"})
 _EXPECTED_LARGEST = {
     ("fram", "neopixel", "notification", "scd30", "sgp40"): 678,
     ("bmp3xx", "fram", "neopixel", "notification", "scd30", "sgp40"): 743,
-    ("bmp3xx", "fram", "isl29125", "neopixel", "notification", "scd30", "sgp40", "uart_link", "uart_link"): 1080,
+    ("bmp3xx", "fram", "isl29125", "mqtt", "mqtt_link", "neopixel", "notification", "scd30", "sgp40", "uart_link", "uart_link"): 1692,
 }
 
 

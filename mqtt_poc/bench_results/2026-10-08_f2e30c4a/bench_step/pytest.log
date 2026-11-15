@@ -1,0 +1,339 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 74 items
+
+tests_hardware/bench/test_mqtt_broker_faults.py::test_the_client_connects_and_announces_itself_online PASSED [  1%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_every_sensor_publishes_strict_json_on_its_own_topic PASSED [  2%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_command_is_received_and_shown PASSED [  4%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_killed_broker_is_reconnected_after_its_restart PASSED [  5%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_stalled_broker_is_detected_by_the_pingresp_deadline PASSED [  6%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_silent_path_loss_is_detected_and_recovered PASSED [  8%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reset_path_ends_the_connection_and_attempts_stay_bounded PASSED [  9%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_duplicate_client_id_is_bounded_by_the_backoff PASSED [ 10%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_flood_leaves_rest_serving_and_the_session_up PASSED [ 12%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_qos1_burst_is_acknowledged_in_full PASSED [ 13%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_oversized_inbound_message_is_discarded_and_framing_kept PASSED [ 14%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_is_found_by_the_bench_hosts_local_name PASSED [ 16%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_no_task_ended_and_only_expected_codes_were_logged PASSED [ 17%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_password_broker_admits_the_stored_credentials PASSED [ 18%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff PASSED [ 20%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff[no-such-broker.invalid] PASSED [ 21%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff[no-such-broker.local] PASSED [ 22%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[1.0] PASSED [ 24%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[5.0] PASSED [ 25%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[9.0] PASSED [ 27%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[13.0] PASSED [ 28%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link PASSED [ 29%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reboot_reconnects_from_the_stored_settings PASSED [ 31%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_faults_run_clean_at_micropythons_default_gc PASSED [ 32%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_disabling_the_client_publishes_offline_and_ends_the_session PASSED [ 33%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry PASSED [ 35%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot PASSED [ 36%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response PASSED [ 37%]
+tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response PASSED [ 39%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source FAILED [ 40%]
+tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly PASSED [ 41%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp PASSED [ 43%]
+tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp PASSED [ 44%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing PASSED [ 45%]
+tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly FAILED [ 47%]
+tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures FAILED [ 48%]
+tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body PASSED [ 50%]
+tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one PASSED [ 51%]
+tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status FAILED [ 52%]
+tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap PASSED [ 54%]
+tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver PASSED [ 55%]
+tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane PASSED [ 56%]
+tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly PASSED [ 58%]
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held PASSED [ 59%]
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall PASSED [ 60%]
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run PASSED [ 62%]
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default PASSED [ 63%]
+tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot PASSED [ 64%]
+tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network PASSED [ 66%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared PASSED [ 67%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname PASSED [ 68%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_password_matches_known_fixed_value PASSED [ 70%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window PASSED [ 71%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease PASSED [ 72%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet PASSED [ 74%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server PASSED [ 75%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip PASSED [ 77%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way PASSED [ 78%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly PASSED [ 79%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped PASSED [ 81%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored SKIPPED [ 82%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_backoff_curve_recovers_once_flood_stops PASSED [ 83%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link PASSED [ 85%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link PASSED [ 86%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link PASSED [ 87%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link PASSED [ 89%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link PASSED [ 90%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly FAILED [ 91%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management PASSED [ 93%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_concurrent_multi_client_burst_is_out_of_scope_here PASSED [ 94%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect PASSED [ 95%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values PASSED [ 97%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown PASSED [ 98%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_post_condition_sta_connected_state_inferred_from_reachability PASSED [100%]
+
+=================================== FAILURES ===================================
+_____ test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source ______
+
+board = <harness.Board object at 0x7f7d64d400>
+bench = <bench_control.BenchBridge object at 0x7f7f2f7620>
+dut_ip = '192.168.85.57'
+
+    def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+        # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
+        # a reply from anywhere else - checkable via GET /status's UTCTime, since an accepted reply's
+        # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
+        get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
+        assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
+        utc_before = get_before.json()["system"]["UTCTime"]
+>       assert utc_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
+E       AssertionError: GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test
+E       assert None is not None
+
+tests_hardware/bench/test_network_resilience.py:471: AssertionError
+_____ test_connections_at_and_above_the_real_socket_limit_degrade_cleanly ______
+
+dut_ip = '192.168.85.57'
+
+    def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str) -> None:
+        reset_all_error_logs(dut_ip)
+        # The preceding PUT /status closing client-side doesn't mean _serve()'s finally has decremented
+        # _open_conns yet - without this settle, the _MAX_CONNECTIONS held sockets below start from a
+        # nonzero baseline, shifting every slot by one (confirmed directly).
+        time.sleep(_SLOT_RELEASE_WAIT_S)
+        held: list[socket.socket] = []
+        extra: socket.socket | None = None
+        last_response: bytes | None = None
+        try:
+            # Each held socket sends a request line and is padded before every step: silent past the 5 s
+            # per-call timeout, each would be answered and log HTTP_CALL_TIMEOUT, failing the log check below.
+            for _ in range(_MAX_CONNECTIONS):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
+                sock.connect((dut_ip, 80))
+                sock.sendall(HELD_REQUEST_LINE)
+                held.append(sock)
+            # A completed TCP connect() does not mean the accept loop has run _serve() and bumped
+            # _open_conns yet, and under load that lag can admit connection _MAX_CONNECTIONS + 1 into the
+            # app layer. A real race, so the retry below uses a fresh socket rather than a longer sleep.
+            time.sleep(_HELD_ADMIT_WAIT_S)
+    
+            for attempt in range(_OVER_CEILING_ATTEMPTS):
+                _pad(held)
+                if extra is not None:
+                    extra.close()
+                extra = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                extra.settimeout(_RAW_SOCKET_TIMEOUT_S)
+                # A bare connect() still succeeds at the kernel's accept queue even though _serve()
+                # rejects it the moment its task runs: reject-when-full closes without a response.
+                extra.connect((dut_ip, 80))
+                # A refusal is a FIN, or an RST once request bytes have arrived; both mean "closed without
+                # a response". Silent past 1 s means admitted - short, so the held set stays under 5 s.
+                extra.settimeout(_ADMITTED_SILENCE_S)
+                try:
+                    response = extra.recv(4096)
+                except ConnectionResetError:
+                    response = b""
+                except TimeoutError:
+                    response = b"<held open: admitted>"
+                if response == b"":
+                    break
+                last_response = response
+                if attempt < _OVER_CEILING_ATTEMPTS - 1:
+                    time.sleep(_SLOT_RELEASE_WAIT_S)  # let the previous "extra" connection's own quick error-response cleanup (_open_conns.decrement()) actually complete
+            assert response == b"", f"a connection above the real {_MAX_CONNECTIONS}-connection ceiling was not rejected after {_OVER_CEILING_ATTEMPTS} attempts: got {last_response!r}"
+        finally:
+            for sock in held:
+                sock.close()
+            if extra is not None:
+                extra.close()
+    
+        # Once the held connections release their slots, the server must serve normally again. Closing
+        # _MAX_CONNECTIONS + 1 sockets at once can transiently reset a brand-new connection right after
+        # (ConnectionResetError) - wait_until() retries past that instead of asserting instantly.
+        wait_until(
+            lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200,
+            timeout_s=_QUICK_RECOVERY_TIMEOUT_S,
+            poll_interval_s=_QUICK_POLL_S,
+            description="webserver serving normally again after the connection-limit burst cleared",
+        )
+        # _serve()'s own reject-when-full branch (confirmed directly): "silently close, no accept, no
+        # response ever written" - no pr.err_s()/wrn_s() call anywhere on that path, so a real rejection
+        # at the connection ceiling is expected to leave WEBSERVER's own error/warning log untouched.
+>       assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+tests_hardware/bench/test_network_resilience.py:790: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+dut_ip = '192.168.85.57', module_name = 'WEBSERVER'
+
+    def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
+        entry = get_errcount(dut_ip).get(module_name, {})
+        counter = entry.get("counter", 0)
+>       assert counter == 0, f"{module_name!r} error log was not empty as expected (counter={counter}): {entry!r}"
+               ^^^^^^^^^^^^
+E       AssertionError: 'WEBSERVER' error log was not empty as expected (counter=7): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 60}, {'type': 'W', 'num': 48}], 'counter': 7}
+
+tests_hardware/error_log_helpers.py:76: AssertionError
+___ test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures ___
+
+dut_ip = '192.168.85.57'
+
+    def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str) -> None:
+        reset_all_error_logs(dut_ip)
+        discovered = discover_max_connections(dut_ip)
+        configured = configured_max_connections()
+        # Equal, not merely "at least": a board holding FEWER than configured means lwIP ran out of
+        # PCBs below the application ceiling, which is the wall this whole investigation looks for;
+        # holding more means the image on the board is not the one this tree describes.
+        assert discovered == configured, (
+            f"the board admitted {discovered} simultaneous connections, this tree configures {configured}. "
+            f"Fewer means lwIP's own MEMP_NUM_TCP_PCB (toolchain/versions.toml) is exhausted below the "
+            f"application ceiling - that is the wall (SPECIFICATION.md Part H.7). More means the "
+            f"flashed image predates this tree."
+        )
+>       assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+tests_hardware/bench/test_network_resilience.py:1114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+dut_ip = '192.168.85.57', module_name = 'WEBSERVER'
+
+    def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
+        entry = get_errcount(dut_ip).get(module_name, {})
+        counter = entry.get("counter", 0)
+>       assert counter == 0, f"{module_name!r} error log was not empty as expected (counter={counter}): {entry!r}"
+               ^^^^^^^^^^^^
+E       AssertionError: 'WEBSERVER' error log was not empty as expected (counter=16): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 60}, {'type': 'W', 'num': 48}], 'counter': 16}
+
+tests_hardware/error_log_helpers.py:76: AssertionError
+__ test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status ___
+
+dut_ip = '192.168.85.57'
+result_note = <function result_note.<locals>._note at 0x7f7d4cf560>
+
+    def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, result_note: Callable[..., None]) -> None:
+        # The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
+        # bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
+        # connections x 2048 now, connections x 16384 while the band was open.
+        reset_all_error_logs(dut_ip)
+        # The same settle the connection-ceiling test above takes, and for the same reason: _serve()
+        # releases its slot in a finally that runs after _close_writer(), so the PUT just made can
+        # still hold one. Without it the workers start against 3 free slots, not 4.
+        time.sleep(_SLOT_RELEASE_WAIT_S)
+        # Repeated enough times to stay well past the build's own ceiling however high it has been
+        # raised, so the storm keeps overloading admission rather than merely filling it.
+        sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * max(_STORM_REPEAT_MIN, _MAX_CONNECTIONS)
+        answered: dict[int, int] = {}
+        refused: dict[int, str] = {}
+        other: dict[int, str] = {}
+        results_lock = threading.Lock()
+    
+        def worker(index: int, size: int) -> None:
+            try:
+                status = _put_sized(dut_ip, size, timeout_s=_LOADED_FETCH_TIMEOUT_S)
+            except Exception as exc:  # the worker's job is to report, never to raise into the harness
+                bucket = refused if http_client.is_ceiling_close(exc) else other
+                with results_lock:
+                    bucket[index] = f"{type(exc).__name__}: {exc}"
+                return
+            with results_lock:
+                answered[index] = status
+    
+        threads = [threading.Thread(target=worker, args=(i, size)) for i, size in enumerate(sizes)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=_STORM_JOIN_S)
+            assert not t.is_alive(), f"a worker thread never finished within {_STORM_JOIN_S:g}s - possible real deadlock under concurrent mixed-body load"
+    
+        # This opens several times max_connections' worth of connections, so most are refused at the
+        # ceiling by design (queue F10 measured ~25%, at every body size including 64 B). A refusal is
+        # not a body-cap result, so it is counted, not failed - but ONLY a refusal.
+        assert not other, f"{len(other)} worker(s) failed for a reason that is not the connection ceiling: {dict(list(other.items())[:8])}"
+        wrong = {i: answered[i] for i, size in enumerate(sizes) if i in answered and answered[i] != (200 if size <= _BODY_CAP else 413)}
+        assert not wrong, f"{len(wrong)} of {len(answered)} answered PUTs got the WRONG status under concurrency: {dict(list(wrong.items())[:8])}"
+    
+        # Anti-vacuity, from the server's own documented capacity rather than a measured rate: a run
+        # where nearly everything was refused proves nothing about the cap, and one that never saw
+        # both verdicts never exercised the boundary it exists to check.
+        statuses = list(answered.values())
+        assert len(statuses) >= _MAX_CONNECTIONS, f"only {len(statuses)} of {len(sizes)} PUTs were answered at all - too few to say anything about the cap ({len(refused)} refused)"
+        assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(statuses))}"
+    
+        # Still healthy afterwards: a body the server refused to buffer must cost it nothing. The 24
+        # workers' slots are still draining through _serve()'s finally, so a single-shot check here is
+        # refused at the ceiling - same wait_until() the connection-ceiling test above uses for that lag.
+        wait_until(
+            lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200,
+            timeout_s=_QUICK_RECOVERY_TIMEOUT_S,
+            poll_interval_s=_QUICK_POLL_S,
+            description="webserver serving normally again after the concurrent mixed-body load cleared",
+        )
+>       assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+tests_hardware/bench/test_network_resilience.py:996: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+dut_ip = '192.168.85.57', module_name = 'WEBSERVER'
+
+    def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
+        entry = get_errcount(dut_ip).get(module_name, {})
+        counter = entry.get("counter", 0)
+>       assert counter == 0, f"{module_name!r} error log was not empty as expected (counter={counter}): {entry!r}"
+               ^^^^^^^^^^^^
+E       AssertionError: 'WEBSERVER' error log was not empty as expected (counter=8): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 60}], 'counter': 8}
+
+tests_hardware/error_log_helpers.py:76: AssertionError
+_______ test_malformed_http_request_over_real_wireless_degrades_cleanly ________
+
+joined_hotspot = '192.168.4.1'
+
+    def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str) -> None:
+        import socket
+    
+        reset_all_error_logs(joined_hotspot)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
+            sock.connect((joined_hotspot, 80))
+            sock.sendall(b"NOT A REAL HTTP REQUEST\r\n\r\n")
+            try:
+                sock.recv(4096)  # attempt a read so the connection isn't abruptly closed before the server responds; content deliberately not asserted, see below
+            except TimeoutError:
+                pass
+        # The exact response shape isn't asserted (mock/twin cover that) - the hardware-only property
+        # this adds is that the connection doesn't hang or crash the webserver over a real wireless link.
+        assert http_client.fetch(joined_hotspot, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after a malformed request over real wireless"
+        # An unparseable request line fails entirely inside vendored ext/microdot.py's Request.create(),
+        # never reaching this project's own route handlers or _serve()'s wrn_s()/err_s() calls.
+>       assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
+
+tests_hardware/bench/test_hotspot_role_reversal.py:396: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+dut_ip = '192.168.4.1', module_name = 'WEBSERVER'
+
+    def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
+        entry = get_errcount(dut_ip).get(module_name, {})
+        counter = entry.get("counter", 0)
+>       assert counter == 0, f"{module_name!r} error log was not empty as expected (counter={counter}): {entry!r}"
+               ^^^^^^^^^^^^
+E       AssertionError: 'WEBSERVER' error log was not empty as expected (counter=1): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 61}], 'counter': 1}
+
+tests_hardware/error_log_helpers.py:76: AssertionError
+=========================== short test summary info ============================
+FAILED tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source
+FAILED tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly
+FAILED tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures
+FAILED tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status
+FAILED tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly
+============= 5 failed, 68 passed, 1 skipped in 3352.25s (0:55:52) =============

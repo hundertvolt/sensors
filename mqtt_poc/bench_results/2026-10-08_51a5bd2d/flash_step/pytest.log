@@ -1,0 +1,386 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 3 items
+
+tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build FAILED [ 33%]
+tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build FAILED [ 66%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent PASSED [100%]
+
+=================================== FAILURES ===================================
+___ test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build ___
+
+board = <harness.Board object at 0x7f86c49550>
+
+    def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: Board) -> None:
+>       _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM capacity check")
+
+tests_hardware/flash/test_fram_storage.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+board = <harness.Board object at 0x7f86c49550>
+script_name = 'fram_capacity_after_full_system_build.py', timeout_s = 60.0
+label = 'FRAM capacity check'
+
+    def _run_and_assert_pass(board: Board, script_name: str, timeout_s: float, label: str) -> None:
+        output = board.run_isolated(DEVICE_SCRIPTS / script_name, timeout_s=timeout_s)
+        match = RESULT_RE.search(output)
+        assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
+>       assert match.group(1) == "PASS", f"{label} failed: {match.group(2).strip()}\nfull output:\n{output}"
+E       AssertionError: FRAM capacity check failed: scd30.cfgmgr.pr is not a PrintLogHistoryStore at all (expected FRAM-backed - dev.toml wires fram_target everywhere)
+E         full output:
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_WIFI config_WIFI.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_NTP config_NTP.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_SCD30 config_SCD30.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_SGP40 config_SGP40.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_BMP3XX config_BMP3XX.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_ISL29125 config_ISL29125.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_NOTIFY config_NOTIFY.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         UART_init UART link ready as initiator
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         UART_resp UART link ready as responder
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_MQTT config_MQTT.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         RESULT: FAIL scd30.cfgmgr.pr is not a PrintLogHistoryStore at all (expected FRAM-backed - dev.toml wires fram_target everywhere)
+E         
+E       assert 'FAIL' == 'PASS'
+E         
+E         - PASS
+E         + FAIL
+
+tests_hardware/flash/test_fram_storage.py:42: AssertionError
+___________ test_real_gc_heap_headroom_survives_a_full_system_build ____________
+
+board = <harness.Board object at 0x7f86c49550>
+
+    def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
+        # The one memory figure no fake can produce: real 264KB SRAM minus the firmware's own static
+        # footprint, after the real dev object graph exists. The device script checks survivor volume
+        # and contiguity; the placement check below needs the block map, which only the host reads back.
+        output = board.run_isolated(DEVICE_SCRIPTS / "heap_headroom_after_full_system_build.py", timeout_s=_HEADROOM_SCRIPT_TIMEOUT_S)
+        # Print on pass too, not only in the assertions below: run_isolated() captures device stdout
+        # into a string, so a PASSING run used to discard the figures and archive 7F.6 lost exactly that number.
+        # Surface them with `scripts/run_flash_hardware_suite.sh -s`.
+        for line in (ln for ln in output.splitlines() if ln.startswith("HEAP ")):
+            print(line)
+        match = RESULT_RE.search(output)
+        assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
+>       assert match.group(1) == "PASS", f"real heap-headroom check failed: {match.group(2).strip()}\nfull output:\n{output}"
+E       AssertionError: real heap-headroom check failed: the built object graph holds more than it should: 113280 > 100000 B allocated
+E         full output:
+E         GC_THRESHOLD=-1
+E         HEAP baseline: free=125184 alloc=62720 largest_block=124415 retained=0
+E         === MAP baseline ===
+E         stack: 1556 out of 7936
+E         GC: total: 187904, used: 62688, free: 125216
+E          No. of 1-blocks: 1463, 2-blocks: 204, max blk sz: 64, max free sz: 7781
+E         GC memory layout; from 20012200:
+E         00000000: MDMLhhhB=DShh.BDDBDBBDhBh===BhB=h=B=BBBh=====BBhB=BBB=BBBhB=hB=B
+E         00000400: BB=Bh===h===========Dh============BBBh========h==h==============
+E         00000800: ====h===========================================================
+E         00000c00: ====h===========================================================
+E         00001000: ====h=h===hhDBMDh=Shh===h=BDSSDBMDhh=h===DhhhhDhhhhh===BDh=BDDhh
+E         00001400: BBhh===hhhBB=BhBSSh==SSShh====h=Bh===B==hBhBh==h===DBBh=======h=
+E         00001800: =======hB=BhBDBBBBBBBh===Bh====Bh=======hB=BBhhh=hDMBBBBBBh=====
+E         00001c00: Bhhh===h==============h==============h====h===BBBBDh===hMDMDhBBD
+E         00002000: DBBBBBB=h========BBhBBBh========h=====Bh=h===BDhhhBBBBBh========
+E         00002400: ===hMDB=hBhB=h=Sh=====B==Bh=B==BBh====ShhLhBh=====BhBh==========
+E         00002800: ======hDhBhB=hBhhBhBBSSh===h========B=hBBh=h===h====B=DBBDhBDB=h
+E         00002c00: Sh=DhhBhhhB==hB=h===h=h===h========BBBh=====hhMDhhBBBMDBBh=====B
+E         00003000: =hBBh===BDBh=====h====hB=h=hh===BDhBBBB=BBBBBBh===============BB
+E         00003400: hh=====h=====BBBhhB=hhB=hB=hhhh==hhB=h=======h===hhhh=hhDh=h====
+E         00003800: ==========hhDhhBh==h==============BhhBh===BDhB..MDhh=MDhhhBBBBh=
+E         00003c00: DhBhDBhhhhhhhhDhBhhhh=h=hhh=hh=Bhh=hhh===Dhh========hBB=hh=h===M
+E         00004000: DhD..B=hh=h===BDhT=B=hh=h===h====LB=hh=h===DDhhBB=DhDhB=DhBB=DhB
+E         00004400: =DhB=B=h====h===hDhBB=B=hhhhBh=hhDMDhh=h=h=h=hh=====h===h=BBBBhh
+E         00004800: B=DDhh===h===h====h========B=DhB=DhB=DhB=BBBB=BBBDhB=BDhBB=h====
+E         00004c00: ==========BBhhhhhhhhBBhhhhDhh=h===h===Dhh===========BB=DDhh==BDh
+E         00005000: BBDhh==BDh===hhBhh=h===BDBBB=DDBh==h===BBBBBB=BBDh===h===BDhB=hh
+E         00005400: hhBDh===h===hDhB=hhhh==h===BDB=BB=hhh=hhhhh===B=BDBB=h==h===hB=B
+E         00005800: h==================BDhh=hhhhhhBhhBhBBhhh===BBDhhhBB=B=hh========
+E         00005c00: ======BBBhhBh===DBh=====BB=Bhhh========BhBhBhBhBBDhB=BBB=BDhB=BB
+E         00006000: =BDhB=hB=BB=hBDhB=h===BDhhBBBDhB=h==============BhBDhDhh=BDhh=h=
+E         00006400: Bh=hh=Bh=Bh=DhBh===Mh=h========Dh===BBDBDhhBBBBhBBB==BB=BDB=Bh==
+E         00006800: ==h===h====hhh==BBhhBBhh=B=hhBBBh===BMDBBhh========h==h===BBBhMD
+E         00006c00: DB=DhDhh===hhDDhBh=B=hBBhBBBh===hDhBh=====Bhh=h===h===BBhBhBBhBB
+E         00007000: hBBh====h===h===========h===B====hBBBBhBBBBBBBhBh=BT==B===Bh=B=h
+E         00007400: =Dh=hh=hh=h=Bhh=hh=h===h=hMhh=Bh==================MMDh====MDB=BB
+E         00007800: BBBBBBBBh===h====h=h========h==================MD..D..Dh===h===h
+E         00007c00: h=======================h==============h===h===h=B==hhhBBBBBBhhB
+E         00008000: hhhhhhh=======================h==================Bh===MDBBDBhhhh
+E         00008400: hh=hBDh==============h=.h=hhDMh==h===DBh========h==h===h====BDhh
+E         00008800: hhh===========h..B==hhhhhhhhhhhBBBBBBBhhhhhhhhhhhDh===hDhhB=hhhh
+E         00008c00: hhhhhhhhhhhBMDh==================hhhhhh===hDBBB=h=h=============
+E         00009000: =hh======hh===========DhhDB=hh==hhBBhBB=hBhBBBhhBhhBBhhhhhhhhhhh
+E         00009400: hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh===hDBBhBhBhhh=hBBBBBBBhhhBhhhhh
+E         00009800: Bhhh=BhDh=BhBBhBhBBhBDh====hB=Bh================================
+E         00009c00: ================hhhBhBhBh===hMDh====hhhBDh=h==================h=
+E         0000a000: ===BhDhDhBDhhDhhB=hhh=B=BBhhhBBBBBBhBBBBBBhBh=hB=hhBhhhhhhh===h=
+E         0000a400: ====hhhhhBhDhBhB=hhh==================hhhhhhhh===BDhhBhh=h===hh=
+E         0000a800: ==========DhBhhhh=Dh===h===hBBhh=Bh===h===========hDDhBhh=h===h=
+E         0000ac00: h===BDhBB=BBBBBhBBBBB=BhB=hhhhhh===hMDhB==h===========MDhBhBBBBB
+E         0000b000: BBBBBh====Bh========h====hhhhh===========hhhBBh=hhh===========BB
+E         0000b400: hBBBhhhhhh=hh=Bh=Bh=BhBBBBBBh=h=hh===hhB=hBBBBhBh========hh=====
+E         0000b800: ===============================h========Bhhh===BMDhhBMDh====hhMD
+E         0000bc00: hhBhhBDhMhhhhhhBBBDBBBDhB=hBB=hhhhhBh=BBh=Bh=h=hh=BhBh========h=
+E         0000c000: ==h===h========hhh=h=======h===h==================BBh===BBDhhhBB
+E         0000c400: =hhBhBhBhhBBBh==================h=============================BB
+E         0000c800: hhBBBBBhhBhhhBhhBhhBBBBBBBBhhhhBh=============================BD
+E         0000cc00: hB=Bhhhh===BhBhBBBhT==BBDDBhhh=h===hhB.T=T..h====h====h===BDhB=h
+E         0000d000: =h===.DhhMB=hBhhhhhBBBBhhhhhhhhDh===h=====Dh===========h========
+E         0000d400: ======.MD.h===h=....BhhBB=hhhh..MD....BMD.hhhhBhhhhhBBBBBBBBBhhh
+E         0000d800: hhhhhDh===h==============h...BBDh==================BDBh===hh=hDB
+E         0000dc00: B=h===BBBBh==BBhDh=B=h=h===h===hDhhB=hhhhhhhhhDhhB=BhhhBhhhh===h
+E         0000e000: hhh=====h=====h=====h====h==================hhhhhhhhBhhhhhBBBhBB
+E         0000e400: hhh===BBBh.........BhhhhhhhhDhMDB==Bhh=======================hhD
+E         0000e800: hBB=BhBBBhBBhhDh===h===BBh=h===h=====hBBhhhhhhh===Bh=BBBBhh=====
+E         0000ec00: =========h=BBBDhh=h=h======TBBh==================h===========h=h
+E         0000f000: ====================================h=======================h===
+E         0000f400: =============================================h======Th....T.....
+E                (121 lines all free)
+E         0002dc00: ................................
+E         === ENDMAP baseline ===
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_WIFI config_WIFI.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_NTP config_NTP.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_SCD30 config_SCD30.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_SGP40 config_SGP40.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_BMP3XX config_BMP3XX.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_ISL29125 config_ISL29125.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_NOTIFY config_NOTIFY.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         UART_init UART link ready as initiator
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         UART_resp UART link ready as responder
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         CFGMGR_MQTT config_MQTT.cfg - config is ready, nothing to write
+E         FRAM Data read successfully from block 0
+E         FRAM Both blocks valid and data verified
+E         HEAP after_build_system: free=74832 alloc=113072 largest_block=61232 retained=0
+E         === MAP after_build_system ===
+E         stack: 1556 out of 7936
+E         GC: total: 187904, used: 113088, free: 74816
+E          No. of 1-blocks: 2516, 2-blocks: 356, max blk sz: 192, max free sz: 3827
+E         GC memory layout; from 20012200:
+E         00000000: MDMLhhhB=DhhhSBDDBDBBDhBh===BhB=h=B=BBBh=====BBhB=BBB=BBBhB=hB=B
+E         00000400: BB=Bh===h===========Dh============BBBh========h==h==============
+E         00000800: ====h===========================================================
+E         00000c00: ====h===========================================================
+E         00001000: ====h=h===hhDBMDh=Shh===h=BDSSDBMDhh=h===DhhhhDhhhhh===BDh=BDDhh
+E         00001400: BBhh===hhhBB=BhBSSh==SSShh====h=Bh===B==hBhBh==h===DBBh=======h=
+E         00001800: =======hB=BhBDBBBBBBBh===Bh====Bh=======hB=BBhhh=hDMBBBBBBh=====
+E         00001c00: Bhhh===h==============hhhAh=T=h==hhhhh====h===BBBBDh===hMDMDhBBD
+E         00002000: DBBBBBB=h========BBhBBBh========h=====Bh=h===BDhhhBBBBBh========
+E         00002400: ===hMDB=hBhB=h=Sh=====B==Bh=B==BBh====ShhLhBh=====BhBh==========
+E         00002800: ======hDhBhB=hBhhBhBBSSh===h========B=hBBh=h===h====B=DBBDhBDB=h
+E         00002c00: Sh=DhhBhhhB==hB=h===h=h===h========BBBh=====hhMDhhBBBMDBBh=====B
+E         00003000: =hBBh===BDBh=====h====hB=h=hh===BDhBBBB=BBBBBBh===============BB
+E         00003400: hh=====h=====BBBhhB=hhB=hB=hhhh==hhB=h=======h===hhhh=hhDh=h====
+E         00003800: ==========hhDhhBh==h==============BhhBh===BDhBhhMDhh=MDhhhBBBBh=
+E         00003c00: DhBhDBhhhhhhhhDhBhhhh=h=hhh=hh=Bhh=hhh===Dhh========hBB=hh=h===M
+E         00004000: DhDhhB=hh=h===BDhT=B=hh=h===h====LB=hh=h===DDhhBB=DhDhB=DhBB=DhB
+E         00004400: =DhB=B=h====h===hDhBB=B=hhhhBh=hhDMDhh=h=h=h=hh=====h===h=BBBBhh
+E         00004800: B=DDhh===h===h====h========B=DhB=DhB=DhB=BBBB=BBBDhB=BDhBB=h====
+E         00004c00: ==========BBhhhhhhhhBBhhhhDhh=h===h===Dhh===========BB=DDhh==BDh
+E         00005000: BBDhh==BDh===hhBhh=h===BDBBB=DDBh==h===BBBBBB=BBDh===h===BDhB=hh
+E         00005400: hhBDh===h===hDhB=hhhh==h===BDB=BB=hhh=hhhhh===B=BDBB=h==h===hB=B
+E         00005800: h==================BDhh=hhhhhhBhhBhBBhhh===BBDhhhBB=B=hh========
+E         00005c00: ======BBBhhBh===DBh=====BB=Bhhh========BhBhBhBhBBDhB=BBB=BDhB=BB
+E         00006000: =BDhB=hB=BB=hBDhB=h===BDhhBBBDhB=h==============BhBDhDhh=BDhh=h=
+E         00006400: Bh=hh=Bh=Bh=DhBh===Mh=h========Dh===BBDBDhhBBBBhBBB==BB=BDB=Bh==
+E         00006800: ==h===h====hhh==BBhhBBhh=B=hhBBBh===BMDBBhh========h==h===BBBhMD
+E         00006c00: DB=DhDhh===hhDDhBh=B=hBBhBBBh===hDhBh=====Bhh=h===h===BBhBhBBhBB
+E         00007000: hBBh====h===h===========h===B====hBBBBhBBBBBBBhBh=BT==B===Bh=B=h
+E         00007400: =Dh=hh=hh=h=Bhh=hh=h===h=hMhh=Bh==================MMDh====MDB=BB
+E         00007800: BBBBBBBBh===h====h=h========h==================MDMDDS.Dh===h===h
+E         00007c00: h=======================h==============h===h===h=B==hhhBBBBBBhhB
+E         00008000: hhhhhhh=======================h==================Bh===MDBBDBhhhh
+E         00008400: hh=hBDh==============h=.h=hhDMh==h===DBh========h==h===h====BDhh
+E         00008800: hhh===========hh=B==hhhhhhhhhhhBBBBBBBhhhhhhhhhhhDh===hDhhB=hhhh
+E         00008c00: hhhhhhhhhhhBMDh==================hhhhhh===hDBBB=h=h=============
+E         00009000: =hh======hh===========DhhDB=hh==hhBBhBB=hBhBBBhhBhhBBhhhhhhhhhhh
+E         00009400: hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh===hDBBhBhBhhh=hBBBBBBBhhhBhhhhh
+E         00009800: Bhhh=BhDh=BhBBhBhBBhBDh====hB=Bh================================
+E         00009c00: ================hhhBhBhBh===hMDh====hhhBDh=h==================h=
+E         0000a000: ===BhDhDhBDhhDhhB=hhh=B=BBhhhBBBBBBhBBBBBBhBh=hB=hhBhhhhhhh===h=
+E         0000a400: ====hhhhhBhDhBhB=hhh==================hhhhhhhh===BDhhBhh=h===hh=
+E         0000a800: ==========DhBhhhh=Dh===h===hBBhh=Bh===h===========hDDhBhh=h===h=
+E         0000ac00: h===BDhBB=BBBBBhBBBBB=BhB=hhhhhh===hMDhB==h===========MDhBhBBBBB
+E         0000b000: BBBBBh====Bh========h====hhhhh===========hhhBBh=hhh===========BB
+E         0000b400: hBBBhhhhhh=hh=Bh=Bh=BhBBBBBBh=h=hh===hhB=hBBBBhBh========hh=====
+E         0000b800: ===============================h========Bhhh===BMDhhBMDh====hhMD
+E         0000bc00: hhBhhBDhMhhhhhhBBBDBBBDhB=hBB=hhhhhBh=BBh=Bh=h=hh=BhBh========h=
+E         0000c000: ==h===h========hhh=h=======h===DBBhhBhhAh===h===h=BBh===BBDhhhBB
+E         0000c400: =hhBhBhBhhBBBh==================h=============================BB
+E         0000c800: hhBBBBBhhBhhhBhhBhhBBBBBBBBhhhhBh=============================BD
+E         0000cc00: hB=Bhhhh===BhBhBBBhT==BBDDBhhh=h===hhBhT=TT=h====h====h===BDhB=h
+E         0000d000: =h===hDhhMB=hBhhhhhBBBBhhhhhhhhDh===h=====Dh===========h========
+E         0000d400: ======hMDhh===h=..hhBhhBB=hhhhhhMDh==hBMDhhhhhBhhhhhBBBBBBBBBhhh
+E         0000d800: hhhhhDh===h==============hh=hBBDh==================BDBh===hh=hDB
+E         0000dc00: B=h===BBBBh==BBhDh=B=h=h===h===hDhhB=hhhhhhhhhDhhB=BhhhBhhhh===h
+E         0000e000: hhh=====h=====h=====h====h==================hhhhhhhhBhhhhhBBBhBB
+E         0000e400: hhh===BBBhh=.......BhhhhhhhhDhMDB==Bhh=======================hhD
+E         0000e800: hBB=BhBBBhBBhhDh===h===BBh=h===h=====hBBhhhhhhh===Bh=BBBBhh=====
+E         0000ec00: =========h=BBBDhh=h=h======TBBh==================h===========h=h
+E         0000f000: ====================================h=======================h===
+E         0000f400: =============================================h======T...hhT..Lhh
+E         0000f800: h=======h=======================h==================h..h.h.L..h==
+E         0000fc00: h=hhhhh===h==h=hh=....h===h==================h=hh===============
+E         00010000: ===h================================hAhhAhh==hAh================
+E         00010400: ================hAhh===h===Ahh========Mh====D....DDBBBhBh==h===h
+E         00010800: ===BBBhB.hhh===h====hhhhhhh.hSh==hh......h=h==hhhhhh=h===.h..h..
+E         00010c00: h=hhh.ThAhAhhhhhh========......h===========h=====hhhhhh.........
+E         00011000: ......T=.T=hhh.....L.T=hh=hAhhhhhhhhhhDDhhhhhSAhShh......h=h==hh
+E         00011400: hhhhSh===hh.....hhhhhhThAhAhhhhhh========hhhhh.h===========h=hhh
+E         00011800: =hh=FhS...Sh......h=h==hhhhh==h===hh...hFhhh=hhThAhAhhhhhh======
+E         00011c00: ==hhhh=hh===========h========h=...hDh..hhh===h.hTh..h===h=AhAhhh
+E         00012000: hhh========....T=h===========hhh=h=h=hh.hhhhh==================h
+E         00012400: hDDhh.hS.hShh......h=h==hhhh=S.h===hhh.h...hhh..ThAhAhhhhh.hh===
+E         00012800: =====h...h===========hhhh=h=h=hhhh.SSh...S...h=h==hhhh.Shh===hh.
+E         00012c00: Fhh=h=h=h=ThAhAhhhhhh========h=hh=hh===========h========h=h==hhD
+E         00013000: hTh===hhh.h..hhhhhAh==================h=h=ShhAhhh========h=hSFhh
+E         00013400: h===========DhhhFhLhh=hhhhLhhhhLhSh==T=......h=h==hhhhFhDh===hh.
+E         00013800: ....hhhhhhThAhAhhhhhh========hhDDFhh===========h========hhFhh=hh
+E         00013c00: h=hhhhFhSFhDh=.....h==================h=h==hhhhShhh===FhAhS....h
+E         00014000: hFhThAhAhhhhhhhhhhFh========h===========.hh=h=h=h=hhh......hh=h=
+E         00014400: =hDT=.h===h===Dhh========h===h=======================hhhh===h=hh
+E         00014800: hhAh=hhhhhhhhDD.hhhS.h=Sh.....h=h==hhhhAhhh===.hh=S...h.hhhThAhA
+E         00014c00: hhhhhh========hhhAhhh===========h.....hh...hShh===......h=h==hhh
+E         00015000: h...h===.h..h..h===h=ThAhAhhhhhh========hh=.hhh===========h=====
+E         00015400: ===....hh===.............T==h.h==================hLhhThAhAhhhhhh
+E         00015800: hh=hhh.hhhDhh=h===========hhDD.hS.h=Sh....h=h==hhhhh.hh===.h..S.
+E         00015c00: ..h.hhhThAhAhhhhhh========hhhh=hh===========h=hh=hhh...hS..hh...
+E         00016000: ....h=h==hhhh..hh===.h.......h=..ThAhAhhhhhh========Dh....h=====
+E         00016400: ======h========h===========h...h...h=hh..h===...................
+E         00016800: .T===hhhhhh=hhhhhhhhh.DDhh.hS.h=Sh......h=h==hhhhh=hh===.h..S...
+E         00016c00: h.hhhThAhAhhhhhh========hhhh=hh===========h=hhhhLhL..hShh.......
+E         00017000: ..h=h==hhhhhh.h===.h......h....ThAhAhhhhhh========h=====h=======
+E         00017400: ====h========h=======================h...h...h....h...h....h...h
+E         00017800: h==hhh==h=====h...h...h=...h===h===hhhhhA..hShA..h..Lhh.........
+E         00017c00: .....h.h...................T===T=hShh=h=hhhhhhhh.DD....hSh=Shhh=
+E         00018000: ====h=h==hh.hS.hh===.h.h...hh.h..ThAhAhhhhhh=======hhhhA..h=====
+E         00018400: ======h========h====h.h.S........h=h==hhhhh=Sh===.h..h..AAAh=hTh
+E         00018800: AhAhhhhhh========Ah===.h===========h========h===========h==h..hT
+E         00018c00: h===hhh=....h===..hAhAhhhhhh========h===h.h===========h====T=h==
+E         00019000: h=hhL.LLh.hhAAA.h===.h...Sh==================h===Ah...h=h==hhhh=
+E         00019400: hh===.h..A..h===h=ThAhAhhhhhh========h==...h===========h========
+E         00019800: ==========h====Lhh.hD.........T=Thh............T==AAAAh===Ahhhhh
+E         00019c00: hh.DD....hShShhh......h=h==hhhhhS.h===.h..h...hhh..ThAhAhhhhhh==
+E         0001a000: ======hhh..Lh===========h===h=..LhSh=AhA......h=h==hhhhhAhh===.h
+E         0001a400: ..A..h..Lh=ThAhAhhhhhh========LhLh=.h===========h========.Lh=..L
+E         0001a800: h==hhh==========================================================
+E         0001ac00: =====hhDh=........hhh=======================================h===
+E         0001b000: ================================================================
+E         0001b400: ================================================================
+E         0001b800: ============================================================h===
+E         0001bc00: hhh.h====h=h=.hh=..h..hh.h=T==.h=.h=.h==========================
+E         0001c000: ======================.....h..D.h=h=T===....h.....hh.h=======...
+E         0001c400: ........................D....................hDD.h=..D.L..hSh...
+E         0001c800: L......h=h==hhhhh..h===.h..L..h.h=h=ThAhAhhhhhh========Dh.h..h==
+E         0001cc00: =========h.......h.LhhT=Lhh=........hh===========h===========.Lh
+E         0001d000: hT=Lhh=........h.LhhT=Lhh=........h.LhhT=Lhh=........h.LhhT=Lhh=
+E         0001d400: .........h.LhhT=Lhh=........h.LhhT=Lhh=........h.LhhT=Lhh=......
+E         0001d800: ..h.LhhT=Lhh=h===......h.LhhT=Lhh=........h.LhhT=Lhh=.....hhBh=.
+E         0001dc00: .....hhBh=.....hhBh=......hhBh=.....hhBh=h==...h........h.LhhT=L
+E         0001e000: hh=........h.LhhT=Lhh=h=========================================
+E         0001e400: ======================........................h=====............
+E         0001e800: ...............................h===.....h====h==================
+E         0001ec00: =============================================...................
+E                (59 lines all free)
+E         0002dc00: ................................
+E         === ENDMAP after_build_system ===
+E         HEAP after_build_system_control: free=74832 alloc=113072 largest_block=61232 retained=0
+E         GC_THRESHOLD=32768
+E         HEAP after_build_system_production_threshold: free=74832 alloc=113072 largest_block=61232 retained=0
+E         RESULT: FAIL the built object graph holds more than it should: 113280 > 100000 B allocated
+E         
+E       assert 'FAIL' == 'PASS'
+E         
+E         - PASS
+E         + FAIL
+
+tests_hardware/flash/test_memory_stress.py:58: AssertionError
+----------------------------- Captured stdout call -----------------------------
+HEAP baseline: free=125184 alloc=62720 largest_block=124415 retained=0
+HEAP after_build_system: free=74832 alloc=113072 largest_block=61232 retained=0
+HEAP after_build_system_control: free=74832 alloc=113072 largest_block=61232 retained=0
+HEAP after_build_system_production_threshold: free=74832 alloc=113072 largest_block=61232 retained=0
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build
+FAILED tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build
+=================== 2 failed, 1 passed in 571.66s (0:09:31) ====================

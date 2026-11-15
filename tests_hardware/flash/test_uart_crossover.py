@@ -242,7 +242,7 @@ def test_a_break_mid_frame_fails_that_transaction_only(board: Board, crc_mode: s
     assert broken["first_ok"] is True and broken["break_frame_failed"] is True and broken["next_frame_ok"] is True, f"a break did not fail exactly its own transaction: {broken}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 @pytest.mark.parametrize("crc_mode", _CRC_MODES)
 def test_link_transactions_during_config_writes_are_recorded(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
     # Five owned flash writes, one per transaction: a crossing fails visibly, never corrupts; the figures fill F.3.

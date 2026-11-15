@@ -27,7 +27,8 @@ _BOOLEANS = (
     "--twin",
 )
 # The only options read while collecting (the wear gates' deselection); every other is a fixture's, read at run time.
-_READ_AT_COLLECTION = {"--allow-persistence-write", "--allow-scd30-extra-write"}
+_READ_AT_COLLECTION = {"--allow-persistence-write", "--allow-persistence-write-to", "--allow-scd30-extra-write"}
+_SCOPED = ("--allow-persistence-write-to=sensors/SCD30",)  # the valued one of them, given a real group
 _COLLECTION_HOOKS = {"pytest_collection", "pytest_collection_modifyitems", "pytest_collect_file", "pytest_pycollect_makeitem", "pytest_generate_tests", "pytest_itemcollected", "pytest_collection_finish", "pytest_ignore_collect"}
 
 _LOOP = """
@@ -76,10 +77,12 @@ def test_every_option_combination_collects_with_nothing_attached(repo_root: Path
     durations = _soak_durations(repo_root)
     assert durations == ["long", "mid", "short"], durations
     soaks = [["--soak-duration", d] for d in durations]
-    # Every subset of the two flags collection reads; each soak value and each other flag alone, then all on with each
-    # soak value (the full 2^8 x 4 product measured 139 s; the read scan below proves no other option is read while collecting).
-    read = sorted(_READ_AT_COLLECTION)
+    # Every subset of the two boolean flags collection reads, again under a scoped permission; each soak value and
+    # each other flag alone, then all on with each soak value (the full 2^8 x 4 product measured 139 s; the read scan
+    # below proves no other option is read while collecting).
+    read = sorted(_READ_AT_COLLECTION & set(_BOOLEANS))
     combos = [list(flags) for n in range(len(read) + 1) for flags in itertools.combinations(read, n)]
+    combos += [[*_SCOPED, *flags] for flags in combos]
     combos += soaks + [[flag] for flag in _BOOLEANS if flag not in _READ_AT_COLLECTION]
     combos += [[*_BOOLEANS, *soak] for soak in [[], *soaks]]
     absent = str(tmp_path / "absent")  # a path nothing has written: collection must not read it

@@ -56,7 +56,7 @@ _CAL_END_MARGIN_S = 10.0
 _RESET_VOC_SETTLE_MARGIN_S = 2.0
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/BMP3XX")
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     original = _original(dut_ip, "BMP3XX", _BMP3XX_SRC, dict(_BMP3XX_TEST_VALUES), result_note)
@@ -89,7 +89,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
     assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/ISL29125")
 def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     original = _original(dut_ip, "ISL29125", _ISL29125_SRC, dict(_ISL29125_TEST_VALUES), result_note)
@@ -207,7 +207,7 @@ def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 @pytest.mark.scd30_extra_write
 def test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)

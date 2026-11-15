@@ -1,0 +1,709 @@
+{
+ "gc_threshold": 32768,
+ "poll_s": 0.25,
+ "notes": [],
+ "put_enable": {
+  "code": 0,
+  "res": "OK",
+  "descr": "Command executed",
+  "result": {
+   "MQTTPort": "Valid",
+   "SSID": "Valid",
+   "MQTTEnable": "Valid",
+   "MQTTPubInterval": "Valid",
+   "MQTTHost": "Valid"
+  }
+ },
+ "connect_after_enable_s": 17.2,
+ "t_put_enable": 3.451,
+ "put_interval_20": {
+  "code": 0,
+  "res": "OK",
+  "descr": "Command executed",
+  "result": {
+   "MQTTPubInterval": "Valid"
+  }
+ },
+ "t_put_interval_20": 85.726,
+ "kills": [
+  2.29,
+  4.18
+ ],
+ "stalls": [
+  {
+   "detected_s": 20.68,
+   "reconnected_after_resume_s": 16.24
+  },
+  {
+   "detected_s": 21.44,
+   "reconnected_after_resume_s": 31.96
+  },
+  {
+   "detected_s": 21.51,
+   "reconnected_after_resume_s": 60.26
+  }
+ ],
+ "put_disable": {
+  "code": 0,
+  "res": "OK",
+  "descr": "Command executed",
+  "result": {
+   "MQTTEnable": "Valid"
+  }
+ },
+ "t_put_disable": 357.511,
+ "rest_status_median_s_off": 0.423,
+ "counters_end": {
+  "MQTTConnects": 7,
+  "MQTTLastRxTopic": null,
+  "MQTTBroker": null,
+  "MQTTTxMsgs": 79,
+  "MQTTTxDropped": 0,
+  "MQTTUptime": 0,
+  "MQTTTeardowns": 7,
+  "MQTTRxMsgs": 0,
+  "MQTTPingTimeouts": 3,
+  "MQTTLastReason": "reconfigured",
+  "MQTTRxDropped": 0,
+  "MQTTShortSessions": 1,
+  "MQTTState": "disabled",
+  "MQTTConnected": false
+ },
+ "errcount_mqtt": {
+  "history": [
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "E",
+    "num": 120
+   },
+   {
+    "type": "E",
+    "num": 116
+   },
+   {
+    "type": "E",
+    "num": 120
+   },
+   {
+    "type": "E",
+    "num": 119
+   }
+  ],
+  "counter": 6
+ },
+ "messages": [
+  {
+   "t": 20.202,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 20.511,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 185,
+   "retained": false,
+   "payload": "{\"DewPoint\": 7.278049880273944, \"Temp\": 23.98814582824707, \"WetBulb\": 14.594864993111532, \"TS\": null, \"CO2\": 1807.755126953125, \"FRCWait\": 344, \"Hum\": 34.271034240722656, \"FRCState\": 1}"
+  },
+  {
+   "t": 20.555,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 51,
+   "retained": false,
+   "payload": "{\"VOCState\": 0, \"Raw\": 34000, \"TS\": null, \"VOC\": 0}"
+  },
+  {
+   "t": 20.555,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 95,
+   "retained": false,
+   "payload": "{\"SLPres\": 994.7624027024963, \"Temp\": 24.14007213483656, \"TS\": null, \"Pres\": 994.7624027024963}"
+  },
+  {
+   "t": 20.555,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 274,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": null, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.7812619211108568}, \"RGB\": {\"R\": 0.7812619211108568, \"G\": 0.7812619211108568, \"B\": 0.7812619211108568}, \"RangeAct\": 10000, \"Lux\": 7812.619211108568}"
+  },
+  {
+   "t": 30.403,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 193,
+   "retained": false,
+   "payload": "{\"DewPoint\": 7.275403235188803, \"Temp\": 25.486347198486328, \"WetBulb\": 15.216452830224306, \"TS\": 1791475251, \"CO2\": 1774.2921142578125, \"FRCWait\": 334, \"Hum\": 31.331296920776367, \"FRCState\": 1}"
+  },
+  {
+   "t": 30.403,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 57,
+   "retained": false,
+   "payload": "{\"VOCState\": 0, \"Raw\": 31927, \"TS\": 1791475252, \"VOC\": 0}"
+  },
+  {
+   "t": 30.403,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 102,
+   "retained": false,
+   "payload": "{\"SLPres\": 998.1071242020562, \"Temp\": 23.230215777566457, \"TS\": 1791475251, \"Pres\": 998.1071242020562}"
+  },
+  {
+   "t": 30.403,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475252, \"CalLight\": 3, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.8625314717326621}, \"RGB\": {\"R\": 0.8625314717326621, \"G\": 0.8625314717326621, \"B\": 0.8625314717326621}, \"RangeAct\": 10000, \"Lux\": 8625.314717326621}"
+  },
+  {
+   "t": 40.477,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 190,
+   "retained": false,
+   "payload": "{\"DewPoint\": 5.776540885584573, \"Temp\": 26.13430404663086, \"WetBulb\": 14.87914210198684, \"TS\": 1791475261, \"CO2\": 1842.9171142578125, \"FRCWait\": 324, \"Hum\": 27.19765853881836, \"FRCState\": 1}"
+  },
+  {
+   "t": 40.52,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 57,
+   "retained": false,
+   "payload": "{\"VOCState\": 0, \"Raw\": 33377, \"TS\": 1791475262, \"VOC\": 0}"
+  },
+  {
+   "t": 40.52,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 102,
+   "retained": false,
+   "payload": "{\"SLPres\": 995.8128955186517, \"Temp\": 24.428713879345782, \"TS\": 1791475261, \"Pres\": 995.8128955186517}"
+  },
+  {
+   "t": 40.52,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475262, \"CalLight\": 3, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.9266346227206838}, \"RGB\": {\"R\": 0.9266346227206838, \"G\": 0.9266346227206838, \"B\": 0.9266346227206838}, \"RangeAct\": 10000, \"Lux\": 9266.346227206837}"
+  },
+  {
+   "t": 50.531,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 191,
+   "retained": false,
+   "payload": "{\"DewPoint\": 4.32295731079061, \"Temp\": 25.460105895996094, \"WetBulb\": 14.049243456859102, \"TS\": 1791475271, \"CO2\": 1983.6527099609375, \"FRCWait\": 314, \"Hum\": 25.58290672302246, \"FRCState\": 1}"
+  },
+  {
+   "t": 50.572,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 57,
+   "retained": false,
+   "payload": "{\"VOCState\": 0, \"Raw\": 33151, \"TS\": 1791475272, \"VOC\": 0}"
+  },
+  {
+   "t": 50.572,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 102,
+   "retained": false,
+   "payload": "{\"SLPres\": 995.2902134784855, \"Temp\": 24.325575762673736, \"TS\": 1791475271, \"Pres\": 995.2902134784855}"
+  },
+  {
+   "t": 50.572,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 279,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.46235186967, \"TS\": 1791475272, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.6950484473945221}, \"RGB\": {\"R\": 0.6950484473945221, \"G\": 0.6950484473945221, \"B\": 0.6950484473945221}, \"RangeAct\": 10000, \"Lux\": 6950.484473945221}"
+  },
+  {
+   "t": 60.498,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 191,
+   "retained": false,
+   "payload": "{\"DewPoint\": 4.63651529411319, \"Temp\": 23.00645637512207, \"WetBulb\": 13.139696327174626, \"TS\": 1791475281, \"CO2\": 1912.7437744140625, \"FRCWait\": 304, \"Hum\": 30.295015335083008, \"FRCState\": 1}"
+  },
+  {
+   "t": 60.498,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 58,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 33961, \"TS\": 1791475282, \"VOC\": 66}"
+  },
+  {
+   "t": 60.498,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1001.1229745161498, \"Temp\": 25.03517050656119, \"TS\": 1791475281, \"Pres\": 1001.1229745161498}"
+  },
+  {
+   "t": 60.498,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 275,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475282, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.756725413900969}, \"RGB\": {\"R\": 0.756725413900969, \"G\": 0.756725413900969, \"B\": 0.756725413900969}, \"RangeAct\": 10000, \"Lux\": 7567.25413900969}"
+  },
+  {
+   "t": 70.591,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 192,
+   "retained": false,
+   "payload": "{\"DewPoint\": 1.1703667160548945, \"Temp\": 22.32508087158203, \"WetBulb\": 11.61118307816794, \"TS\": 1791475291, \"CO2\": 1808.4620361328125, \"FRCWait\": 294, \"Hum\": 24.701190948486328, \"FRCState\": 1}"
+  },
+  {
+   "t": 70.631,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 58,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 34000, \"TS\": 1791475292, \"VOC\": 87}"
+  },
+  {
+   "t": 70.632,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1004.7693512364186, \"Temp\": 24.40820068670746, \"TS\": 1791475291, \"Pres\": 1004.7693512364186}"
+  },
+  {
+   "t": 70.632,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475292, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.5992523079270619}, \"RGB\": {\"R\": 0.5992523079270619, \"G\": 0.5992523079270619, \"B\": 0.5992523079270619}, \"RangeAct\": 10000, \"Lux\": 5992.523079270619}"
+  },
+  {
+   "t": 80.575,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 195,
+   "retained": false,
+   "payload": "{\"DewPoint\": 0.10583628728010795, \"Temp\": 21.475122451782227, \"WetBulb\": 10.888623471660933, \"TS\": 1791475301, \"CO2\": 1918.8717041015625, \"FRCWait\": 284, \"Hum\": 24.093101501464844, \"FRCState\": 1}"
+  },
+  {
+   "t": 80.616,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 34000, \"TS\": 1791475302, \"VOC\": 130}"
+  },
+  {
+   "t": 80.616,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1016.2537838489535, \"Temp\": 24.16259360432638, \"TS\": 1791475301, \"Pres\": 1016.2537838489535}"
+  },
+  {
+   "t": 80.616,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475302, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.8387884336614024}, \"RGB\": {\"R\": 0.8387884336614024, \"G\": 0.8387884336614024, \"B\": 0.8387884336614024}, \"RangeAct\": 10000, \"Lux\": 8387.884336614025}"
+  },
+  {
+   "t": 85.793,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 7,
+   "retained": false,
+   "payload": "offline"
+  },
+  {
+   "t": 85.913,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 86.62,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 191,
+   "retained": false,
+   "payload": "{\"DewPoint\": -3.0902445043696543, \"Temp\": 20.093875885009766, \"WetBulb\": 9.299003015265406, \"TS\": 1791475307, \"CO2\": 1862.47119140625, \"FRCWait\": 278, \"Hum\": 20.74432373046875, \"FRCState\": 1}"
+  },
+  {
+   "t": 86.663,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 33576, \"TS\": 1791475308, \"VOC\": 111}"
+  },
+  {
+   "t": 86.663,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1012.7720229680185, \"Temp\": 23.97397324720312, \"TS\": 1791475307, \"Pres\": 1012.7720229680185}"
+  },
+  {
+   "t": 86.663,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 276,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.46235186967, \"TS\": 1791475308, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.799450675211719}, \"RGB\": {\"R\": 0.799450675211719, \"G\": 0.799450675211719, \"B\": 0.799450675211719}, \"RangeAct\": 10000, \"Lux\": 7994.5067521171895}"
+  },
+  {
+   "t": 106.594,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 177,
+   "retained": false,
+   "payload": "{\"DewPoint\": -2.7981000408804193, \"Temp\": 21.03879165649414, \"WetBulb\": 9.802403499618373, \"TS\": 1791475327, \"CO2\": 1665.60302734375, \"FRCWait\": 258, \"Hum\": 20.0, \"FRCState\": 1}"
+  },
+  {
+   "t": 106.636,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 31606, \"TS\": 1791475328, \"VOC\": 286}"
+  },
+  {
+   "t": 106.636,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1001.8157713794754, \"Temp\": 19.78317513331236, \"TS\": 1791475327, \"Pres\": 1001.8157713794754}"
+  },
+  {
+   "t": 106.636,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 275,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475328, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.565621423666743}, \"RGB\": {\"R\": 0.565621423666743, \"G\": 0.565621423666743, \"B\": 0.565621423666743}, \"RangeAct\": 10000, \"Lux\": 5656.21423666743}"
+  },
+  {
+   "t": 126.64,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 191,
+   "retained": false,
+   "payload": "{\"DewPoint\": -1.2440693297604717, \"Temp\": 22.19125747680664, \"WetBulb\": 10.77186572779282, \"TS\": 1791475347, \"CO2\": 1622.997802734375, \"FRCWait\": 238, \"Hum\": 20.90203094482422, \"FRCState\": 1}"
+  },
+  {
+   "t": 126.683,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 27822, \"TS\": 1791475348, \"VOC\": 406}"
+  },
+  {
+   "t": 126.683,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1019.9297876163872, \"Temp\": 14.99999904580018, \"TS\": 1791475347, \"Pres\": 1019.9297876163872}"
+  },
+  {
+   "t": 126.683,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475348, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.8151979858091097}, \"RGB\": {\"R\": 0.8151979858091097, \"G\": 0.8151979858091097, \"B\": 0.8151979858091097}, \"RangeAct\": 10000, \"Lux\": 8151.979858091097}"
+  },
+  {
+   "t": 146.667,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 192,
+   "retained": false,
+   "payload": "{\"DewPoint\": 0.5472825031727432, \"Temp\": 22.428165435791016, \"WetBulb\": 11.448109636323665, \"TS\": 1791475367, \"CO2\": 1693.177001953125, \"FRCWait\": 218, \"Hum\": 23.46982192993164, \"FRCState\": 1}"
+  },
+  {
+   "t": 146.707,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 27158, \"TS\": 1791475368, \"VOC\": 446}"
+  },
+  {
+   "t": 146.707,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 104,
+   "retained": false,
+   "payload": "{\"SLPres\": 1027.9850376466684, \"Temp\": 15.242703264394397, \"TS\": 1791475367, \"Pres\": 1027.9850376466684}"
+  },
+  {
+   "t": 146.707,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 281,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475369, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.6307774471656368}, \"RGB\": {\"R\": 0.6307774471656368, \"G\": 0.6307774471656368, \"B\": 0.6307774471656368}, \"RangeAct\": 10000, \"Lux\": 6307.7744716563675}"
+  },
+  {
+   "t": 162.891,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 163.851,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 190,
+   "retained": false,
+   "payload": "{\"DewPoint\": 1.4195285734859542, \"Temp\": 20.995166778564453, \"WetBulb\": 11.108734600105235, \"TS\": 1791475385, \"CO2\": 1592.5107421875, \"FRCWait\": 200, \"Hum\": 27.27678108215332, \"FRCState\": 1}"
+  },
+  {
+   "t": 163.891,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 29916, \"TS\": 1791475385, \"VOC\": 272}"
+  },
+  {
+   "t": 163.892,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 104,
+   "retained": false,
+   "payload": "{\"SLPres\": 1019.6542577435179, \"Temp\": 16.256069804372448, \"TS\": 1791475385, \"Pres\": 1019.6542577435179}"
+  },
+  {
+   "t": 163.892,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 279,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.46235186967, \"TS\": 1791475386, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.8475776302738995}, \"RGB\": {\"R\": 0.8475776302738995, \"G\": 0.8475776302738995, \"B\": 0.8475776302738995}, \"RangeAct\": 10000, \"Lux\": 8475.776302738996}"
+  },
+  {
+   "t": 173.104,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 173.971,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 195,
+   "retained": false,
+   "payload": "{\"DewPoint\": -1.0318179962933596, \"Temp\": 23.080141067504883, \"WetBulb\": 11.216261674312793, \"TS\": 1791475395, \"CO2\": 1581.5062255859375, \"FRCWait\": 190, \"Hum\": 20.114459991455078, \"FRCState\": 1}"
+  },
+  {
+   "t": 174.011,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 30881, \"TS\": 1791475395, \"VOC\": 167}"
+  },
+  {
+   "t": 174.011,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 104,
+   "retained": false,
+   "payload": "{\"SLPres\": 1021.8727695054647, \"Temp\": 16.883778210629703, \"TS\": 1791475395, \"Pres\": 1021.8727695054647}"
+  },
+  {
+   "t": 174.011,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475396, \"CalLight\": 3, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.9266346227206838}, \"RGB\": {\"R\": 0.9266346227206838, \"G\": 0.9266346227206838, \"B\": 0.9266346227206838}, \"RangeAct\": 10000, \"Lux\": 9266.346227206837}"
+  },
+  {
+   "t": 198.596,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 193,
+   "retained": false,
+   "payload": "{\"DewPoint\": 2.7584323830835986, \"Temp\": 23.35103416442871, \"WetBulb\": 12.600909513453601, \"TS\": 1791475415, \"CO2\": 1619.5347900390625, \"FRCWait\": 170, \"Hum\": 25.997737884521484, \"FRCState\": 1}"
+  },
+  {
+   "t": 198.596,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 28731, \"TS\": 1791475415, \"VOC\": 235}"
+  },
+  {
+   "t": 198.596,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 104,
+   "retained": false,
+   "payload": "{\"SLPres\": 1007.3312630510896, \"Temp\": 16.375060952355014, \"TS\": 1791475415, \"Pres\": 1007.3312630510896}"
+  },
+  {
+   "t": 198.597,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 279,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.46235186967, \"TS\": 1791475415, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.6850537880521859}, \"RGB\": {\"R\": 0.6850537880521859, \"G\": 0.6850537880521859, \"B\": 0.6850537880521859}, \"RangeAct\": 10000, \"Lux\": 6850.537880521859}"
+  },
+  {
+   "t": 198.597,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 7,
+   "retained": false,
+   "payload": "offline"
+  },
+  {
+   "t": 214.213,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 214.314,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 192,
+   "retained": false,
+   "payload": "{\"DewPoint\": 6.270254906455875, \"Temp\": 25.40485191345215, \"WetBulb\": 14.778359679909368, \"TS\": 1791475436, \"CO2\": 1599.2906494140625, \"FRCWait\": 150, \"Hum\": 29.384479522705078, \"FRCState\": 1}"
+  },
+  {
+   "t": 214.356,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 28837, \"TS\": 1791475436, \"VOC\": 285}"
+  },
+  {
+   "t": 214.356,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 104,
+   "retained": false,
+   "payload": "{\"SLPres\": 1016.3531203449904, \"Temp\": 18.039692161923615, \"TS\": 1791475436, \"Pres\": 1016.3531203449904}"
+  },
+  {
+   "t": 214.356,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475435, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.4831921873807889}, \"RGB\": {\"R\": 0.4831921873807889, \"G\": 0.4831921873807889, \"B\": 0.4831921873807889}, \"RangeAct\": 10000, \"Lux\": 4831.921873807889}"
+  },
+  {
+   "t": 240.01,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 188,
+   "retained": false,
+   "payload": "{\"DewPoint\": 4.670922377507658, \"Temp\": 24.822731018066406, \"WetBulb\": 13.919299987357665, \"TS\": 1791475456, \"CO2\": 1548.75390625, \"FRCWait\": 130, \"Hum\": 27.227067947387695, \"FRCState\": 1}"
+  },
+  {
+   "t": 240.01,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 30852, \"TS\": 1791475456, \"VOC\": 272}"
+  },
+  {
+   "t": 240.01,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 103,
+   "retained": false,
+   "payload": "{\"SLPres\": 1013.7608030072545, \"Temp\": 17.75344198105877, \"TS\": 1791475456, \"Pres\": 1013.7608030072545}"
+  },
+  {
+   "t": 240.01,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475456, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.2349431601434348}, \"RGB\": {\"R\": 0.2349431601434348, \"G\": 0.2349431601434348, \"B\": 0.2349431601434348}, \"RangeAct\": 10000, \"Lux\": 2349.431601434348}"
+  },
+  {
+   "t": 240.01,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 7,
+   "retained": false,
+   "payload": "offline"
+  },
+  {
+   "t": 271.728,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 272.322,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 177,
+   "retained": false,
+   "payload": "{\"DewPoint\": 0.5840063865856622, \"Temp\": 25.131057739257813, \"WetBulb\": 12.587394967736184, \"TS\": 1791475494, \"CO2\": 1642.53857421875, \"FRCWait\": 92, \"Hum\": 20.0, \"FRCState\": 1}"
+  },
+  {
+   "t": 272.364,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 29956, \"TS\": 1791475493, \"VOC\": 227}"
+  },
+  {
+   "t": 272.364,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 102,
+   "retained": false,
+   "payload": "{\"SLPres\": 989.0330281631675, \"Temp\": 18.145264189810817, \"TS\": 1791475493, \"Pres\": 989.0330281631675}"
+  },
+  {
+   "t": 272.364,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 285,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869666, \"TS\": 1791475493, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.29073014419775695}, \"RGB\": {\"R\": 0.29073014419775695, \"G\": 0.29073014419775695, \"B\": 0.29073014419775695}, \"RangeAct\": 10000, \"Lux\": 2907.3014419775695}"
+  },
+  {
+   "t": 297.247,
+   "topic": "sensors/SensorStationDev/measurements/SCD30",
+   "len": 179,
+   "retained": false,
+   "payload": "{\"DewPoint\": 1.0283028816743331, \"Temp\": 25.669496536254883, \"WetBulb\": 12.953800016206554, \"TS\": 1791475514, \"CO2\": 1487.4603271484375, \"FRCWait\": 72, \"Hum\": 20.0, \"FRCState\": 1}"
+  },
+  {
+   "t": 297.247,
+   "topic": "sensors/SensorStationDev/measurements/SGP40",
+   "len": 59,
+   "retained": false,
+   "payload": "{\"VOCState\": 1, \"Raw\": 33149, \"TS\": 1791475513, \"VOC\": 172}"
+  },
+  {
+   "t": 297.247,
+   "topic": "sensors/SensorStationDev/measurements/BMP3XX",
+   "len": 102,
+   "retained": false,
+   "payload": "{\"SLPres\": 990.4906467875887, \"Temp\": 18.833656663701575, \"TS\": 1791475513, \"Pres\": 990.4906467875887}"
+  },
+  {
+   "t": 297.247,
+   "topic": "sensors/SensorStationDev/measurements/ISL29125",
+   "len": 280,
+   "retained": false,
+   "payload": "{\"GainMeas\": null, \"CCT\": 6503.462351869667, \"TS\": 1791475513, \"CalLight\": 1, \"Overrange\": false, \"HSB\": {\"H\": 0.0, \"S\": 0.0, \"B\": 0.1288624399176013}, \"RGB\": {\"R\": 0.1288624399176013, \"G\": 0.1288624399176013, \"B\": 0.1288624399176013}, \"RangeAct\": 10000, \"Lux\": 1288.624399176013}"
+  },
+  {
+   "t": 297.247,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 7,
+   "retained": false,
+   "payload": "offline"
+  },
+  {
+   "t": 356.927,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 6,
+   "retained": false,
+   "payload": "online"
+  },
+  {
+   "t": 357.596,
+   "topic": "sensors/SensorStationDev/status",
+   "len": 7,
+   "retained": false,
+   "payload": "offline"
+  }
+ ],
+ "observer_connects": 3,
+ "twin_exit": 0
+}

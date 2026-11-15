@@ -107,7 +107,7 @@ def _seeds(logs: "dict[str, object]") -> "dict[str, list[int]]":
     return found
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_config_reset_deletes_every_config_file_and_reboots(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
     save_fram_raw(board, "config-reset")
     before = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_files_dump.py"))["files"]
@@ -132,7 +132,7 @@ def test_config_reset_deletes_every_config_file_and_reboots(board: "Board", requ
         _restart(board)
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_a_damaged_config_file_is_repaired_and_listed_as_a_config_fault(board: "Board", result_note: "Callable[[str], None]") -> None:
     # Owns two scratch writes, the damage and the setup's repair; the other stores' defaults are the scratch build's.
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_fault_listed_at_setup.py", timeout_s=_SCRIPT_TIMEOUT_S))
@@ -217,7 +217,7 @@ def test_a_reboot_with_storage_paused_still_resets_attributed(board: "Board", re
         _restart(board)
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 @pytest.mark.parametrize("command", ["resetconfig", "reboot"])
 def test_a_hung_shutdown_step_ends_in_a_watchdog_reset(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", command: str) -> None:
     # A fed hang never resets and the 4 s reset timer arms only after the hung step: a reset read as "command incomplete"

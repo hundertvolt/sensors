@@ -16,6 +16,7 @@ from buildgen.definitions import definitions_for_toml
 from buildgen.driver_registry import _OVERRIDES, DriverInfo, resolve_driver
 from buildgen.generate import generate_device
 from buildgen.jsontypes import JsonValue
+from buildgen.model import PARTNER_LOGGED_DRIVERS
 from buildgen.schema_ast import _FIELD_SCHEMA_LEN, extract_field_schemas
 from buildgen.web_tag import parse_web_group_tags
 
@@ -143,8 +144,9 @@ def test_every_driver_has_its_build_table_rows() -> None:
 
 def test_every_driver_and_mandatory_module_has_its_errcount_rows() -> None:
     catalog = {key: has_cfgmgr for key, _label, has_cfgmgr in definitions._ERRCOUNT_CATALOG}
-    # The LED keeps no log, so it has no row (SPECIFICATION.md A.4: the pixel has no failure path).
-    owners = {name: _owns_cfgmgr(_tree(info.source_path), info.class_name) for name, info in _drivers().items() if name != "neopixel"}
+    # The LED keeps no log, so it has no row (SPECIFICATION.md A.4: the pixel has no failure path); a partner-logged
+    # driver logs through the instance it is wired to, whose row it shares.
+    owners = {name: _owns_cfgmgr(_tree(info.source_path), info.class_name) for name, info in _drivers().items() if name != "neopixel" and name not in PARTNER_LOGGED_DRIVERS}
     owners |= {key: _owns_cfgmgr(_tree(_SRC / filename)) for key, filename in MANDATORY_FILES.items()}
     assert catalog == owners, "the errcount catalog's (row, CFGMGR_ companion) pairs differ from the sources"
     assert set(definitions._CFGMGR_LABEL) == {key for key, has_cfgmgr in catalog.items() if has_cfgmgr}

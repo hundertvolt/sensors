@@ -123,7 +123,7 @@ def _table(facts: "dict[str, object]", key: str) -> "dict[str, object]":
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_scd30_same_device_read_write_concurrency(board: Board, scd30_measuring: str) -> None:
     # Owns one SCD30 NVM write: the ambient pressure the chip already holds, re-sent among a reader's reads.
     facts = _run(board, "scd30_same_device_rw_concurrency.py", _SCRIPT_TIMEOUT_S, bounds=True)
@@ -229,7 +229,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: 
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 @pytest.mark.scd30_extra_write
 def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_measuring: str) -> None:
     # Owns two SCD30 NVM writes (the offset and its restore), so it runs only with --allow-persistence-write and
