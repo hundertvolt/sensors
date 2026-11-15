@@ -52,6 +52,11 @@ _R_UNEXPECTED: int = src_int("src/asy_mqtt_client.py", "_R_UNEXPECTED")
 _SLOT_INFLIGHT: int = src_int("src/asy_mqtt_client.py", "_SLOT_INFLIGHT")
 _ST_CONNECTED: int = src_int("src/asy_mqtt_client.py", "_ST_CONNECTED")
 _C_CONSUMER_ERR: int = src_int("src/asy_mqtt_client.py", "_C_CONSUMER_ERR")
+_OUT_PAYLOAD: int = src_int("src/asy_mqtt_client.py", "_OUT_PAYLOAD")  # a slot's payload, refused one byte past it
+_TX_BYTES: int = src_int("src/asy_mqtt_client.py", "_TX_BYTES")
+_MAX_TOPIC: int = src_int("src/asy_mqtt_client.py", "_MAX_TOPIC")
+_MAX_CLIENT_ID: int = src_int("src/asy_mqtt_client.py", "_MAX_CLIENT_ID")
+_MAX_TEXT_BYTES: int = src_int("src/asy_mqtt_client.py", "_MAX_TEXT_BYTES")
 
 
 def _ignore(_topic: memoryview, _payload: memoryview, _flags: int) -> None:
@@ -478,6 +483,16 @@ def test_qos1_queued_while_down_is_sent_after_the_connect() -> None:
     run(scenario())
 
 
+def test_the_transmit_buffer_holds_the_largest_connect_and_a_full_slot_publish() -> None:
+    # From the settings' byte bounds: a 23-byte client id, a 128-byte will topic, 64-byte will message, user and
+    # password, and a PUBLISH of a full slot on a 128-byte topic with a packet id (Part N's mqtt.tx_buf_bytes row).
+    buf = memoryview(bytearray(_TX_BYTES))
+    will = (b"t" * _MAX_TOPIC, b"m" * _MAX_TEXT_BYTES, 1, True)
+    connect = asy_mqtt_client.encode_connect(buf, b"c" * _MAX_CLIENT_ID, 3620, will, b"u" * _MAX_TEXT_BYTES, b"p" * _MAX_TEXT_BYTES, clean=False)
+    publish = asy_mqtt_client.encode_publish(buf, b"t" * _MAX_TOPIC, b"x" * _OUT_PAYLOAD, 1, 0xFFFF, retain=True, dup=True)
+    assert 0 < connect <= _TX_BYTES and 0 < publish <= _TX_BYTES, (connect, publish, _TX_BYTES)
+
+
 def test_publish_refuses_and_counts_what_it_cannot_send() -> None:
     async def scenario() -> None:
         broker, client, tasks = await broker_and_client()
@@ -488,7 +503,7 @@ def test_publish_refuses_and_counts_what_it_cannot_send() -> None:
             assert not client.publish("a/#", b"x")
             assert not client.publish("", b"x")
             assert not client.publish("t" * 129, b"x")
-            assert not client.publish("a/b", b"x" * 385)
+            assert not client.publish("a/b", b"x" * (_OUT_PAYLOAD + 1))
             assert not client.publish("a/b", b"x", qos=2)
             assert count(client, "MQTTTxDropped") == before + 6
             assert client.publish("a/b", "text payload")
@@ -791,7 +806,11 @@ def test_the_shape_corpus_judges_the_broker_host_and_empty_is_off() -> None:
 
 _UNCONFIRMED_MAX: int = src_int("src/asy_mqtt_client.py", "_UNCONFIRMED_MAX")  # the client's cap, read from source
 _CAP_MESSAGES = 7  # the ring's eight slots, less the online status still in flight
-_CAP_PAYLOAD = b"m" * 380  # about 388 B on the wire, so five fit under the cap and the sixth must wait
+# A full slot on a topic padded to 388 B on the wire (a fixed byte, two length bytes, the topic's two): five fit
+# under the cap and the sixth must wait, whatever share of the 388 B mqtt.out_payload_max takes.
+_CAP_TOPIC = "t/" + "x" * (388 - 5 - _OUT_PAYLOAD - 2)
+_CAP_PAYLOAD = b"m" * _OUT_PAYLOAD
+_BIG_TOPIC = "q/" + "b" * (_MAX_TOPIC - 2)  # QoS 1, a full slot: about 391 B on the wire
 
 
 def _client_bytes_after_connect(broker: FakeBroker) -> int:
@@ -938,11 +957,11 @@ def test_unconfirmed_bytes_stop_at_the_cap_and_ask_for_an_early_ping() -> None:
         broker.answer_pings = False  # nothing ever confirms: the cap is all that stops the writes
         try:
             assert await until(client.is_connected)
-            assert all(client.publish("t/x", _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
+            assert all(client.publish(_CAP_TOPIC, _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
             assert await until(lambda: any(first == 0xC0 for first, _ in broker.packets))
             await asyncio.sleep_ms(300)  # several ticks: nothing more may follow the held message
             assert _client_bytes_after_connect(broker) <= _UNCONFIRMED_MAX
-            assert len(broker.published(b"t/x")) < _CAP_MESSAGES
+            assert len(broker.published(_CAP_TOPIC.encode())) < _CAP_MESSAGES
         finally:
             await stop(client, tasks, broker)
 
@@ -954,8 +973,8 @@ def test_a_pingresp_releases_the_held_messages() -> None:
         broker, client, tasks = await broker_and_client(config=_QUIET_CFG)
         try:
             assert await until(client.is_connected)
-            assert all(client.publish("t/x", _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
-            assert await until(lambda: len(broker.published(b"t/x")) == _CAP_MESSAGES)
+            assert all(client.publish(_CAP_TOPIC, _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
+            assert await until(lambda: len(broker.published(_CAP_TOPIC.encode())) == _CAP_MESSAGES)
             assert _client_bytes_after_connect(broker) > _UNCONFIRMED_MAX  # more than one cap's worth, through pings
             assert any(first == 0xC0 for first, _ in broker.packets)  # the interval is a minute: the cap sent it
             assert client.is_connected()
@@ -1364,7 +1383,7 @@ def test_a_resumed_session_gets_its_unacknowledged_qos1_again_first_with_their_i
 
 
 def test_a_resumed_sessions_resend_past_the_byte_cap_goes_after_the_next_ping_not_a_retry_later() -> None:
-    # Six 380 B messages pass the 2,000 B unconfirmed cap: the rest follows the next PINGRESP, not mqtt.qos1_retry_ms (60 s).
+    # Six full-slot messages pass the 2,000 B unconfirmed cap: the rest follows the next PINGRESP, not mqtt.qos1_retry_ms (60 s).
     async def scenario() -> None:
         broker = FakeBroker(_port())
         broker.ack_publishes = False
@@ -1375,16 +1394,16 @@ def test_a_resumed_sessions_resend_past_the_byte_cap_goes_after_the_next_ping_no
             await configure(client, broker.port, MQTTPersistent=True)
             client.reconnect()
             assert await until(client.is_connected)
-            payloads = [bytes([0x41 + n]) * 380 for n in range(6)]
+            payloads = [bytes([0x41 + n]) * _OUT_PAYLOAD for n in range(6)]
             for payload in payloads:
-                assert client.publish("q/big", payload, qos=1)
-            assert await until(lambda: len(broker.published(b"q/big")) == len(payloads))
+                assert client.publish(_BIG_TOPIC, payload, qos=1)
+            assert await until(lambda: len(broker.published(_BIG_TOPIC.encode())) == len(payloads))
             broker.ack_publishes = True
             await broker.drop()
             assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
 
             def resent() -> "list[bytes]":
-                return [b for f, b in _sent_on(broker, 1) if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/big"]
+                return [b for f, b in _sent_on(broker, 1) if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == _BIG_TOPIC.encode()]
 
             assert await until(lambda: len(resent()) == len(payloads), timeout_ms=3000)
             assert [_publish_fields(0x3A, b)[2] for b in resent()] == payloads  # in their original order
