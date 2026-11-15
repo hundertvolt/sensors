@@ -44283,3 +44283,47 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   none.
 - Evidence: logs/day9_20261115/{status,system}_r42_*.json, r42_4b/, r42_build.out, r42_flash.out, r42_flash_step.out,
   r42_bench_step.out, r42_bench_rerun.out; build/archive/run_bench_hardware_suite_scope_mqtt/20261115T083024Z/.
+
+## Bench 2026-11-15 10:10 UTC - relay 43: the AP outage's record shows one recovery reset; the capture shows no "reset after queueing" at all
+
+- 1. Relay 42's run record (build/archive/run_bench_hardware_suite_scope_mqtt/20261115T083024Z/run_record.json),
+  test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link, outcome passed (call), markers [provokes_log],
+  user_properties verbatim:
+  - recovery: "recovery pass: kick + hard_reset() after the MQTT client connected after the AP came back; skipped: the passive reconnect with the link"
+  - result_note: "connected 256.7s after the AP came back; 0 failed attempt(s) logged"
+  So yes: one recovery reset. The passive reconnect with the link did not come within the wait; the client connected
+  only after the harness's station kick + hard_reset().
+- 2. The owner in this session, asked about the sudo tcpdump capture (outside the plan so far): "Yes, capture and run".
+  Pre /status saved 09:58 (status_r43_pre.json; uptime 1,507, RR 21, MQTTState disabled). Capture 09:58:18-10:03:18:
+  `sudo -n timeout 300 tcpdump -i br0 -nn -s 512 -U -w logs/day9_20261115/20261115T095818Z_r43_mixed.pcap host
+  192.168.85.57 and tcp port 80`, 1,644 packets, 0 dropped by kernel. The test alone 09:58:19-09:59:50 (runner
+  r43_mixed_body), FAILED again: "the concurrent mixed-body storm's refusals within the cap (14 more over it):
+  HTTPDropped is 10, fewer than the 11 refusal(s) the clients saw". After it: uptime 245 (the test's own reset),
+  WEBSERVER 10 x W60 HTTP_REFUSED (= HTTPDropped 10), nothing else.
+- 3. r43_classify_resets.py on the capture (DUT 192.168.85.57, cap 2048), verbatim:
+```
+connections: 65
+   5  SYN retransmitted | (no request seen) | ?
+   1  SYN retransmitted | GET /status | ?
+   8  SYN retransmitted | PUT /sensors | over cap
+   9  SYN retransmitted | PUT /sensors | within cap
+   2  answered 200 | GET /sensors | ?
+  13  answered 200 | GET /status | ?
+   4  answered 200 | GET /system | ?
+   9  answered 200 | PUT /sensors | within cap
+   1  answered 200 | PUT /status | within cap
+   6  answered 413 | PUT /sensors | over cap
+   5  no SYN-ACK | (no request seen) | ?
+   4  reset at the handshake (no request byte acknowledged) | (no request seen) | ?
+  12  reset at the handshake (no request byte acknowledged) | PUT /sensors | over cap
+   9  reset at the handshake (no request byte acknowledged) | PUT /sensors | within cap
+handshake ACK -> board RST, reset at the handshake (no request byte acknowledged): n=25 min 1.4 ms, median 4.4 ms, max 175.0 ms
+```
+- 4. Not the predicted split: no connection is classed "reset after queueing", although the board counted 10
+  refusals (W60) in the same window. The within-cap PUTs the clients filed as refused show as 9 "reset at the
+  handshake" (with the over-cap ones, 25 such, the board's RST median 4.4 ms after the handshake ACK, min 1.4,
+  max 175.0) and 9 "SYN retransmitted" whose end the classes do not separate. So on this capture the server's own
+  refusals are not distinguishable from lwIP's handshake aborts by "request bytes acknowledged": both end before any
+  request byte is acknowledged. Handed back as it is; nothing fixed. Board serving, MQTT disabled.
+- Evidence: logs/day9_20261115/20261115T095818Z_r43_mixed.pcap, r43_tcpdump.err, r43_test.out, r43_classify.out,
+  status_r43_{pre,end}.json.
