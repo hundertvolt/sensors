@@ -406,9 +406,9 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
 ### 11.1 Bench runbook (a session on the Pi4, owner's go-ahead in that session)
 
 `mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
-before the flash, the one flash, the scoped run
-(`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`),
-what each of its 3 flash and 79 bench tests covers, where the results go and which Part N rows they settle,
+before the flash, the one flash, the scoped run's flash step and then its bench step, whose only owned writes are the two login
+tests' (`--allow-persistence-write-to=networking/mqtt`, the group's six other tests deselected; owner, 2026-11-15,
+§14), what each of its 3 flash and the 68 of 79 bench tests this run takes covers, where the results go and which Part N rows they settle,
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
@@ -525,6 +525,13 @@ more conservative, more easily reversible choice:
   so scope it correctly'. Then: 'include the ntp tests too, allow networking/ntp', and 'include the hotspot
   role reversal too', whose own writes add `networking/identity` and `notification/autoConfig`. §11.1 has
   the command.
+- The bench run goes through the audit's bench session (owner, 2026-11-15): 'As the main session is considered to be
+  done, you can use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related
+  tests, while flashing a new image containing the MQTT code of course is allowed.' The requirement: 'For. The MQTT
+  bench tests, a running Mosquitto broker and contract over the WiFi, including successful login, communication,
+  error simulation, detection and handling, recovery, all on a real network with real hardware, just is the basic
+  requirement.' Asked "How should login be covered on the bench?": 'Both login tests (Recommended)', so the two
+  password tests' 5 writes of `config_MQTT.cfg` are the run's only owned ones (BENCH_HANDOVER.md section 1.5).
 
 ## 15. Owner decisions on the will and the session (owner, 2026-10-13)
 

@@ -1,8 +1,10 @@
 # MQTT PoC: bench handover
 
 Written by session `session_01EkZFpqSuwHuhRKfojd3CiE` (a cloud session with no route to the bench) for the
-session that runs on the bench Pi4 after the owner clones this branch there. A per-effort file, deleted once
-its results are migrated (README.md's handover rule).
+session that runs on the bench Pi4. Since 2026-11-15 that is the audit's bench session on its own branch,
+`claude/u35-bench-campaign`: the lead relay of 2026-11-15 there carries this branch's code and the run's steps, and
+holds where it and this file differ (section 1.5). A per-effort file, deleted once its results are migrated
+(README.md's handover rule).
 
 **Read this whole file before doing anything.** It assumes nothing from the conversation that produced the
 branch: sections 1 and 2 are the context, sections 3 to 8 the run, section 9 what follows it. CLAUDE.md
@@ -71,21 +73,23 @@ And on 2026-10-08:
   `a6f28126`, merged in `df3916bd`: the audit closed on 2026-11-13. It merges only after the audit closes (owner,
   2026-10-07: "After audit closes"); the owner retargets it to `main` and merges it. Never merge it, rebase it,
   force-push it or push to another branch.
-- **Verified on the host** (`827c5f0b` to `b1586d5b`, the 2026-11-12 restructure; the later two commits change
-  only test files, each rerun), each tier run on its own (the runner's lower levels run every
-  host tier on the head first):
-  - lint and all three typecheck passes;
-  - `scripts/test.sh` at both GC stages: 124 files, 5,383 MicroPython tests, zero memory errors; the two MQTT
-    test files also under `build-settrace`, the coverage run's binary;
-  - the full `tests_scripts/` tier: 6,695 passed, 6 skipped, its one failure the variant literal `bc7c951b`
-    fixed (that file and `tests_scripts/test_no_variant_literals.py` pass since);
-  - the `dev` twin suite at both stages, Run 14 included (the client against a real mosquitto: the exerciser's
+- **Verified on the host** (`9fd691ef`, the final base merged; the commits after it change only docs), each
+  tier run on its own, as CI's jobs run them (GitHub's Actions budget is spent until 2026-12-01, so no CI ran):
+  - lint (ruff, shellcheck, actionlint, zizmor) and all three typecheck passes;
+  - `scripts/test.sh` at both GC stages: 124 files, 5,381 MicroPython tests, zero memory errors; `tests_scripts/`
+    6,704 passed, 6 skipped; the scenario harness on all four devices;
+  - the coverage run (`build-settrace`): 5,121 MicroPython tests passed. Its one red is a race in the final base's
+    own code: `tests_scripts/test_lint_sh.py`'s real gc check parses every `.py` under `tests/`, `tests/_tmp/`
+    included, while `tests/test_digital_twin_run_generic_integration.py` writes an indented fixture there; alone it passes;
+  - the twin suites at both stages: `dev`, Run 14 included (the client against a real mosquitto: the exerciser's
     echo, kill, stall, takeover, flood, the will, a persistent session across a restart, the keep-alive the
-    ping interval sets, pings off, the retire, and the client idle in the boot hotspot): 734 of 734 checks,
-    plus 26 of 26 in its CRC16 variant;
-  - `npm test` under the `.nvmrc` Node 26: 1,282 passed;
-  - `dev`'s image: 1,178,020 B of the 1,228,800 B before the filesystem (95.9 %).
-- **CI**: the PR's checks show the current head.
+    ping interval sets, pings off, the retire, and the client idle in the boot hotspot), 736 of 736 checks plus
+    26 of 26 in its CRC16 variant; `arzi`, `wozi` and `grkizi`, running as this was written;
+  - the web tier under the `.nvmrc` Node 26: 1,282 unit tests with coverage, the HTML and CSS lints, the PUT matrix
+    (412 passed, 9 skipped), the cross-browser smoke (32 of 32, no engine skipped);
+  - the four devices' firmware builds and UF2 checks; `dev`'s image 1,177,644 B of the 1,228,800 B before the
+    filesystem (95.8 %).
+- **CI**: none ran on this head (the Actions budget, above); the local gate stands in for it job by job.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
@@ -169,6 +173,25 @@ What that became on this branch:
 - **Not in this run**, left for the full bench later: the bus-hazard and sensor push tests, every SCD30
   write, every soak.
 
+The owner, 2026-11-15, in the code session:
+- "As the main session is considered to be done, you can use that branch for your bench runs, especially the MQTT
+  bench runs. You shall do no wear related tests, while flashing a new image containing the MQTT code of course is
+  allowed."
+- "you can absolutely add the local Mosquitto installation to the bench specific setup scripts, or tell the bench
+  to do this." `mosquitto` is already in `toolchain/versions.toml`'s apt packages, which `env --tier bench` installs.
+- "For. The MQTT bench tests, a running Mosquitto broker and contract over the WiFi, including successful login,
+  communication, error simulation, detection and handling, recovery, all on a real network with real hardware, just
+  is the basic requirement."
+- Asked "How should login be covered on the bench?" (the correct-password and the wrong-password test each store
+  credentials in `config_MQTT.cfg`): "Both login tests (Recommended)".
+
+What that makes of this run: the audit's bench session runs it from `claude/u35-bench-campaign`, its record that
+branch's hand-back. The one flash is allowed. The only owned writes are the two login tests', 5 of
+`config_MQTT.cfg` (2 + 3), under `--allow-persistence-write-to=networking/mqtt` with that group's six other tests
+deselected by name (section 5): 68 of the scope's 79 bench tests run, and the scope's other groups
+(`networking/identity`, `networking/ntp`, `notification/autoConfig`) stay off. The shared prerequisite writes stay
+(section 3); the owner saw their list in the code session.
+
 ### 1.6 Decided on the owner's behalf, for review (agent, 2026-10-08)
 
 `mqtt_poc/DESIGN.md` §13 holds the design's, §17 the restructure's (agent, 2026-11-12). The ones this run touches:
@@ -196,24 +219,15 @@ do. A code outside a test's marker is a real failure (section 6).
 `tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build` bounds what
 `build_system()` and the setups keep at 41,000 B (SPECIFICATION.md Part N
 `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev` without the client
-(35,984 B), 5,016 B under the bound. The client's construction comes on top: one held 8,432 B on the 2026-10-08
+(35,984 B). The final base's image read 36,368 B on the bench (the audit's bench session's hand-back,
+2026-11-13, image `3aaf013e`, whose firmware is `a6f28126`'s), 4,632 B under the bound. The client's construction
+comes on top: one held 8,432 B on the 2026-10-08
 image, its buffers about 5 KB of it (DESIGN.md §5; its imports sit before the test's baseline). So the test is
 expected to fail (agent estimate, 2026-11-15) with "the build and its setups keep <N> B, over 41000 B".
 BACKLOG.md's deferred entry waits on that reading. If it fails that way and on nothing else:
 - record its result note (the kept bytes, the largest block and the heap figures, written before its assertions)
   and the whole failure text in the results;
-- the flash step has failed, so the runner stops before the bench step (`set -e`). Ask the owner whether to run the
-  bench step on its own; if yes, run the runner's own bench-step call with the scope's tests:
-
-  ```bash
-  scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt \
-      --levels "L4, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
-      --not-clean-reason "scope mqtt: the bench step alone, its flash step failed on the known heap bound" \
-      $(python3 tests_hardware/run_scopes.py mqtt bench) \
-      --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig \
-      2>&1 | tee -a "$HOME/mqtt_bench_console.log"; echo "bench step exit ${PIPESTATUS[0]}"
-  ```
-
+- go on with the bench step, section 5's second call (the owner's 2026-11-15 words, section 1.5, cover it);
 - report the run NOT CLEAN naming the bound. Never edit the bound or the test: it changes only through a new
   derivation of the need (owner, 2026-10-02), the owner's to make.
 
@@ -230,14 +244,15 @@ CLAUDE.md is the authority; these are the rules this run meets.
 - **FRAM logs before anything clears them**, and know what ran against the board before reading them as
   evidence: a flash-tier script builds its own FRAM manager over the chip.
 - **Only `dev` is flashed**, once per session.
-- **Only the scoped writes**: `--allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`.
-  Leave out `--allow-persistence-write`, `--allow-scd30-extra-write` and `--allow-flash-cycle`.
+- **Only the two login tests' writes** (section 1.5; owner, 2026-11-15): `--allow-persistence-write-to=networking/mqtt`
+  with that group's six other tests deselected (section 5). Leave out every other group, `--allow-persistence-write`,
+  `--allow-scd30-extra-write` and `--allow-flash-cycle`.
 - **No credential in the repository**: the scrub in section 7.
 - **A failure is root-caused, never written off as a flake**; no test is skipped, disabled or edited to pass.
 - **Decision records**: a decision written down names its actor and date, and an owner decision quotes the
   owner. An unforeseen decision during the run goes to the owner in this session, who is at the bench.
-- **Git**: commit and push to `claude/whole-project-audit-plan-followup` only. Never merge, rebase or
-  force-push, and never mark the PR ready.
+- **Git**: the bench session works on its own branch, `claude/u35-bench-campaign`, under its standing rules, and
+  never pushes to this PR's branch: the code session carries the results over (section 7). Never mark the PR ready.
 - **Never touch** the legacy tree (`legacy/`) or the vendored `ext/`.
 
 ---
@@ -271,9 +286,8 @@ CLAUDE.md is the authority; these are the rules this run meets.
 
 ## 4. Preparation, in this order
 
-1. **Check out the branch** (the owner's clone): `git fetch origin claude/whole-project-audit-plan-followup`
-   and check it out. Create the results directory, named by today's date and the commit
-   (`git rev-parse --short HEAD`): `mqtt_poc/bench_results/<YYYY-MM-DD>_<commit>/` (section 7).
+1. **Fetch the bench branch** and merge it in (the bench session's standing rules): its 2026-11-15 lead relay
+   carries this branch's code. The run's logs stay in the bench host's git-ignored `logs/` (section 7).
 2. **Provision the host**: `uv run toolchain/setup_toolchain.py env --tier bench`. It installs `mosquitto`
    and `avahi-daemon` when missing, and it checks passwordless sudo for the commands the
    bench runs unattended (`tests_hardware/README.md`, Prerequisites). Check `systemctl is-active avahi-daemon`: the `.local` test needs the
@@ -296,15 +310,25 @@ CLAUDE.md is the authority; these are the rules this run meets.
 
 ## 5. The run
 
-```bash
-scripts/run_bench_hardware_suite.sh --scope mqtt \
-    --allow-persistence-write-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig \
-    2>&1 | tee "$HOME/mqtt_bench_console.log"; echo "runner exit ${PIPESTATUS[0]}"
-```
+The runner's two steps, each as its own call: the flash step's expected red (section 1.7, item 2) does not
+stop the bench step, and the lower levels run in the code session on the commit the relay names.
 
-**The lower levels run first** and touch no board: `scripts/test.sh` at both GC stages, `npm test`, and the
-twin suite for one device per hardware family, `dev` among them. On the Pi4 this likely takes hours (an estimate). A failure there stops the run
-before the board (section 6).
+```bash
+scripts/uv_sync_retried.sh
+scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt_flash_step \
+    --levels "L3, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
+    $(python3 tests_hardware/run_scopes.py mqtt flash)
+M=tests_hardware/bench/test_mqtt_broker_faults.py
+scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt \
+    --levels "L4, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
+    --not-clean-reason "lower levels skipped; scope mqtt: the bench step alone after the flash step's known heap-bound red; owned writes only the two login tests' (owner, 2026-11-15)" \
+    $(python3 tests_hardware/run_scopes.py mqtt bench) --allow-persistence-write-to=networking/mqtt \
+    --deselect=$M::test_the_broker_is_found_by_the_bench_hosts_local_name \
+    --deselect=$M::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff \
+    --deselect=$M::test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fires \
+    --deselect=$M::test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted \
+    --deselect=$M::test_a_changed_client_id_retires_the_old_persistent_session
+```
 
 **The flash step: 3 tests.**
 - The FRAM chunk layout after a full system build, which now holds the two MQTT chunks.
@@ -312,7 +336,8 @@ before the board (section 6).
   (section 1.7, item 2).
 - The `env --tier flash` rerun, about 8 minutes, since `mosquitto` joined the apt packages.
 
-**The bench step: 79 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
+**The bench step: 68 of the scope's 79 tests**, in the order `tests_hardware/run_scopes.py` lists them; the 11
+out of this run (section 1.5) are marked below. The durations below are
 estimates.
 
 - **The client** (`tests_hardware/bench/test_mqtt_broker_faults.py`, roughly 20 to 30 minutes). It starts
@@ -322,7 +347,11 @@ estimates.
   - broker SIGKILL and restart, a SIGSTOP stall, silent path loss, a reset path;
   - a client-id takeover;
   - a 3000-message QoS 0 flood, with REST timed under it, and a 500-message QoS 1 burst;
-  - the broker found by the Pi4's own `.local` name (it writes `MQTTHost` twice);
+  - the broker found by the Pi4's own `.local` name (it writes `MQTTHost` twice; out of this run), and both
+    unresolvable names (out of this run);
+  - the password broker: the stored user and password admitted, the password masked in `GET /networking`, an
+    anonymous client refused; then a wrong password refused and logged `MQTT_REFUSED`, its retries bounded by the
+    backoff, connected once corrected. The run's 5 owned writes;
   - an oversized message;
   - a no-task-ended checkpoint;
   - an AP outage, then a hard reset;
@@ -331,13 +360,13 @@ estimates.
     broker across a hard reset;
   - the persistent session: a QoS 1 command sent during a hard reset arrives after it;
   - a client id change with the session on: the broker no longer holds the old id's session. These three
-    write `networking/mqtt` and put every value back;
+    write `networking/mqtt`, put every value back and are out of this run;
   - switching the client off, which has to publish a retained `offline`.
 - **NTP and the resolver**:
   - NTP sync and DNS resolution over real UDP;
   - garbage DNS and NTP answers, an unreachable NTP server, a reply from an unexpected source;
   - the NTP retry after a transient outage, with and without API load;
-  - an unresolvable `NTPHost` set over REST.
+  - an unresolvable `NTPHost` set over REST (out of this run).
   
   Three of these write `NTPHost`: one sets an unresolvable name and restores it, two send the current one back.
 - **The connection ceiling and body cap**:
@@ -352,7 +381,8 @@ estimates.
 - **The hotspot role reversal** (last, roughly 10 to 15 minutes): the board's hotspot, DHCP, captive DNS,
   every GET endpoint's shape over it (`/networking` and `/status` now carry the MQTT fields), a
   representative settings round trip, invalid credentials, a wrong password that reopens the hotspot and then
-  the real credentials (stage 6), and the flip back.
+  the real credentials (stage 6), and the flip back. The round trip, the real credentials and stage 6's two
+  failed-credential tests are out of this run.
 
 **The result.** A passing scoped run ends `Result: NOT CLEAN (scope mqtt: ...)` with exit code 4: everything
 that ran passed, but the rest of both tiers did not run. Exit 1 is a failure. One test is an expected skip:
@@ -395,7 +425,9 @@ that ran passed, but the rest of both tiers did not run. Exit 1 is a failure. On
 
 ## 7. Where the results go
 
-One directory per run, committed on this branch: `mqtt_poc/bench_results/<YYYY-MM-DD>_<commit>/`.
+The bench session's record is its hand-back on `claude/u35-bench-campaign`, its logs in the bench host's
+git-ignored `logs/` (2026-11-15). The code session writes one directory per run on this branch from it,
+`mqtt_poc/bench_results/<YYYY-MM-DD>_<commit>/`, with what the hand-back carries of the table below.
 
 | File | What |
 |---|---|
@@ -419,9 +451,9 @@ One directory per run, committed on this branch: `mqtt_poc/bench_results/<YYYY-M
 4. Then compress the console log into the directory.
 
 **Commit and report.**
-- Commit as `MQTT PoC: bench results <date> on <commit>`, then push.
-- Comment on PR hundertvolt/sensors#110 with the two summary blocks and a link to the directory.
-- If this session has no GitHub access, leave the comment text in the results `README.md` for the owner.
+- The bench session appends its blocks to its hand-back and pushes its own branch.
+- The code session commits the directory as `MQTT PoC: bench results <date> on <commit>` and reports on PR
+  hundertvolt/sensors#110.
 
 ## 8. What to measure
 
@@ -440,7 +472,9 @@ test's own waits and bounds are plain literals in it, as Part N's rule keeps a s
 | `test_a_duplicate_client_id_is_bounded_by_the_backoff` | retakes against the duplicate | `mqtt.stable_after_ms`, `mqtt.short_session_warn` |
 | `test_an_inbound_flood_leaves_rest_serving_and_the_session_up` | messages taken, `GET /status` latency | none: the test's own bounds |
 | `test_an_inbound_qos1_burst_is_acknowledged_in_full` | burst time | `mqtt.qos1_retry_ms` |
-| `test_the_broker_is_found_by_the_bench_hosts_local_name` | resolved address, connect time | none: the `.local` path itself |
+| `test_the_broker_is_found_by_the_bench_hosts_local_name` (out of this run) | resolved address, connect time | none: the `.local` path itself |
+| `test_a_password_broker_admits_the_stored_credentials` | connect to the password broker, the masked password | none: the test's own bounds |
+| `test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff` | refused attempts, log entries, connect after the correction | none: the test's own bounds |
 | `test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link` | reconnect, failed attempts | none: the test's own bounds |
 | `test_a_reboot_reconnects_from_the_stored_settings` | connected after the reset | none: the test's own bounds |
 | `test_the_broker_faults_run_clean_at_micropythons_default_gc` | timeline, every free-heap sample and the collects between them (at the reactive default the lowest sample is no margin) | none: the test's own bounds |

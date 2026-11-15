@@ -206,11 +206,12 @@ reference for how any of it runs (flags, wear gates, traps).
   state only).
 - **The MQTT PoC's scoped bench run** (branch `claude/whole-project-audit-plan-followup` only, until it
   merges) — on `dev`: `mqtt_poc/BENCH_HANDOVER.md` is its run sheet and its full context, `--scope mqtt`
-  with writes scoped to `networking/identity`, `networking/mqtt`, `networking/ntp` and
-  `notification/autoConfig` (owner, 2026-10-08: "include the ntp tests too, allow networking/ntp";
-  "include the hotspot role reversal too"); its section 7 says where the results go. Wear: the
-  flash-filesystem writes the scope's tests own in those four groups (`tests_hardware/README.md`'s
-  budget table), no SCD30 write of their own. Twin row: `ci_suite._run_14_mqtt_broker_faults`, the
+  (owner, 2026-10-08: "include the ntp tests too, allow networking/ntp"; "include the hotspot role
+  reversal too"), run by the audit's bench session from `claude/u35-bench-campaign` (owner, 2026-11-15: "you can
+  use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related tests, while
+  flashing a new image containing the MQTT code of course is allowed."); its section 7 says where the results
+  go. Wear: one flash cycle and the two login tests' 5 writes of `config_MQTT.cfg` (owner, 2026-11-15, asked
+  "How should login be covered on the bench?": "Both login tests (Recommended)"), no SCD30 write. Twin row: `ci_suite._run_14_mqtt_broker_faults`, the
   MQTT module's named cover.
 - **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
@@ -227,7 +228,8 @@ reference for how any of it runs (flags, wear gates, traps).
   step read 114,768 B against the 100,000 B total `test_real_gc_heap_headroom_survives_a_full_system_build`
   then bounded. Its bound is now at most 41,000 B added by the build and its setups (SPECIFICATION.md Part
   N's `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev`'s
-  35,984 B without the client, so `dev` with it is expected over the bound; the bound stays where it is.
+  35,984 B without the client (the final base's image read 36,368 B on the bench, 2026-11-13), so `dev`
+  with it is expected over the bound; the bound stays where it is.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
