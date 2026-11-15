@@ -410,7 +410,7 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
 `mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
 before the flash, the one flash, the scoped run's flash step and then its bench step, whose only owned writes are the two login
 tests' (`--allow-persistence-write-to=networking/mqtt`, the group's six other tests deselected; owner, 2026-11-15,
-§14), what each of its 3 flash and the 68 of 79 bench tests this run takes covers, where the results go and which Part N rows they settle,
+§14), what each of its 4 flash and the 68 of 79 bench tests this run takes covers, where the results go and which Part N rows they settle,
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM

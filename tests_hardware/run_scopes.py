@@ -26,6 +26,7 @@ SCOPES: dict[str, Scope] = {
         flash=(
             (f"{_FLASH}test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build", "the FRAM layout gains the MQTT and CFGMGR_MQTT chunks"),
             (f"{_FLASH}test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build", "the client's buffers are resident in the full system build"),
+            (f"{_FLASH}test_heap_layout.py::test_the_boot_survivors_stay_under_the_high_band", "the client's boot survivors join the placement the boot's reset shapes, and its setup() the boot's timed stretches"),
             (f"{_FLASH}test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent", "toolchain/versions.toml's apt_packages gains mosquitto"),
         ),
         bench=(

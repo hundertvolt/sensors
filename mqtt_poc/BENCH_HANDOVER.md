@@ -168,7 +168,7 @@ What that became on this branch:
   the writers whose every group is given. The global `--allow-persistence-write` stays for the later full
   run, and the runner refuses it alongside a scope.
 - **A run scope.** `scripts/run_bench_hardware_suite.sh --scope mqtt` runs the lower levels, then only what
-  `tests_hardware/run_scopes.py` lists, each entry with the reason the branch reaches it. That is 3 flash
+  `tests_hardware/run_scopes.py` lists, each entry with the reason the branch reaches it. That is 4 flash
   tests and 79 bench tests (section 5). Its owned writes are `networking/identity`, `networking/mqtt`,
   `networking/ntp` and `notification/autoConfig`; nothing in it writes the SCD30.
 - **Not in this run**, left for the full bench later: the bus-hazard and sensor push tests, every SCD30
@@ -233,6 +233,15 @@ BACKLOG.md's deferred entry waits on that reading. If it fails that way and on n
   derivation of the need (owner, 2026-10-02), the owner's to make.
 
 Any other assertion of that test failing (the largest free block, the placement) is a real failure (section 6).
+
+**The final base's, root-caused and left there (item 3).**
+`tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status`
+fails its bound "HTTPDropped is N, fewer than the M refusal(s) the clients saw" on `dev` (2026-11-15: 13/8, 10/5, 11/10).
+A connection that completes its handshake while modlwip's accept queue is full (the listen backlog, `max_connections + 1`,
+6 on `dev`) gets `ERR_BUF` from `_lwip_tcp_accept()`, and lwIP aborts it with an RST the server never sees. A capture of
+the storm showed it: 10 resets after the request bytes arrived (31-175 ms after the handshake), the window's 10 W60, and 15
+before any (1.4-5.6 ms, the SYN only acknowledged), 5 of them within the cap. The owner, asked what should change: "Leave
+it to the base". A red of exactly this shape is this item; any other failure of the test is a real one.
 
 ---
 
@@ -331,10 +340,13 @@ scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_m
     --deselect=$M::test_a_changed_client_id_retires_the_old_persistent_session
 ```
 
-**The flash step: 3 tests.**
+**The flash step: 4 tests.**
 - The FRAM chunk layout after a full system build, which now holds the two MQTT chunks.
 - The full-build heap headroom, with the client's buffers resident: expected to fail its 41,000 B bound
   (section 1.7, item 2).
+- The boot's heap layout: the client's boot survivors under the high band the boot's placement reset keeps
+  (SPECIFICATION.md I.4(f.1)), and the boot's timed stretches with its `setup()` in the batch. Added 2026-11-15:
+  the 2026-11-15 run's flash step had three tests, so it never read the boot placement.
 - The `env --tier flash` rerun, about 8 minutes, since `mosquitto` joined the apt packages.
 
 **The bench step: 68 of the scope's 79 tests**, in the order `tests_hardware/run_scopes.py` lists them; the 11

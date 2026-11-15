@@ -778,8 +778,8 @@ outage with and without API load, an unresolvable `NTPHost`); the connection-cei
 tests (dev's ceiling went 6 to 5, and the MQTT settings made `PUT /networking` the largest body); the
 heap tests at a full ceiling, at the reactive gc default and under the hammer; cold boot, REST reboot
 and the concurrent burst; the website identity check; the hotspot role reversal (its GET shapes carry the
-MQTT fields); and on the flash step the FRAM chunk layout, the full-build heap headroom and the
-`env --tier flash` rerun (`mosquitto` joined `apt_packages`). Its owned writes are this module's
+MQTT fields); and on the flash step the FRAM chunk layout, the full-build heap headroom, the boot's heap
+layout and the `env --tier flash` rerun (`mosquitto` joined `apt_packages`). Its owned writes are this module's
 (`networking/mqtt`), the unresolvable-`NTPHost` test's (`networking/ntp`) and the hotspot module's
 credentials (`networking/identity`) and settings round trip (`notification/autoConfig`), so the run
 takes the scoped permission for those four groups; the runner refuses the global flag with a scope, and a
