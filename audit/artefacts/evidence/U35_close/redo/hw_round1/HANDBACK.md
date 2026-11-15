@@ -44385,3 +44385,59 @@ reset connections:
   handshake ACK, acking the SYN only, the client's data already in flight (-4.3 to +0.1 ms). The root cause holds on
   this capture: the uncounted refusals are the board's handshake aborts at the full accept queue. Nothing on the board;
   it stays serving, MQTT disabled. Evidence: logs/day9_20261115/r44_classify.out.
+
+## Bench 2026-11-15 12:35 UTC - relay 45, the trimmed client image (466a6a0f, code 3e281e10): MQTT 22/22; heap bound 44,320 B; the base's mixed-body red; test-side teardowns only
+
+- The owner in this session, asked about relay 45: "Yes, flash and run". FC 2 today (ledger); NVM 0.
+- 1-2. uv sync rc 0. Pre-flash /status and /system saved 11:21 (RR 21, uptime 3,075, WEBSERVER W60 10, MQTTState
+  disabled).
+- 3. Build from 466a6a0f, dirty false: 1,178,948 B (95.9 %), the same as relay 42's 1,178,948 B (constants only).
+  reflash 21.5 s, restore 14.5 s, 11:23:35-11:27:15; BuildDate 2026-11-15T11:23:36Z = record.
+- 4. First boot (RR 21, uptime 13, LastTaskEnd null): MQTTState "disabled", MQTTLINK 0/0/0; every errcount entry
+  unchanged against the pre-flash save (the layout kept, as relayed).
+- 5. Flash step 11:27:25-11:29:21: fram_storage PASS (1,200 of 262,144 B, RAM-only []); heap_layout PASS; toolchain
+  SKIPPED (its gate); headroom FAILED, the expected red only: "at gc.threshold [-1, 32768]: the build and its setups keep
+  44320 B, over 41000 B".
+  | figure | relay 41 (no client) | relay 42 | relay 45 |
+  |---|---|---|---|
+  | build's own (max 41,000) | 36,368 | 45,488 | 44,320 |
+  | used after build | 103,648 | 116,160 | 115,008 |
+  | largest block after build (min 32,768) | 72,128 | 58,048 | 59,216 |
+  | baseline alloc / free / largest | 67,280 / 120,800 / 118,992 | 70,672 / 117,408 / 116,846 | 70,688 / 117,392 / 116,880 |
+  | after build alloc / free / largest | 103,648 / 84,496 / 72,128 | 116,160 / 71,984 / 58,048 | 115,008 / 73,136 / 59,216 |
+  | control arm | 103,488 / 72,128 | 115,968 / 72,224 / 58,048 | 114,816 / 73,376 / 59,216 |
+  | production threshold | 103,472 / 72,128 | 116,032 / 72,192 / 58,048 | 114,800 / 73,424 / 59,216 |
+  | new blocks above the 32,768 B high band (bound 32) | 0 | not read | 0 |
+  | boot starter loop / build_system / start_timers | 1,403 / 1,026 / 518 ms | not read | 1,470 / 1,293 / 520 ms |
+  | FRAM allocated | 1,140 | 1,200 | 1,200 |
+  The map and the DELTA placement figures stay unread: the headroom test reads them after its failed bound.
+- 6. Bench step 11:29:33-12:17:28 (68 collected): 60 passed, 7 red. The burst test now PASS (the 1 s wait).
+  - Expected red, not rerun: mixed body "the concurrent mixed-body storm's refusals within the cap (10 more over it):
+    HTTPDropped is 7, fewer than the 9 refusal(s) the clients saw" (relay 44's root cause, left to the base).
+  - Test-side, the one rerun 12:17:46-12:31:11 (no owned write) the same: SGP40 W33/W35 teardowns on ntp_recovers,
+    real_ntp unreachable, cold_boot, reboot_sequencing, heap_at_peak; the default-GC heap pair's ISL29125 W31 (only),
+    reported at the hammer test's setup, so the hammer test's body ran in neither run. No MQTT E3 this time.
+  - MQTT module, all 22 PASS (relay 42 in brackets):
+    | test | relay 45 |
+    |---|---|
+    | connect | 0.7 s (0.7) |
+    | echo probes | 3 at 9.99-10.04 s, MQTTLINK Transfers 0 -> 3, Failures 0 (9.99) |
+    | broker killed | reconnected 2.4 s after the restart (2.5) |
+    | broker stalled | detected 18.7 s, reconnected 8.0 s (18.8 / 7.9) |
+    | silent path loss | detected 18.5 s, reconnected 15.1 s (14.9 / 13.4) |
+    | reset path | ended 9.7 s, reconnected 11.1 s (9.6 / 11.3) |
+    | stall phase 1/5/9/13 s | 19.13 / 15.06 / 11.12 / 17.14 s (exp. 19/15/11/17); back 4.3 / 6.1 / 9.6 / 4.3 s |
+    | duplicate client id | 0 retakes in 20 s, back 39.8 s after it left (39.9) |
+    | inbound flood | 3,001 / 3,001, GET /status max 1.43 s, median 1.38 s (1.43 / 1.37) |
+    | QoS 1 burst | 500 acknowledged in 5.4 s (5.1) |
+    | correct password | 0.8 s, masked "********", back on anonymous 0.7 s (0.8 / 0.8) |
+    | wrong password | 5 refused in 40 s, codes [116, 117, 119, 120], back 0.8 s after the correction, 44 s (43) |
+    | AP outage | connected 257.7 s after the AP came back, 0 failed attempts; recovery "kick + hard_reset() after the MQTT client connected after the AP came back; skipped: the passive reconnect with the link" (256.7, the same) |
+    | reboot | connected 12.0 s after the reset, will published on the takeover (12.2) |
+    | default GC | full timeline; free heap over 42 samples, 17 collects: 3,760-69,152 B (relay 42: 7,472-67,936), last ten 6,288 / 47,104 / 13,232 / 54,368 / 19,504 / 56,736 / 18,896 / 59,296 / 27,456 / 68,368 |
+- End 12:31 (after the rerun's resets): RR 21, LastTaskEnd null, MQTTState disabled, MQTTConnected false. errcount:
+  CFGMGR_* W22 (1 each), ISL29125 W31 (1), SGP40 W33 (9), WEBSERVER 85 (W60, W48, E14). Beyond the declared codes only
+  the day-6 teardown codes; nothing else.
+- Writes: FC 1 (FC 2 today); the two login tests' owned writes (5 by design, both PASS); the listed prerequisites. The
+  rerun owned none. Board left serving this image.
+- Evidence: logs/day9_20261115/*r45*; build/archive/run_bench_hardware_suite_scope_mqtt/ (11:29 and 12:17 runs).
