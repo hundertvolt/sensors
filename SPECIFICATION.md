@@ -8836,9 +8836,9 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   the MQTT client and its exerciser (2026-11-15): the build and its setups keep 44,320 B over the heap in use before
   them, against the flash tier's bound of at most 50,500 B (Part N
   `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11, re-derived 2026-11-15), and leave a
-  largest free block of 59,216 B against its floor of 32,768 B (F.5.3); in operation one collect left
-  81,984-82,400 B free without the client (2026-11-11), against `dev`'s serving demand of 68,790 B at the connection
-  ceiling.
+  largest free block of 59,216 B against its floor of 32,768 B (F.5.3); in operation one collect leaves
+  69,424-70,224 B free (2026-11-15, the client disabled as it ships; 81,984-82,400 B without it, 2026-11-11), against
+  `dev`'s serving demand of 60,750 B at its five connections (`/status` 7,662 B in 34 pieces, the scenario harness).
 - **lwIP is never the constraint on admission.** An image provisioned for 16 admitted 16 on every
   probe, no pool surfaced, and the GC heap bound first — while a raised ceiling turns a clean
   refusal into an admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST

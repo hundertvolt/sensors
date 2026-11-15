@@ -73,3 +73,33 @@ two login tests' 5 owned writes, the unmarked prerequisites; the rerun owned non
   does not declare. So the hammer load with the client resident has not run yet.
 
 At the end the board served the image with the client disabled; `ResetReason` 21, `LastTaskEnd` null.
+
+## Relay 46, the same image under the re-derived bound (2026-11-15, block `fc1abd64`)
+
+No flash and no wear-gated flag; the code was `e680db9c`, whose firmware inputs are `3e281e10`'s.
+
+- **Full-build heap headroom: PASS** under 50,500 B. The build kept 44,352 B; the largest free block after it was
+  59,200 B. The map: the largest free run is the free heap above the top survivor, 59,200 B, with one gap of 16 K or
+  more; deciles 1174 1174 1166 1127 970 902 646 0 0 0. The boot placement: 2,767 new blocks, the highest at 68 %,
+  none in the top 16 K or 32 K (the final base: 2,259, 61 %, none).
+- **Hammer: PASS**, its body run for the first time with the client resident: 497 reads answered, 7 ResetVOC writes
+  accepted, 776 refused, MemFree floor 15,872 B over 65 `/status` answers (the final base: 579, 6, 850, 29,216 B over 79).
+- **In operation**, the client disabled as it ships (the final base in brackets):
+  - free after the one collect after each 120 s idle: 70,224 / 69,424 / 70,176 / 69,456 B (82,016 / 82,000 / 81,968 /
+    81,968), the largest block then 27,216 / 16,240 / 16,368 / 42,224 B (16,960 / 16,192 / 19,904 / 53,040);
+  - at boot free 61,376 B, largest 59,120 B (73,584 / 71,760);
+  - under six readers free at least 9,168 / 4,384 / 6,224 B and the largest block at least 5,440 / 2,832 / 4,672 B
+    (15,200 / 15,168 / 20,384 and 12,000 / 11,696 / 11,584); under two, 25,424 B and 15,184 B (41,248 / 19,904);
+  - `/status` under six readers 71 / 70 / 70 answers with 497 / 500 / 481 resets (111 / 43, 111 / 43, 110 / 47), under
+    two 94 answers (105).
+- **Reading:**
+  - The ~11.8 KB less free in operation is the client's imports (3.4 KB, the baseline's rise), its build survivors
+    (8.0 KB) and its tasks.
+  - Six readers now exceed `dev`'s five-connection ceiling by one, where the final base's six slots held them all:
+    the 1,478 resets equal the 1,478 W60 `HTTP_REFUSED` entries, every one a counted ceiling refusal, and that
+    refusal churn costs answers.
+  - Under two readers, below the ceiling, answers fell 10 % as `/status` grew 9.6 % (6,993 to 7,662 B) with the
+    client's fields.
+  - No MemoryError, task end or reboot. The smallest largest-block reading under load, 2,832 B, is several
+    `/status` pieces (at most 257 B each); failures began at 528 B or less on the base's 7- and 8-connection images
+    (SPECIFICATION.md I.6).

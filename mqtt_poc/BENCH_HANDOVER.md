@@ -223,7 +223,8 @@ do. A code outside a test's marker is a real failure (section 6).
 the client. On the bench `dev` with it kept 45,488 B (2026-11-15, `9fd691ef`), then 44,320 B once the client's payload
 slots and transmit buffer were trimmed (2026-11-15, `3e281e10`). Asked how `dev` with the client should meet the
 bound, the owner (2026-11-15): "Try a balanced approach, find a sweet spot, far away from critical values, then re
-derive". The bound is the second reading plus the same ~14 % (agent, 2026-11-15). The test is expected to pass;
+derive". The bound is the second reading plus the same ~14 % (agent, 2026-11-15). The test passed under it on
+2026-11-15 (44,352 B, the map and the placement read: `mqtt_poc/bench_results/2026-11-15_3e281e10/`) and is expected to;
 it changes only through a new derivation of the need (owner, 2026-10-02), the owner's to make.
 
 Any other assertion of that test failing (the largest free block, the placement) is a real failure (section 6).

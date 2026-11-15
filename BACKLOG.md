@@ -204,36 +204,12 @@ reference for how any of it runs (flags, wear gates, traps).
   round did not intend, and a hotspot fallback only after a reset with no kick right before it
   (A.4's reset rules). Wear: none (reads only). Twin row: none (the twin fakes Wi-Fi connection
   state only).
-- **The MQTT PoC's scoped bench run** (branch `claude/whole-project-audit-plan-followup` only, until it
-  merges) — on `dev`: `mqtt_poc/BENCH_HANDOVER.md` is its run sheet and its full context, `--scope mqtt`
-  (owner, 2026-10-08: "include the ntp tests too, allow networking/ntp"; "include the hotspot role
-  reversal too"), run by the audit's bench session from `claude/u35-bench-campaign` (owner, 2026-11-15: "you can
-  use that branch for your bench runs, especially the MQTT bench runs. You shall do no wear related tests, while
-  flashing a new image containing the MQTT code of course is allowed."); its section 7 says where the results
-  go. Wear: one flash cycle and the two login tests' 5 writes of `config_MQTT.cfg` (owner, 2026-11-15, asked
-  "How should login be covered on the bench?": "Both login tests (Recommended)"), no SCD30 write. Run on
-  2026-11-15 on `9fd691ef` (`mqtt_poc/bench_results/2026-11-15_9fd691ef/`): the MQTT module 22 of 22; owed the same
-  scope on the trimmed image (the heap entry below), with the boot's heap layout now in its flash step. Twin row: `ci_suite._run_14_mqtt_broker_faults`, the
-  MQTT module's named cover.
 - **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
   the two unbought bench-rig capabilities (SPECIFICATION.md E.6.6).
 
 ## Deferred / explicitly out-of-scope work
 
-- **The MQTT client against the full-system heap bound** (branch `claude/whole-project-audit-plan-followup`
-  only, until it merges; owner, 2026-10-08: "The heap limit should definitely be obeyed in the final version, but
-  that's a topic becoming relevant when the audit is done."; the audit closed on 2026-11-13). The bound is at most
-  41,000 B added by the build and its setups (SPECIFICATION.md Part N's
-  `l3.heap_headroom_after_full_system_build_max_added`; owner, 2026-11-11), derived from `dev`'s 35,984 B without the
-  client. On the bench (2026-11-15, image `9fd691ef`) `dev` with the client and its exerciser kept 45,488 B, 9,120 B
-  over the final base's 36,368 B, its largest free block after the build 58,048 B against the 32,768 B minimum. Asked how
-  `dev` with the client should meet the bound, the owner (2026-11-15): "Try a balanced approach, find a sweet spot, far
-  away from critical values, then re derive". The payload slots went from 384 to 256 B and the transmit buffer from 640
-  to 512 B (agent, 2026-11-15; Part N's `mqtt.out_payload_max` and `mqtt.tx_buf_bytes` rows), about 1.15 KB; the
-  receive buffer, the slot count and the ack queue stay, each near its need. The trimmed image read 44,320 B
-  (2026-11-15, `3e281e10`), and the bound is now that plus the same ~14 %, 50,500 B (agent, 2026-11-15). Owed: the
-  flash step's headroom test passing on the bench under it, with its map and placement read.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the

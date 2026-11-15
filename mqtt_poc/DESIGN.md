@@ -415,8 +415,10 @@ with every piece of context a fresh session there needs. The scope (`tests_hardw
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
 chunk layout, the boot's heap layout and the `env --tier flash` rerun; every SCD30 write waits for the full bench
-run. Run on 2026-11-15 on `9fd691ef` (`mqtt_poc/bench_results/2026-11-15_9fd691ef/`): the MQTT module 22 of 22, the
-heap bound red as expected, the mixed-body refusal count the base's (BENCH_HANDOVER.md section 1.7, item 3).
+run. Run on 2026-11-15 (`mqtt_poc/bench_results/`): on `9fd691ef` the MQTT module 22 of 22 and the heap bound red as
+expected; on the trimmed `3e281e10` the MQTT module 22 of 22 again, the boot's heap layout, the full-build headroom
+under the re-derived 50,500 B bound and the hammer load all passing. The one red left is the mixed-body refusal count,
+the base's (BENCH_HANDOVER.md section 1.7, item 3).
 
 ## 12. Where the rules land when the PoC merges
 
