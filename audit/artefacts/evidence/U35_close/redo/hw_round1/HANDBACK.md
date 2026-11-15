@@ -44214,3 +44214,72 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   flash tier's scripts having rewritten the rest as tests_hardware/README describes.
 - Evidence: logs/day8_20261113/status_r41_*.json, r41_3b/, r41_flash.out, r41_flash_tier.out, r41_bench_tier.out,
   r41_bench_rerun.out, r41_5h.out, logs/3.log, 5h.log.
+
+## Bench 2026-11-15 09:40 UTC - relay 42, the MQTT image (3de7671a, code 9fd691ef): MQTT module 22/22 PASS; one repeatable red outside it
+
+- The owner in this session, 08:2x UTC, asked about relay 42: "Yes, flash and run"; later "Go for all". FC 1 today
+  (logs/day9_20261115/fc_ledger.txt); NVM 0.
+- 1. `scripts/uv_sync_retried.sh` rc 0; `/usr/sbin/mosquitto` present (no install needed); `ip route get 1.1.1.1` via
+  192.168.85.1 dev br0.
+- 2. Pre-flash `/status` (errcount in full) and `/system` saved 08:21 (status_r42_preflash.json, system_r42_preflash.json):
+  RR 1, uptime 2,428 s; NTP E71 (1), SGP40 W35 (8), WEBSERVER W60/W51 (379), WIFI W37/W81/W79 (6).
+- 3. `uv run scripts/build_firmware.py dev` rc 0, `"dirty": false`, commit 3de7671a: **1,178,948 B (95.9 %)**, 49,852 B
+  free (relay 41: 1,158,444 B, 94.3 %; +20,504 B; the code session's 1,177,644 B differs by 1,304 B). `harness.reflash()`
+  19.9 s, `harness.restore_board_to_serving()` 10.6 s, 08:26:29-08:27:00; BuildDate 2026-11-15T08:22:34Z = record.
+- 4a. The checked boot is the restore's reset (RR 21), not the flash boot, so the FRAM module's RAM-only E49/W63 from the
+  flash boot were gone before the read (FRAM 0 here). `MQTTState` "disabled", `MQTTConnected` false, MQTTLINK
+  {Commands 0, Transfers 0, Failures 0}. WEBSERVER (moved) 379 -> 0 blank; UART_init/UART_resp 0 before and after;
+  the owners before MQTT's chunks unchanged (NTP, SGP40, WIFI). New: MQTT 0, CFGMGR_MQTT W22 (1): the absent file read
+  once before its defaults were written.
+- 4b. One REST reboot 08:27:25 (RR 3, uptime 31): no FRAM entry; the one change NTP E71 1 -> 2 (the boot-time NTP miss).
+- 5. Flash step (3 tests) 08:28:10-08:29:51: fram_storage PASS (FRAM allocated 1,200 of 262,144 B, relay 41: 1,140;
+  RAM-only by design []); toolchain_flash_boot SKIPPED (its --allow-toolchain-reverify gate); heap headroom FAILED, the
+  expected red: "at gc.threshold [-1, 32768]: the build and its setups keep 45488 B, over 41000 B". Its note in full:
+  used 116,160 B, the build's own 45,488 B (max 41,000; relay 41: 36,368), largest block 58,048 B (min 32,768; relay 41:
+  72,128); heap_baseline alloc 70,672 / free 117,408 / largest 116,846; after build_system 116,160 / 71,984 / 58,048;
+  control 115,968 / 72,224 / 58,048; production threshold 116,032 / 72,192 / 58,048. **Not measured**: the map and the
+  boot placement figures (the test reads them after the failed bound, test_memory_stress.py:117 before :122/:133), and
+  the boot starter loop / build_system / start_timers timings (test_heap_layout, not in this scope).
+- 6. Bench step 08:30:23-09:18:13: collect 68/79 with both login tests in; 59 passed, 2 failed, 6 errors (65 call
+  PASS). The MQTT module, all 22 PASS:
+  - connect 0.7 s after the first poll, MQTTState connected; echo probes 3 at 9.99 s (10 s period), MQTTLINK Transfers
+    0 -> 3, Failures 0; inbound command received and shown.
+  - broker killed: reconnected 2.5 s after its restart (outage 5 s); broker stalled: detected 18.8 s, reconnected 7.9 s
+    after the resume; silent path loss: detected 14.9 s ("no pingresp"), reconnected 13.4 s after the restore; reset
+    path: ended in 9.6 s, reconnected 11.3 s after the restore; stall vs probe phase 1/5/9/13 s: detected 19.18/15.20/
+    11.21/17.13 s (expected 19.0/15.0/11.0/17.0), reconnected 2.6/6.2/9.6/4.2 s after the resume.
+  - duplicate client id: 0 retakes in 20 s against 1 by the duplicate, reconnected 39.9 s after it left; reboot:
+    connected 12.2 s after the reset, the broker published the will on the takeover.
+  - inbound flood: 3,001 of 3,001 taken, GET /status under it max 1.43 s, median 1.37 s; QoS 1 burst: 500 acknowledged
+    in 5.1 s; oversized message discarded, framing kept.
+  - logins: password broker connected in 0.8 s, password masked "********", back on the anonymous broker in 0.8 s;
+    wrong password: 5 refused attempts in 40 s, 5 MQTT entries, codes [116, 117, 119, 120], connected 0.7 s after the
+    correction (43 s in all).
+  - AP outage: **connected 256.7 s after the AP came back**, 0 failed attempts logged (PASS; long, for the code session).
+  - default GC: timeline connected, echo, reconnected after kill, stall detected, reconnected after stall, connected
+    after floods, reconnected after takeover, done; free heap at the reactive default over 42 samples (19 collects)
+    7,472-67,936 B, the last ten 26,912 / 49,248 / 18,864 / 57,856 / 13,456 / 47,536 / 14,656 / 50,480 / 7,472 / 45,952.
+  - disabling publishes offline and ends the session; no task ended, only expected codes.
+- The reds and their one rerun (09:19:33-09:33:14, the 8 plus the two default-GC heap tests whose window carried
+  the setup error; no persistence flag, no owned write):
+  - **test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status: FAILED both times**, in call:
+    "the concurrent mixed-body storm's refusals within the cap (12 more over it): HTTPDropped is 8, fewer than the 13
+    refusal(s) the clients saw"; rerun "(10 more over it): HTTPDropped is 5, fewer than the 10". It PASSED on earlier
+    images (HANDBACK: 28 answered, 20 refused, 0 wrong). Repeatable on this image: handed back as real, not diagnosed.
+  - test_real_concurrent_client_burst_does_not_crash_the_webserver: failed in call ("GET /status: closed without any
+    response byte (ConnectionResetError 104)"); PASS on the rerun.
+  - teardown codes, both times: SGP40 W33 SGP_RESTORED_NO_TS / W35 SGP_WRITTEN_NO_TS (ntp_recovers, real_ntp
+    unreachable, cold_boot, reboot_sequencing, heap_at_peak): the day-6 teardown codes, test-side.
+  - the default-GC heap window (serving_heap pair, reported at the hammer test's setup): first run ISL29125 W31 +
+    **MQTT E3 CFG_GET_RAISED**, rerun ISL29125 W31 only. E3 is the heap-starved config read the test provokes for every
+    other module (test_serving_heap_at_default_gc.py:55-61 declares BMP3XX/ISL29125/SCD30/SGP40/WIFI/NTP/NOTIFY E3, not
+    MQTT): a declaration gap for the code session.
+- End (09:34): serving, RR 21, LastTaskEnd null; MQTTState disabled, MQTTConnected false (the module's teardown).
+  errcount: CFGMGR_* W22 (1 each, incl. CFGMGR_MQTT, CFGMGR_SCD30), ISL29125 W31 (1), SGP40 W33 (9), WEBSERVER 79 (W60,
+  W48, E14). Beyond the declared codes: the E3 above and the day-6 teardown codes; nothing else.
+- Writes: FC 1; config_MQTT.cfg's defaults once on the first boot; the two login tests' owned writes (5 by their
+  design, 2 + 3, each undone; both PASS); the unmarked prerequisites (the MQTT module's enable PUT and closing disable
+  PUT, the hotspot module's SSID clear and restore, the flash step's scratch builds). No other gate flag. The rerun owned
+  none.
+- Evidence: logs/day9_20261115/{status,system}_r42_*.json, r42_4b/, r42_build.out, r42_flash.out, r42_flash_step.out,
+  r42_bench_step.out, r42_bench_rerun.out; build/archive/run_bench_hardware_suite_scope_mqtt/20261115T083024Z/.
