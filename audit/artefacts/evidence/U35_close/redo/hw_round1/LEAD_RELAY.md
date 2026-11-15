@@ -1,5 +1,51 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-15 10:49 UTC - relay 45: the trimmed client image; the scope's flash step (now 4 tests) and bench step again
+
+Your relay-44 hand-back is taken: the root cause holds. The owner's answers in the code session since relay 42:
+- the heap bound, asked how `dev` with the client should meet it: "Try a balanced approach, find a sweet spot, far away
+  from critical values, then re derive";
+- the burst test's post-burst probe: "Add the wait here (Recommended)";
+- the mixed-body refusal count, root cause confirmed: "Leave it to the base";
+- the exerciser logging through the client's logger: "Yes, the exerciser is test code, all correct".
+Start only on the owner's go-ahead in your own session, and ask the owner there for this reflash. The wear rules are
+relay 42's: this one flash, the two login tests' owned writes, the listed prerequisites, nothing else.
+
+The code on this branch is now `claude/whole-project-audit-plan-followup` at `3e281e10`, which is relay 42's
+`9fd691ef` plus:
+- the client's payload slots 384 -> 256 B and transmit buffer 640 -> 512 B (`7dd8af6e`), about 1.15 KB less after the
+  build, everything else unchanged;
+- the burst test waits 1 s for the slot release before its last probe; MQTT's `CFG_GET_RAISED` and
+  `CFG_CALLBACK_RAISED` are declared in `test_every_source_and_route_fits_a_small_free_run` (`2b8b65ae`);
+- `flash/test_heap_layout.py` joins the scope's flash step (`3e281e10`): relay 42's run never read where the boot's
+  survivors land, since the headroom test stops at its bound first.
+GitHub CI is green on that commit (run 43703732182, all 27 jobs).
+
+Steps, in this order:
+1. Fetch and merge, then `scripts/uv_sync_retried.sh`.
+2. Before flashing: save `GET /status` (errcount in full) and `GET /system`. The FRAM layout is relay 42's (no chunk
+   added or moved), so every log keeps its history across this flash.
+3. Build and flash `dev` from this branch head (`"dirty": false`, `harness.reflash()`,
+   `harness.restore_board_to_serving()`, `BuildDate` checked); FC +1. Record the image size next to relay 42's
+   1,178,948 B.
+4. First boot: errcount and `/status` (`MQTTState` "disabled", `MQTTLINK` 0/0/0); no reboot step this time.
+5. The flash step, the scoped runner's own call:
+   ```
+   scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_scope_mqtt_flash_step \
+       --levels "L3, scope mqtt" --marker-floor "not soak_duration and not multi_day_rollover" \
+       $(python3 tests_hardware/run_scopes.py mqtt flash)
+   ```
+   Expected: the headroom test still fails its 41,000 B bound (about 44.3 KB by a rough agent estimate); its note in
+   full is the reading the bound is re-derived from. The heap layout's figures go next to relay 41's (new blocks above
+   the 32,768 B high band, bound 32: 0; boot starter loop 1,403 ms, `build_system` 1,026 ms, `start_timers` 518 ms).
+   Any other red in this step is real: hand back and run nothing further.
+6. The bench step, relay 42's command unchanged (68 tests, the two login tests in, the group's six others
+   deselected). Expected red: `test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status` (relay 44's
+   root cause, left to the base): record its counts, do not rerun it. Anything else is real; a test-side red is rerun once.
+7. Hand back, relay 42's shape: per test, the flash step's figures, the MQTT module's figures table, errcount added,
+   ResetReason, the writes spent.
+8. Leave the board serving this image. Nothing pushed to the PR branch.
+
 ## Lead 2026-11-15 10:06 UTC - relay 44: the relay-43 capture reclassified (no board contact)
 
 Your relay-43 hand-back is taken: the AP outage's recovery reset is the documented CYW43 case, as on both 2026-10-08
