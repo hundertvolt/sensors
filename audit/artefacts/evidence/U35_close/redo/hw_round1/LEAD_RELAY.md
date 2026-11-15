@@ -1,5 +1,35 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Lead 2026-11-15 12:39 UTC - relay 46: the heap test under the re-derived bound, the hammer alone, in operation (no flash)
+
+Your relay-45 hand-back is taken. The bound is re-derived (agent, 2026-11-15, on the owner's "Try a balanced approach,
+find a sweet spot, far away from critical values, then re derive"): your 44,320 B plus the same ~14 % as the owner's
+2026-11-11 method, 50,500 B. The code on this branch is now `claude/whole-project-audit-plan-followup` at `e680db9c`:
+the device script's bound and docs only. No firmware input changed since `3e281e10`, so the image on the board stays
+and nothing is flashed. No wear-gated flag; the headroom test's scratch builds are its usual prerequisite. Within the
+go-ahead you hold; ask the owner first if it is not.
+
+1. Fetch and merge, then `scripts/uv_sync_retried.sh`; save `/status` (errcount in full).
+2. The headroom test alone:
+   ```
+   scripts/_require_clean_hardware_run.sh --runner r46_headroom --levels "L3, one test" \
+       --marker-floor "not soak_duration and not multi_day_rollover" --not-clean-reason "relay 46: one test" \
+       tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build
+   ```
+   Expected PASS. Hand back its note in full, now past the bound: the kept bytes, the largest block, the map (largest
+   free run, free above the top survivor, gaps of 16 K or more) and the boot placement (new blocks, the highest one's
+   percentage, any in the top 16 K or 32 K), next to relay 41's (2,259 new blocks, highest 61 %, none in either).
+3. The hammer test alone, its body run at last:
+   ```
+   scripts/_require_clean_hardware_run.sh --runner r46_hammer --levels "L4, one test" \
+       --marker-floor "not soak_duration and not multi_day_rollover" --not-clean-reason "relay 46: one test" \
+       tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot
+   ```
+   Hand back its verdict and figures next to relay 41's (579 reads, MemFree floor 29,216 B over 79 `/status`).
+4. In operation, your relay-41 step 5h unchanged, the client disabled as it ships: free and largest block after the
+   one collect after each 120 s idle, the boot's, and under load with 6 and 2 readers, next to relay 41's.
+5. Hand back; leave the board serving. Nothing pushed to the PR branch.
+
 ## Lead 2026-11-15 10:49 UTC - relay 45: the trimmed client image; the scope's flash step (now 4 tests) and bench step again
 
 Your relay-44 hand-back is taken: the root cause holds. The owner's answers in the code session since relay 42:
