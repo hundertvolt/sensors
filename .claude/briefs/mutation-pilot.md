@@ -75,7 +75,7 @@ feature; a later clear owner decision supersedes an earlier rule.
      `tests/microtest.py`); a per-file timeout derived from its measured runtime;
    - the stripped copy the unit tier imports (`build/portable_src`) refreshed for the mutated file only;
    - the allowlist of equivalents: one file read by a small custom filter that marks its entries skipped right
-     after `cosmic-ray init`, so a proven equivalent never runs again; each entry keyed by module, function,
+     after `cosmic-ray init`, so later runs skip a proven equivalent; each entry keyed by module, function,
      operator and the mutated text (never a line number), each with a one-line reason;
    - a reduced operator set (for example `+`/`-`, `*`/`/`, `&`/`|`, comparison boundaries and negation) through
      `cr-filter-operators`, kept only if the pilot shows it finds every gap the full set finds.
