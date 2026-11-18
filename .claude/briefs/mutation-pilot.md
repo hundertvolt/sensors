@@ -26,6 +26,9 @@ beyond this file, no agents, no scheduled check-ins. After the go, follow this b
 - 09:36: "I switched back to "Max" plan, so the available budget is cut by half!"
 - 09:39: "KEEP IT ON HOLD that it does not use budget yet, and everything I need to do when the time has come is to
   give it a go."
+- 09:52: "if you identified and proved a mutant being a true, harmless equivalent which will always run to the end,
+  never reporting any failure and not being an issue, add it to the allowlist so it does not consume time without
+  added value."
 
 The standing rules apply in full: CLAUDE.md, SPECIFICATION.md Part 0's "Restraint in practice" paragraph, and the
 skills in `.claude/skills/`. In short: real, verified findings only; root causes, no runaway chains; no drift into
@@ -71,7 +74,8 @@ feature; a later clear owner decision supersedes an earlier rule.
    - stop at the first failing file, and inside a file at the first failing test (a small opt-in switch in
      `tests/microtest.py`); a per-file timeout derived from its measured runtime;
    - the stripped copy the unit tier imports (`build/portable_src`) refreshed for the mutated file only;
-   - the whitelist of equivalents: one file read by a small custom filter, each entry keyed by module, function,
+   - the allowlist of equivalents: one file read by a small custom filter that marks its entries skipped right
+     after `cosmic-ray init`, so a proven equivalent never runs again; each entry keyed by module, function,
      operator and the mutated text (never a line number), each with a one-line reason;
    - a reduced operator set (for example `+`/`-`, `*`/`/`, `&`/`|`, comparison boundaries and negation) through
      `cr-filter-operators`, kept only if the pilot shows it finds every gap the full set finds.
@@ -80,14 +84,15 @@ feature; a later clear owner decision supersedes an earlier rule.
 5. **Pilot.** Run both pilot modules; run the config manager with the full and with the reduced operator set. Replay
    the recorded results to compare the owner's order with a runtime-divided-by-kill-rate order. Long runs go in the
    background; read summaries only.
-6. **Triage every survivor.** Equivalent without consequences: whitelist entry with its reason (a class of them,
+6. **Triage every survivor.** A true, harmless equivalent, proven (it always runs through every candidate test
+   without a failure and is no issue): an allowlist entry with its reason, so later runs skip it (a class of them,
    such as plus or minus one on a timing constant, may be one rule). A hint of a gap: reproduce it. Only a real,
    proven, reproducible gap gets the smallest test, in an existing test file. A survivor that shows a simpler or
    cheaper equivalent form of the code: list it as an improvement candidate for the owner, do not change it.
    Also list tests that plant faults into product code only to show another test catches them (mutation testing
    replaces those); tests that inject a hardware fault test real error handling and stay. The owner decides removals.
 7. **Stop and report** in the PR body and to the owner, in plain lines: hours of machine time, mutants run, kills by
-   position in the order, survivors, gaps found and tested, equivalents whitelisted, improvement candidates, planting
+   position in the order, survivors, gaps found and tested, equivalents allowlisted, improvement candidates, planting
    tests found, the speed-hog savings, this session's agent tokens if visible, and an estimate of time and budget
    for the full run. Then wait. The full run, the docs and the skill update, and the CI question come after the
    owner's word.
